@@ -152,6 +152,25 @@ class ConversationResult:
     duration_seconds: float = 0.0
 ```
 
+### 8. Outcome Detection
+
+Outcome detection is handled by pluggable detector strategies that analyze conversations to determine if specific outcomes have been reached.
+
+```python
+class OutcomeDetector(abc.ABC):
+    """Abstract base class for outcome detection strategies."""
+    
+    @abc.abstractmethod
+    async def detect_outcome(
+        self, 
+        conversation: Conversation, 
+        intent: Intent, 
+        possible_outcomes: Outcomes
+    ) -> Outcome | None:
+        ...
+```
+The runner receives an `OutcomeDetector` instance and calls it during conversation execution to check if conversation has reached any defined outcome.
+
 ## Flow Implementations
 
 ### 1. Full Simulation Flow
@@ -160,7 +179,6 @@ Orchestrated by `FullSimulationRunner` - handles conversations between two simul
 
 
 ```python
-@attrs.define
 class FullSimulationRunner(Runner):
     """Runs conversations with both simulated customer and agent.
     
@@ -173,42 +191,29 @@ class FullSimulationRunner(Runner):
     initial_message: MessageDraft
     intent: Intent
     outcomes: Outcomes
+    outcome_detector: OutcomeDetector  # Strategy for detecting conversation completion
     max_messages: int = 100
+    max_messages_after_outcome: int = 5  # Allow goodbye messages after outcome
     base_timestamp: datetime | None = None  # If None, use current time when run() starts
-    progress_callback: Callable[[Conversation, dict[str, Any]], None] | None = None
-    
-    # Private state - managed internally
-    _conversation: Conversation = attrs.field(init=False)
-    _is_complete: bool = attrs.field(init=False, default=False)
-    _start_time: datetime | None = attrs.field(init=False, default=None)
-    _current_timestamp: datetime = attrs.field(init=False)
-    
-    def __attrs_post_init__(self) -> None:
-        """Initialize conversation with timestamped initial message."""
-        # Will be set to base_timestamp or current time when run() starts
-        self._current_timestamp = datetime.now()
-        
-        # Create initial message with timestamp
-        initial_msg = Message(
-            content=self.initial_message.content,
-            sender=self.initial_message.sender,
-            timestamp=self._current_timestamp
-        )
-        self._conversation = Conversation(messages=(initial_msg,))
+    progress_handler: ProgressHandler | None = None  # Event callbacks for progress tracking
     
     async def run(self) -> ConversationResult:
-        """
-        Execute the full simulation conversation.
+        """Execute the full simulation conversation.
         
         Returns:
             ConversationResult with conversation history and metadata
         """
-        # Implementation details...
+        # Implementation: timestamp-based concurrent message generation
+        # - Both participants generate messages simultaneously
+        # - Runner selects message with earlier timestamp
+        # - Discards other message (first would influence second in real life)  
+        # - Uses outcome_detector to check for conversation completion
+        # - Supports configurable post-outcome message handling
     
     @property
     def conversation(self) -> Conversation:
         """Get current conversation state (read-only access)."""
-        return self._conversation
+        ...
     
     @property
     def is_complete(self) -> bool:

@@ -15,6 +15,7 @@ This document outlines the high-level folder structure for the Conversation Simu
 │   │   ├── customer/      # Customer participant types
 │   │   └── agent/         # Agent participant types
 │   ├── runners/           # Simulation execution engines
+│   ├── outcome_detection/ # Conversation outcome analysis
 │   └── channels/          # Communication abstractions
 ├── tests/                 # Test files and fixtures
 │   └── fixtures/          # Sample data for testing
@@ -28,6 +29,7 @@ This document outlines the high-level folder structure for the Conversation Simu
 - **`models/`** - Core data structures (Message, Conversation, Intent, Outcome, etc.)
 - **`participants/`** - Customer and agent implementations with abstract base classes
 - **`runners/`** - Simulation execution engines (full simulation, hybrid modes)
+- **`outcome_detection/`** - Conversatino outcome detection
 - **`channels/`** - Communication channel abstractions (placeholder interfaces)
 
 ### `tests/` - Testing

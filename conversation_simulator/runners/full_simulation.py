@@ -12,6 +12,7 @@ from ..models.intent import Intent
 from ..models.message import Message, MessageDraft
 from ..models.outcome import Outcome, Outcomes
 from ..models.simulation import ConversationResult
+from ..outcome_detection.base import OutcomeDetector
 from ..participants.base import Participant
 
 
@@ -63,6 +64,7 @@ class FullSimulationRunner(Runner):
         initial_message: MessageDraft,
         intent: Intent,
         outcomes: Outcomes,
+        outcome_detector: OutcomeDetector,
         max_messages: int = 100,
         max_messages_after_outcome: int = 5,  # Allow goodbye messages after outcome
         base_timestamp: datetime | None = None,  # If None, use current time when run() starts
@@ -76,6 +78,7 @@ class FullSimulationRunner(Runner):
             initial_message: Initial message to start conversation
             intent: Intent for the conversation
             outcomes: Possible outcomes to detect
+            outcome_detector: Strategy for detecting conversation outcomes
             max_messages: Maximum number of messages in conversation
             max_messages_after_outcome: Max additional messages after outcome detected (0 = stop immediately)
             base_timestamp: Base timestamp for conversation (current time if None)
@@ -86,6 +89,7 @@ class FullSimulationRunner(Runner):
         self.initial_message = initial_message
         self.intent = intent
         self.outcomes = outcomes
+        self.outcome_detector = outcome_detector
         self.max_messages = max_messages
         self.max_messages_after_outcome = max_messages_after_outcome
         self.base_timestamp = base_timestamp
@@ -164,7 +168,11 @@ class FullSimulationRunner(Runner):
                 
                 # Check for outcome detection (only if not already detected)
                 if not self._outcome_detected:
-                    detected_outcome = self._detect_outcome()
+                    detected_outcome = await self.outcome_detector.detect_outcome(
+                        self._conversation,
+                        self.intent,
+                        self.outcomes
+                    )
                     if detected_outcome:
                         self._conversation = self._conversation.set_outcome(detected_outcome)
                         self._outcome_detected = True
@@ -198,20 +206,6 @@ class FullSimulationRunner(Runner):
     def conversation(self) -> Conversation:
         """Get current conversation state (read-only access)."""
         return self._conversation
-    
-    def _detect_outcome(self) -> Outcome | None:
-        """Detect if the conversation has reached any defined outcome.
-        
-        Returns:
-            Detected outcome or None if no outcome is detected yet
-        """
-        # TODO: Implement outcome detection logic
-        # This could involve:
-        # - LLM-based analysis of conversation completion
-        # - Pattern matching for specific phrases
-        # - Goal completion analysis based on intent
-        # For now, return None (no outcome detected)
-        return None
     
     def _end_conversation(self, reason: str) -> None:
         """Mark the conversation as complete and notify progress handler.

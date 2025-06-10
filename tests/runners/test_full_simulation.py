@@ -12,6 +12,7 @@ from conversation_simulator.models.intent import Intent
 from conversation_simulator.models.message import Message, MessageDraft
 from conversation_simulator.models.outcome import Outcome, Outcomes
 from conversation_simulator.models.roles import ParticipantRole
+from conversation_simulator.outcome_detection.base import OutcomeDetector
 from conversation_simulator.participants.base import Participant
 from conversation_simulator.runners.full_simulation import FullSimulationRunner, ProgressHandler
 
@@ -63,6 +64,31 @@ class MockParticipant(Participant):
             return self._to_message(message)
         # If we reach here, all messages have been added
 
+        return None
+
+
+class MockOutcomeDetector(OutcomeDetector):
+    """Mock outcome detector for testing."""
+
+    def __init__(self, detect_after_messages: int, outcome: Outcome = Outcome(name="resolved", description="Issue was resolved")) -> None:
+        """Initialize mock detector.
+        
+        Args:
+            detect_after_messages: Number of messages after which to detect outcome (None = never)
+            outcome: Outcome to return when detected
+        """
+        self.detect_after_messages = detect_after_messages
+        self.outcome = outcome
+
+    async def detect_outcome(
+        self, 
+        conversation: Conversation, 
+        intent: Intent, 
+        possible_outcomes: Outcomes
+    ) -> Outcome | None:
+        """Return outcome if conditions are met."""
+        if len(conversation.messages) >= self.detect_after_messages:
+            return self.outcome
         return None
 
 
@@ -167,12 +193,14 @@ class TestFullSimulationRunner:
         progress_handler = MockProgressHandler()
         
         # Create runner
+        outcome_detector = MockOutcomeDetector(10000)  # Never detects outcome
         runner = FullSimulationRunner(
             customer=customer,
             agent=agent,
             initial_message=initial_message,
             intent=sample_intent,
             outcomes=sample_outcomes,
+            outcome_detector=outcome_detector,
             max_messages=10,
             base_timestamp=base_timestamp,
             progress_handler=progress_handler
@@ -231,12 +259,14 @@ class TestFullSimulationRunner:
         progress_handler = MockProgressHandler()
         
         # Create runner with low max_messages
+        outcome_detector = MockOutcomeDetector(10000)  # Never detects outcome
         runner = FullSimulationRunner(
             customer=customer,
             agent=agent,
             initial_message=initial_message,
             intent=sample_intent,
             outcomes=sample_outcomes,
+            outcome_detector=outcome_detector,
             max_messages=3,  # Low limit
             base_timestamp=base_timestamp,
             progress_handler=progress_handler
@@ -259,14 +289,6 @@ class TestFullSimulationRunner:
         initial_message: MessageDraft
     ) -> None:
         """Test outcome detection with configurable follow-up messages."""
-        
-        class OutcomeDetectingRunner(FullSimulationRunner):
-            """Runner that detects outcome after 2 messages."""
-            
-            def _detect_outcome(self) -> Outcome | None:
-                if len(self._conversation.messages) >= 3:  # initial + 2 messages
-                    return Outcome(name="resolved", description="Issue resolved")
-                return None
         
         # Create participants with enough messages
         customer_messages = (
@@ -303,12 +325,14 @@ class TestFullSimulationRunner:
         progress_handler = MockProgressHandler()
         
         # Test with 2 follow-up messages allowed
-        runner = OutcomeDetectingRunner(
+        outcome_detector = MockOutcomeDetector(detect_after_messages=3)  # Detect after initial + 2 messages
+        runner = FullSimulationRunner(
             customer=customer,
             agent=agent,
             initial_message=initial_message,
             intent=sample_intent,
             outcomes=sample_outcomes,
+            outcome_detector=outcome_detector,
             max_messages_after_outcome=2,
             base_timestamp=base_timestamp,
             progress_handler=progress_handler
@@ -338,14 +362,6 @@ class TestFullSimulationRunner:
     ) -> None:
         """Test immediate termination when max_messages_after_outcome is 0."""
         
-        class ImmediateOutcomeRunner(FullSimulationRunner):
-            """Runner that detects outcome immediately."""
-            
-            def _detect_outcome(self) -> Outcome | None:
-                if len(self._conversation.messages) >= 2:  # initial + 1 message
-                    return Outcome(name="quick_resolution", description="Quick resolution")
-                return None
-        
         customer_messages = (
             MessageWithTimestamp(
                 content="Quick question",
@@ -372,12 +388,14 @@ class TestFullSimulationRunner:
         progress_handler = MockProgressHandler()
         
         # Test with immediate termination
-        runner = ImmediateOutcomeRunner(
+        outcome_detector = MockOutcomeDetector(detect_after_messages=2, outcome=Outcome(name="quick_resolution", description="Quick resolution achieved"))  # Detect after initial + 1 message
+        runner = FullSimulationRunner(
             customer=customer,
             agent=agent,
             initial_message=initial_message,
             intent=sample_intent,
             outcomes=sample_outcomes,
+            outcome_detector=outcome_detector,
             max_messages_after_outcome=0,  # Immediate termination
             base_timestamp=base_timestamp,
             progress_handler=progress_handler
