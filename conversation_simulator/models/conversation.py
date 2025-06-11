@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import attrs
+from langchain_core.messages import AIMessage, HumanMessage
 
 from .message import Message
 from .outcome import Outcome
@@ -62,3 +63,19 @@ class Conversation:
 
         outcome_str = f" - Outcome: {self.outcome}" if self.outcome else ""
         return f"Conversation ({total} messages){outcome_str}:\n{messages_str}"
+    
+    def to_langchain_messages(self) -> list:
+        """Convert conversation history to LangChain message format.
+        
+        Returns:
+            List of LangChain BaseMessage objects
+        """
+        def _to_langchain_message(msg: Message):
+            if msg.sender == ParticipantRole.CUSTOMER:
+                return HumanMessage(content=msg.content)
+            elif msg.sender == ParticipantRole.AGENT:
+                return AIMessage(content=msg.content)
+            else:
+                raise ValueError(f"Unknown participant role: {msg.sender}")
+
+        return [_to_langchain_message(msg) for msg in self.messages]

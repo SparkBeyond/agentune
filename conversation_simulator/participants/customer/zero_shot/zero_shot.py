@@ -1,4 +1,4 @@
-"""Zero-shot agent participant implementation."""
+"""Zero-shot customer participant implementation."""
 
 import random
 from datetime import datetime, timedelta
@@ -11,51 +11,48 @@ from langchain_core.runnables import Runnable
 from ....models.conversation import Conversation
 from ....models.message import Message
 from ....models.roles import ParticipantRole
-from ..config import AgentConfig
-from ..base import Agent
-from .prompts import AgentPromptBuilder
+from ..base import Customer
+from .prompts import CustomerPromptBuilder
 
 
 @attrs.frozen
-class ZeroShotAgent(Agent):
-    """Zero-shot LLM-based agent participant.
+class ZeroShotCustomer(Customer):
+    """Zero-shot LLM-based customer participant.
     
-    Uses a language model to generate agent responses without
+    Uses a language model to generate customer responses without
     fine-tuning or few-shot examples.
     
     This class is immutable - use with_intent() to create new instances
     with different intents.
     """
     
-    agent_config: AgentConfig
     model: BaseChatModel
     intent_description: str | None = None
     
     # Private fields for internal state
-    _prompt_builder: AgentPromptBuilder = attrs.field(factory=AgentPromptBuilder, init=False)
+    _prompt_builder: CustomerPromptBuilder = attrs.field(factory=CustomerPromptBuilder, init=False)
     _output_parser: StrOutputParser = attrs.field(factory=StrOutputParser, init=False)
     
-    def with_intent(self, intent_description: str) -> 'ZeroShotAgent':
-        """Return a new agent instance with the specified intent.
+    def with_intent(self, intent_description: str) -> 'ZeroShotCustomer':
+        """Return a new customer instance with the specified intent.
         
         Args:
-            intent_description: Natural language description of the agent's goal/intent
+            intent_description: Natural language description of the customer's goal/intent
             
         Returns:
-            New ZeroShotAgent instance with the intent installed
+            New ZeroShotCustomer instance with the intent installed
         """
         return attrs.evolve(self, intent_description=intent_description)
     
     def _get_chain(self) -> Runnable:
         """Create the LangChain processing chain."""
         prompt_template = self._prompt_builder.build_chat_template(
-            agent_config=self.agent_config,
             intent_description=self.intent_description
         )
         return prompt_template | self.model | self._output_parser
     
     async def get_next_message(self, conversation: Conversation) -> Message | None:
-        """Generate next agent message using zero-shot LLM approach.
+        """Generate next customer message using zero-shot LLM approach.
         
         Args:
             conversation: Current conversation history
@@ -68,25 +65,26 @@ class ZeroShotAgent(Agent):
         
         # Use the chain to get response
         chain = self._get_chain()
-        agent_response = await chain.ainvoke({
+        customer_response = await chain.ainvoke({
             "conversation_history": conversation_history
         })
         
         # If message is empty, end conversation
-        if not agent_response.strip():
+        if not customer_response.strip():
             return None
         else:
-            # Generate fake timestamp: 3-20 seconds after last message
+            # Generate fake timestamp: 5-30 seconds after last message
+            # (customers typically take longer to respond than agents)
             if conversation.messages:
                 last_timestamp = conversation.messages[-1].timestamp
-                delay_seconds = random.randint(3, 20)
+                delay_seconds = random.randint(5, 30)
                 response_timestamp = last_timestamp + timedelta(seconds=delay_seconds)
             else:
                 # If no messages yet, use current time
                 response_timestamp = datetime.now()
                 
             return Message(
-                sender=ParticipantRole.AGENT,
-                content=agent_response.strip(),
+                sender=ParticipantRole.CUSTOMER,
+                content=customer_response.strip(),
                 timestamp=response_timestamp
             )
