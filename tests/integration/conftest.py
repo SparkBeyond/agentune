@@ -12,13 +12,6 @@ from conversation_simulator.participants.agent.config import AgentConfig
 load_dotenv()
 
 
-def pytest_collection_modifyitems(config, items):
-    """Automatically mark integration tests."""
-    for item in items:
-        if "integration" in str(item.fspath):
-            item.add_marker(pytest.mark.integration)
-
-
 @pytest.fixture(scope="session")
 def openai_api_key():
     """OpenAI API key for integration tests."""

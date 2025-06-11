@@ -14,11 +14,26 @@ from conversation_simulator.models import Conversation, Message, ParticipantRole
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_logging() -> None:
-    """Configure logging for tests."""
+    """Configure logging for all tests (unit and integration).
+    
+    This fixture runs automatically for all test sessions and configures
+    logging to be useful for both debugging and viewing test output.
+    """
+    # Configure root logger with detailed format
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True  # Override any existing configuration
     )
+    
+    # Reduce noise from third-party libraries during tests
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING) 
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    
+    # Add debug logging for specific modules if needed during development
+    # logging.getLogger("conversation_simulator.participants").setLevel(logging.DEBUG)
 
 
 @pytest.fixture(scope="session")

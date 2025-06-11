@@ -1,5 +1,6 @@
 """Integration tests for ZeroShotCustomer with real LLM calls."""
 
+import logging
 import pytest
 from datetime import datetime
 
@@ -7,6 +8,8 @@ from conversation_simulator.participants.customer.zero_shot import ZeroShotCusto
 from conversation_simulator.models.conversation import Conversation
 from conversation_simulator.models.message import Message
 from conversation_simulator.models.roles import ParticipantRole
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.mark.integration
@@ -38,7 +41,7 @@ class TestZeroShotCustomerIntegration:
         assert response.sender == ParticipantRole.CUSTOMER
         assert isinstance(response.content, str)
         assert len(response.content.strip()) > 10
-        print(f"\nCustomer response: {response.content}")
+        logger.info("Customer response: %s", response.content)
 
     @pytest.mark.asyncio
     async def test_customer_without_intent_general_response(self, openai_model):
@@ -62,7 +65,7 @@ class TestZeroShotCustomerIntegration:
         assert response.sender == ParticipantRole.CUSTOMER
         assert isinstance(response.content, str)
         assert len(response.content.strip()) > 0
-        print(f"\nCustomer response: {response.content}")
+        logger.info("Customer response (no intent): %s", response.content)
 
     @pytest.mark.asyncio
     async def test_customer_with_intent_method(self, openai_model):
@@ -93,4 +96,4 @@ class TestZeroShotCustomerIntegration:
         assert response.sender == ParticipantRole.CUSTOMER
         assert isinstance(response.content, str)
         assert len(response.content.strip()) > 10
-        print(f"\nCustomer response with intent: {response.content}")
+        logger.info("Customer response with intent: %s", response.content)

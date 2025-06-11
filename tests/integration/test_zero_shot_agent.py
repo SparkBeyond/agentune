@@ -1,5 +1,6 @@
 """Integration tests for ZeroShotAgent with real LLM calls."""
 
+import logging
 import pytest
 from datetime import datetime
 
@@ -7,6 +8,8 @@ from conversation_simulator.participants.agent.zero_shot import ZeroShotAgent
 from conversation_simulator.models.conversation import Conversation
 from conversation_simulator.models.message import Message
 from conversation_simulator.models.roles import ParticipantRole
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.mark.integration
@@ -37,6 +40,7 @@ class TestZeroShotAgentIntegration:
         assert response is not None
         assert response.sender == ParticipantRole.AGENT
         assert len(response.content.strip()) > 10
+        logger.info("Agent response (customer initiated): %s", response.content)
         
         # Check timing is realistic (3-20 seconds)
         time_diff = response.timestamp - customer_message.timestamp
@@ -60,6 +64,7 @@ class TestZeroShotAgentIntegration:
         assert response is not None
         assert response.sender == ParticipantRole.AGENT
         assert len(response.content.strip()) > 10
+        logger.info("Agent response (agent initiated, with intent): %s", response.content)
         
         # Should mention the service/intent
         response_lower = response.content.lower()
@@ -83,6 +88,7 @@ class TestZeroShotAgentIntegration:
         assert response is not None
         assert response.sender == ParticipantRole.AGENT
         assert len(response.content.strip()) > 10
+        logger.info("Agent response (rapport building): %s", response.content)
         
         # Should be a greeting/rapport building, not direct sales pitch
         response_lower = response.content.lower()
@@ -113,3 +119,4 @@ class TestZeroShotAgentIntegration:
         assert response is not None
         assert response.sender == ParticipantRole.AGENT
         assert len(response.content.strip()) > 10
+        logger.info("Agent response (with_intent builder pattern): %s", response.content)
