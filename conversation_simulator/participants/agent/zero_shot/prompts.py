@@ -1,7 +1,7 @@
 """Agent prompt generation for LLM interactions."""
 
 import attrs
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 
 from ....models.conversation import Conversation
@@ -57,34 +57,6 @@ class AgentPromptBuilder:
         
         return messages
 
-    def build_chat_messages(
-        self,
-        agent_config: AgentConfig,
-        conversation: Conversation, 
-        intent_description: str | None = None,
-        format_instructions: str | None = None
-    ) -> list[BaseMessage]:
-        """Build chat messages for LLM completion.
-        
-        Args:
-            agent_config: Configuration for the agent
-            conversation: Current conversation history
-            intent_description: Optional natural language description of agent's goal/intent
-            format_instructions: Optional format instructions for output
-            
-        Returns:
-            List of LangChain BaseMessage objects
-        """
-        messages: list[BaseMessage] = [SystemMessage(content=self._build_system_prompt(agent_config, intent_description))]
-        
-        # Add conversation history
-        for msg in conversation.messages:
-            if msg.sender == ParticipantRole.CUSTOMER:
-                messages.append(HumanMessage(content=msg.content))
-            else:
-                messages.append(AIMessage(content=msg.content))
-        
-        return messages
     
     def _build_system_prompt(self, agent_config: AgentConfig, intent_description: str | None = None) -> str:
         """Build the system prompt for the agent.

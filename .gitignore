@@ -44,3 +44,6 @@ dmypy.json
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Windsurf files
+.windsurf/
