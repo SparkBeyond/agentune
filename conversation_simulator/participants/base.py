@@ -1,7 +1,5 @@
 """Base participant interface for conversation simulation."""
 
-from __future__ import annotations
-
 import abc
 
 from ..models.conversation import Conversation

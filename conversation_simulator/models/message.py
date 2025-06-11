@@ -1,11 +1,22 @@
 """Message models for conversation simulation."""
 
-from __future__ import annotations
-
 import attrs
 from datetime import datetime
 
 from .roles import ParticipantRole
+
+
+@attrs.frozen
+class Message:
+    """A timestamped message in a conversation."""
+    
+    content: str
+    timestamp: datetime
+    sender: ParticipantRole
+    
+    def __str__(self) -> str:
+        """String representation of the message."""
+        return f"[{self.sender.upper()}] {self.content}"
 
 
 @attrs.frozen
@@ -22,16 +33,3 @@ class MessageDraft:
             sender=self.sender,
             timestamp=timestamp
         )
-
-
-@attrs.frozen
-class Message:
-    """A timestamped message in a conversation."""
-    
-    content: str
-    timestamp: datetime
-    sender: ParticipantRole
-    
-    def __str__(self) -> str:
-        """String representation of the message."""
-        return f"[{self.sender.upper()}] {self.content}"

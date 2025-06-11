@@ -1,7 +1,5 @@
 """Conversation Simulator - A library for simulating customer-agent conversations."""
 
-from __future__ import annotations
-
 # Public API exports
 from .models.conversation import Conversation
 from .models.roles import ParticipantRole

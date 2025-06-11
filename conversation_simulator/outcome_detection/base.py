@@ -1,7 +1,5 @@
 """Abstract base class for outcome detection strategies."""
 
-from __future__ import annotations
-
 import abc
 
 from ..models.conversation import Conversation

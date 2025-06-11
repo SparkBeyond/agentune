@@ -1,7 +1,5 @@
 """Outcome models for conversation simulation."""
 
-from __future__ import annotations
-
 import attrs
 
 

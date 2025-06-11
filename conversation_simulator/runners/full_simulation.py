@@ -1,7 +1,5 @@
 """Full simulation runner implementation."""
 
-from __future__ import annotations
-
 import abc
 import asyncio
 from datetime import datetime

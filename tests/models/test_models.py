@@ -1,7 +1,5 @@
 """Tests for conversation simulator models."""
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 
 from conversation_simulator.models import (

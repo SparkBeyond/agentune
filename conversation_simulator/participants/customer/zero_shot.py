@@ -1,7 +1,5 @@
 """Zero-shot customer participant implementation."""
 
-from __future__ import annotations
-
 from .base import Customer
 from ...models.conversation import Conversation
 from ...models.message import Message

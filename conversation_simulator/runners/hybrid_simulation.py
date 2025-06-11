@@ -1,7 +1,5 @@
 """Hybrid simulation runner implementation."""
 
-from __future__ import annotations
-
 from .base import Runner
 from ..models.simulation import ConversationResult
 

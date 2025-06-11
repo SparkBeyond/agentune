@@ -7,8 +7,6 @@ channel implementations. The actual design and functionality may change
 significantly as requirements become clearer.
 """
 
-from __future__ import annotations
-
 import abc
 from typing import AsyncIterator
 

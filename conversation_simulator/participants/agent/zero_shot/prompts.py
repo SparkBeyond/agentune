@@ -1,7 +1,5 @@
 """Agent prompt generation for LLM interactions."""
 
-from __future__ import annotations
-
 import attrs
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate

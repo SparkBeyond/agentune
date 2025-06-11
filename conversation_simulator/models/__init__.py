@@ -1,7 +1,5 @@
 """Models package for conversation simulation."""
 
-from __future__ import annotations
-
 from .conversation import Conversation
 from .roles import ParticipantRole
 from .intent import Intent

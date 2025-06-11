@@ -1,7 +1,5 @@
 """Base runner interface for conversation simulation."""
 
-from __future__ import annotations
-
 import abc
 
 from ..models.simulation import ConversationResult

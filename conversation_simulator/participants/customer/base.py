@@ -1,7 +1,5 @@
 """Customer participant base class."""
 
-from __future__ import annotations
-
 from ..base import Participant
 from ...models.roles import ParticipantRole
 
