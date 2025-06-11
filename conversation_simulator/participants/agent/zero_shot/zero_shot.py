@@ -1,15 +1,14 @@
 """Zero-shot agent participant implementation."""
 
-from __future__ import annotations
-
 import random
 from datetime import datetime, timedelta
 
+import attrs
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import Runnable
 
 from ....models.conversation import Conversation
-from ....models.intent import Intent
 from ....models.message import Message
 from ....models.roles import ParticipantRole
 from ..config import AgentConfig
@@ -17,33 +16,43 @@ from ..base import Agent
 from .prompts import AgentPromptBuilder
 
 
+@attrs.frozen
 class ZeroShotAgent(Agent):
     """Zero-shot LLM-based agent participant.
     
     Uses a language model to generate agent responses without
     fine-tuning or few-shot examples.
+    
+    This class is immutable - use with_intent() to create new instances
+    with different intents.
     """
     
-    def __init__(self, agent_config: AgentConfig, model: BaseChatModel, intent: Intent | None = None) -> None:
-        """Initialize zero-shot agent.
+    agent_config: AgentConfig
+    model: BaseChatModel
+    intent_description: str | None = None
+    
+    # Private fields for internal state
+    _prompt_builder: AgentPromptBuilder = attrs.field(factory=AgentPromptBuilder, init=False)
+    _output_parser: StrOutputParser = attrs.field(factory=StrOutputParser, init=False)
+    
+    def with_intent(self, intent_description: str) -> 'ZeroShotAgent':
+        """Return a new agent instance with the specified intent.
         
         Args:
-            agent_config: Configuration for the agent
-            model: LangChain chat model instance (e.g., ChatOpenAI, ChatAnthropic, etc.)
-            intent: Optional agent intent/goal
+            intent_description: Natural language description of the agent's goal/intent
+            
+        Returns:
+            New ZeroShotAgent instance with the intent installed
         """
-        self.agent_config = agent_config
-        self.model = model
-        self.intent = intent
-        self.prompt_builder = AgentPromptBuilder()
-        self.output_parser = StrOutputParser()
-        
-        # Build the chain: prompt_template | model | parser
-        self.prompt_template = self.prompt_builder.build_chat_template(
+        return attrs.evolve(self, intent_description=intent_description)
+    
+    def _get_chain(self) -> Runnable:
+        """Create the LangChain processing chain."""
+        prompt_template = self._prompt_builder.build_chat_template(
             agent_config=self.agent_config,
-            intent=self.intent
+            intent_description=self.intent_description
         )
-        self.chain = self.prompt_template | self.model | self.output_parser
+        return prompt_template | self.model | self._output_parser
     
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next agent message using zero-shot LLM approach.
@@ -55,10 +64,11 @@ class ZeroShotAgent(Agent):
             Generated message or None if conversation should end
         """
         # Convert conversation to messages for the chain
-        conversation_history = self.prompt_builder.conversation_to_messages(conversation)
+        conversation_history = self._prompt_builder.conversation_to_messages(conversation)
         
         # Use the chain to get response
-        agent_response = await self.chain.ainvoke({
+        chain = self._get_chain()
+        agent_response = await chain.ainvoke({
             "conversation_history": conversation_history
         })
         

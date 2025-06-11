@@ -6,7 +6,6 @@ from datetime import datetime
 from conversation_simulator.participants.agent.zero_shot import ZeroShotAgent
 from conversation_simulator.models.conversation import Conversation
 from conversation_simulator.models.message import Message
-from conversation_simulator.models.intent import Intent
 from conversation_simulator.models.roles import ParticipantRole
 
 
@@ -17,13 +16,12 @@ class TestZeroShotAgentIntegration:
     @pytest.mark.asyncio
     async def test_agent_intent_customer_initiates(self, sales_agent_config, openai_model):
         """Test agent with agent-side intent, customer starts conversation."""
-        # Agent intent - sales goal
-        intent = Intent(
-            role=ParticipantRole.AGENT,
-            description="Discover if small business owner needs cloud backup solutions"
+        # Create agent with string intent
+        agent = ZeroShotAgent(
+            agent_config=sales_agent_config, 
+            model=openai_model, 
+            intent_description="Discover if small business owner needs cloud backup solutions"
         )
-        
-        agent = ZeroShotAgent(sales_agent_config, openai_model, intent)
         
         # Customer initiates conversation
         customer_message = Message(
@@ -47,13 +45,12 @@ class TestZeroShotAgentIntegration:
     @pytest.mark.asyncio
     async def test_agent_intent_agent_initiates_mentions_intent(self, sales_agent_config, openai_model):
         """Test agent with agent-side intent, agent starts and mentions intent."""
-        # Agent intent that should be mentioned
-        intent = Intent(
-            role=ParticipantRole.AGENT,
-            description="Introduce our enterprise cloud backup service to potential business customers"
+        # Create agent with intent that should be mentioned
+        agent = ZeroShotAgent(
+            agent_config=sales_agent_config,
+            model=openai_model,
+            intent_description="Introduce our enterprise cloud backup service to potential business customers"
         )
-        
-        agent = ZeroShotAgent(sales_agent_config, openai_model, intent)
         
         # Empty conversation - agent initiates
         empty_conversation = Conversation(messages=())
@@ -71,13 +68,12 @@ class TestZeroShotAgentIntegration:
     @pytest.mark.asyncio
     async def test_agent_intent_agent_initiates_no_intent_mention(self, sales_agent_config, openai_model):
         """Test agent with agent-side intent, agent starts but doesn't mention intent directly."""
-        # Subtle agent intent
-        intent = Intent(
-            role=ParticipantRole.AGENT,
-            description="Build rapport with potential customer before discussing technology solutions"
+        # Create agent with subtle intent
+        agent = ZeroShotAgent(
+            agent_config=sales_agent_config,
+            model=openai_model,
+            intent_description="Build rapport with potential customer before discussing technology solutions"
         )
-        
-        agent = ZeroShotAgent(sales_agent_config, openai_model, intent)
         
         # Empty conversation - agent initiates
         empty_conversation = Conversation(messages=())
@@ -93,3 +89,27 @@ class TestZeroShotAgentIntegration:
         assert any(word in response_lower for word in ['hello', 'hi', 'good', 'thank', 'how'])
         
         # This is just a sanity test - we're checking the agent generates reasonable responses
+
+    @pytest.mark.asyncio
+    async def test_with_intent_builder_pattern(self, sales_agent_config, openai_model):
+        """Test the with_intent builder pattern."""
+        # Create agent without intent
+        agent = ZeroShotAgent(agent_config=sales_agent_config, model=openai_model)
+        assert agent.intent_description is None
+        
+        # Use builder pattern to create new agent with intent
+        intent_description = "Introduce our enterprise cloud backup service to potential business customers"
+        agent_with_intent = agent.with_intent(intent_description)
+        
+        # Verify original agent is unchanged (immutability)
+        assert agent.intent_description is None
+        assert agent_with_intent.intent_description == intent_description
+        assert agent_with_intent is not agent  # Different instances
+        
+        # Verify new agent works
+        empty_conversation = Conversation(messages=())
+        response = await agent_with_intent.get_next_message(empty_conversation)
+        
+        assert response is not None
+        assert response.sender == ParticipantRole.AGENT
+        assert len(response.content.strip()) > 10

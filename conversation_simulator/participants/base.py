@@ -26,3 +26,15 @@ class Participant(abc.ABC):
             Message with timestamp, or None if participant is finished
         """
         ...
+    
+    @abc.abstractmethod
+    def with_intent(self, intent_description: str) -> 'Participant':
+        """Return a new participant instance with the specified intent.
+        
+        Args:
+            intent_description: Natural language description of the participant's goal/intent
+            
+        Returns:
+            New participant instance with the intent installed
+        """
+        ...

@@ -7,7 +7,6 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, System
 from langchain_core.prompts import ChatPromptTemplate
 
 from ....models.conversation import Conversation
-from ....models.intent import Intent
 from ....models.roles import ParticipantRole
 from ..config import AgentConfig
 
@@ -19,18 +18,18 @@ class AgentPromptBuilder:
     def build_chat_template(
         self,
         agent_config: AgentConfig,
-        intent: Intent | None = None
+        intent_description: str | None = None
     ) -> ChatPromptTemplate:
         """Build chat prompt template for LLM chain.
         
         Args:
             agent_config: Configuration for the agent
-            intent: Optional agent intent/goal
+            intent_description: Optional natural language description of agent's goal/intent
             
         Returns:
             ChatPromptTemplate for use in LangChain chains
         """
-        system_prompt = self._build_system_prompt(agent_config, intent)
+        system_prompt = self._build_system_prompt(agent_config, intent_description)
         
         # Create template with system message and conversation history placeholder
         template_messages = [
@@ -64,7 +63,7 @@ class AgentPromptBuilder:
         self,
         agent_config: AgentConfig,
         conversation: Conversation, 
-        intent: Intent | None = None,
+        intent_description: str | None = None,
         format_instructions: str | None = None
     ) -> list[BaseMessage]:
         """Build chat messages for LLM completion.
@@ -72,13 +71,13 @@ class AgentPromptBuilder:
         Args:
             agent_config: Configuration for the agent
             conversation: Current conversation history
-            intent: Optional agent intent/goal
+            intent_description: Optional natural language description of agent's goal/intent
             format_instructions: Optional format instructions for output
             
         Returns:
             List of LangChain BaseMessage objects
         """
-        messages: list[BaseMessage] = [SystemMessage(content=self._build_system_prompt(agent_config, intent))]
+        messages: list[BaseMessage] = [SystemMessage(content=self._build_system_prompt(agent_config, intent_description))]
         
         # Add conversation history
         for msg in conversation.messages:
@@ -89,12 +88,12 @@ class AgentPromptBuilder:
         
         return messages
     
-    def _build_system_prompt(self, agent_config: AgentConfig, intent: Intent | None = None) -> str:
+    def _build_system_prompt(self, agent_config: AgentConfig, intent_description: str | None = None) -> str:
         """Build the system prompt for the agent.
         
         Args:
             agent_config: Configuration for the agent
-            intent: Optional agent intent/goal
+            intent_description: Optional natural language description of agent's goal/intent
             
         Returns:
             System prompt string
@@ -114,10 +113,10 @@ class AgentPromptBuilder:
         ]
         
         # Add intent if provided
-        if intent:
+        if intent_description:
             prompt_parts.extend([
                 "",
-                f"Your goal for this conversation: {intent.description}",
+                f"Your goal for this conversation: {intent_description}",
             ])
         
         return "\n".join(prompt_parts)
