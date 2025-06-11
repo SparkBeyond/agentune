@@ -20,7 +20,7 @@ A tool for simulating Customer-Agent conversations based on real chat data.
 
 ## Development
 
-See the [Development Guide](./docs/development/dev_guide.md) for setup instructions.
+See the [Development Guide](./docs/development/dev_guide.md) for setup instructions and testing.
 
 ### Coding Standards
 

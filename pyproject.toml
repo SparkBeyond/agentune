@@ -23,6 +23,7 @@ pydantic = "^2.0"
 
 # Vector stores
 faiss-cpu = "^1.11.0"
+python-dotenv = "^1.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
@@ -69,3 +70,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+markers = [
+    "integration: marks tests as integration tests (deselected by default)",
+]
+addopts = "-m 'not integration'"

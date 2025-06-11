@@ -67,21 +67,45 @@ poetry install
 pre-commit install
 ```
 
+### 6. Set up Environment Variables (Optional)
+
+For integration tests and API access, set up your environment variables:
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Edit .env and add your API keys
+# OPENAI_API_KEY=your-openai-api-key-here
+```
+
 ## Development Workflow
 
 ### Running Tests
 
-Tests should be placed in the `tests/` directory and follow the `test_*.py` naming pattern. The test discovery is automatically configured to find all tests in this directory.
+The project includes both unit tests and integration tests:
 
+**Unit tests (default):**
 ```bash
-# Run all tests
-pytest
+poetry run pytest
+```
 
+**Integration tests (requires OpenAI API key):**
+Set up your API key in `.env` file (see step 6 above) or export it:
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+poetry run pytest -m integration
+```
+
+Integration tests make real API calls for sanity testing and are excluded from default runs. For detailed information about integration tests, see [tests/integration/README.md](../../tests/integration/README.md).
+
+**Run specific test files:**
+```bash
 # Run a specific test file
-pytest tests/test_example.py
+poetry run pytest tests/test_example.py
 
 # Run tests with verbose output
-pytest -v
+poetry run pytest -v
 ```
 
 ### Adding Dependencies
