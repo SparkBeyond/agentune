@@ -10,7 +10,6 @@ from langchain_core.runnables import Runnable
 
 from ....models.conversation import Conversation
 from ....models.message import Message
-from ....models.roles import ParticipantRole
 from ..config import AgentConfig
 from ..base import Agent
 from .prompts import AgentPromptBuilder
@@ -86,7 +85,7 @@ class ZeroShotAgent(Agent):
                 response_timestamp = datetime.now()
                 
             return Message(
-                sender=ParticipantRole.AGENT,
+                sender=self.role,
                 content=agent_response.strip(),
                 timestamp=response_timestamp
             )

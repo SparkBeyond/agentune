@@ -10,7 +10,6 @@ from langchain_core.runnables import Runnable
 
 from ....models.conversation import Conversation
 from ....models.message import Message
-from ....models.roles import ParticipantRole
 from ..base import Customer
 from .prompts import CustomerPromptBuilder
 
@@ -84,7 +83,7 @@ class ZeroShotCustomer(Customer):
                 response_timestamp = datetime.now()
                 
             return Message(
-                sender=ParticipantRole.CUSTOMER,
+                sender=self.role,
                 content=customer_response.strip(),
                 timestamp=response_timestamp
             )
