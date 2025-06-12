@@ -99,16 +99,18 @@ class MockOutcomeDetector(OutcomeDetector):
         return None
 
 
-MOCK_CONVERSATIONS_FOR_RAG_TEST = [
-    {
-        "id": "rag_conv_1",
-        "messages": [
-            {"role": "customer", "content": "I need help with my TV."},
-            {"role": "agent", "content": "Sure, what is the model number?"},
-            {"role": "customer", "content": "It's a Samsung QN90A."},
-            {"role": "agent", "content": "Thank you. The QN90A has a known issue with the one connect box. Have you tried unplugging it?"},
-        ],
-    },
+# A fixed base time for predictable timestamps in RAG tests
+BASE_RAG_TEST_TIME = datetime(2023, 5, 1, 10, 0, 0)
+
+MOCK_CONVERSATIONS_FOR_RAG_TEST: list[Conversation] = [
+    Conversation(
+        messages=tuple([
+            Message(sender=ParticipantRole.CUSTOMER, content="I need help with my TV.", timestamp=BASE_RAG_TEST_TIME),
+            Message(sender=ParticipantRole.AGENT, content="Sure, what is the model number?", timestamp=BASE_RAG_TEST_TIME + timedelta(seconds=5)),
+            Message(sender=ParticipantRole.CUSTOMER, content="It's a Samsung QN90A.", timestamp=BASE_RAG_TEST_TIME + timedelta(seconds=10)),
+            Message(sender=ParticipantRole.AGENT, content="Thank you. The QN90A has a known issue with the one connect box. Have you tried unplugging it?", timestamp=BASE_RAG_TEST_TIME + timedelta(seconds=15)),
+        ])
+    )
 ]
 
 
@@ -397,8 +399,6 @@ class TestFullSimulationRunner:
         # The agent is our RagAgent
         agent = RagAgent(
             agent_vector_store=agent_store,
-            customer_vector_store=customer_store,
-            all_conversations=MOCK_CONVERSATIONS_FOR_RAG_TEST,
             openai_api_key=openai_api_key,
         )
 
@@ -462,15 +462,11 @@ class TestFullSimulationRunner:
         # 2. Setup participants
         agent = RagAgent(
             agent_vector_store=agent_store,
-            customer_vector_store=customer_store,
-            all_conversations=MOCK_CONVERSATIONS_FOR_RAG_TEST,
             openai_api_key=openai_api_key,
         )
         customer = RagCustomer(
-            customer_vector_store=customer_store,
-            agent_vector_store=agent_store,
-            all_conversations=MOCK_CONVERSATIONS_FOR_RAG_TEST,
-            openai_api_key=openai_api_key,
+            customer_vector_store=customer_store, # Using the actual customer_store from this test
+            openai_api_key=openai_api_key
         )
 
         # 3. Setup runner

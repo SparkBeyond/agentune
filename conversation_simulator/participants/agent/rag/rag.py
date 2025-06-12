@@ -1,22 +1,26 @@
 """RAG-based agent participant implementation."""
 
 from __future__ import annotations
+import logging # Added
+import random
+from datetime import datetime, timedelta
+from typing import List
 
-from datetime import datetime
-from typing import Any, Dict, List, Tuple
-
-from langchain_community.vectorstores import FAISS
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
+from langchain_core.documents import Document # Added
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage # AIMessage, HumanMessage Added
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder
+from langchain_core.vectorstores import VectorStore # Added VectorStore for type hint consistency
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from ....models import Conversation, Message, ParticipantRole
 from ..base import Agent
-from ....rag.processing import convert_message_to_langchain
+
 from ....rag import get_few_shot_examples_for_agent
+
+logger = logging.getLogger(__name__)
 
 
 class RagAgent(Agent):
@@ -28,22 +32,17 @@ class RagAgent(Agent):
 
     def __init__(
         self,
-        agent_vector_store: FAISS,
-        customer_vector_store: FAISS,
-        all_conversations: List[Dict[str, Any]],
+        agent_vector_store: VectorStore,
         openai_api_key: str,
     ):
         """Initializes the RAG agent.
 
         Args:
-            agent_vector_store: FAISS vector store for agent messages.
-            customer_vector_store: FAISS vector store for customer messages.
-            all_conversations: The full dataset of conversations for context lookup.
+            agent_vector_store: Vector store for agent messages.
+            openai_api_key: The OpenAI API key.
         """
         super().__init__()
         self.agent_vector_store = agent_vector_store
-        self.customer_vector_store = customer_vector_store
-        self.all_conversations = all_conversations
         self.openai_api_key = openai_api_key
         self.intent_description: str | None = None # Store intent
         self.llm_chain = self._create_llm_chain()
@@ -70,7 +69,6 @@ class RagAgent(Agent):
             SystemMessage(content=system_prompt_content),
             MessagesPlaceholder(variable_name="few_shot_examples"),
             MessagesPlaceholder(variable_name="chat_history"),
-            HumanMessagePromptTemplate.from_template("{last_customer_message}"),
         ])
 
         llm = ChatOpenAI(api_key=SecretStr(self.openai_api_key), model="gpt-4o-mini")
@@ -85,8 +83,6 @@ class RagAgent(Agent):
         """
         new_agent = RagAgent(
             agent_vector_store=self.agent_vector_store,
-            customer_vector_store=self.customer_vector_store,
-            all_conversations=self.all_conversations,
             openai_api_key=self.openai_api_key,
         )
         new_agent.intent_description = intent_description
@@ -99,39 +95,83 @@ class RagAgent(Agent):
         if not conversation.messages or conversation.messages[-1].sender != ParticipantRole.CUSTOMER:
             return None
 
-        last_message = conversation.messages[-1]
-
         # 1. Retrieval
-        few_shot_examples = await get_few_shot_examples_for_agent(
-            last_customer_message_content=last_message.content,
+        few_shot_examples: List[Message] = await get_few_shot_examples_for_agent(
+            conversation_history=list(conversation.messages),
             agent_vector_store=self.agent_vector_store,
-            all_conversations=self.all_conversations,
             k=3,
         )
 
         # 2. Augmentation
         # Format few-shot examples and history for the prompt template
         formatted_examples = self._format_examples(few_shot_examples)
-        chat_history = [convert_message_to_langchain(msg) for msg in conversation.messages[:-1]]
+        chat_history = conversation.to_langchain_messages()
 
         # 3. Generation
         response_content = await self.llm_chain.ainvoke({
             "few_shot_examples": formatted_examples,
             "chat_history": chat_history,
-            "last_customer_message": last_message.content,
         })
 
-        # 4. Return Message
+        if not response_content.strip():
+            return None
+
+        if conversation.messages:
+            last_timestamp = conversation.messages[-1].timestamp
+            delay_seconds = random.randint(1, 5)  # Agents respond quickly
+            response_timestamp = last_timestamp + timedelta(seconds=delay_seconds)
+        else:
+            # This case should ideally not be hit if conversations always have a start
+            response_timestamp = datetime.now()
+
         return Message(
-            sender=self.role, content=response_content, timestamp=datetime.now()
+            sender=self.role,
+            content=response_content,
+            timestamp=response_timestamp,
         )
 
-    def _format_examples(self, examples: List[Tuple[Dict, Dict]]) -> List[BaseMessage]:
-        """Formats the retrieved few-shot examples into a list of LangChain messages."""
-        messages: List[BaseMessage] = []
-        for user_example, assistant_example in examples:
-            messages.extend([
-                HumanMessagePromptTemplate.from_template(user_example["content"]).format(),
-                AIMessage(content=assistant_example["content"]),
-            ])
-        return messages
+    def _format_examples(self, examples: List[Document]) -> List[BaseMessage]:
+        """
+        Formats the retrieved few-shot example Documents into a list of LangChain messages.
+        Each Document's page_content (history, typically customer's turn) becomes a HumanMessage,
+        and the metadata (next agent message) becomes an AIMessage.
+        """
+        formatted_messages: List[BaseMessage] = []
+        for doc in examples:
+            try:
+                # History (customer's turn or context)
+                history_content = doc.page_content
+                if not history_content.strip(): # Ensure history is not empty
+                    logger.warning("Skipping few-shot example with empty history (page_content) in RagAgent.")
+                    continue
+                formatted_messages.append(HumanMessage(content=history_content))
+
+                # Example agent response from metadata
+                metadata = doc.metadata
+                # Validate essential keys before creating Message object
+                if not all(key in metadata for key in ["role", "content", "timestamp"]):
+                    logger.warning(f"Skipping few-shot example due to missing essential metadata: {metadata} in RagAgent.")
+                    continue
+                
+                agent_message = Message(
+                    sender=ParticipantRole(metadata["role"]),
+                    content=str(metadata["content"]),
+                    timestamp=datetime.fromisoformat(str(metadata["timestamp"])),
+                )
+
+                if agent_message.sender != ParticipantRole.AGENT:
+                    logger.warning(
+                        f"Skipping example with unexpected role '{agent_message.sender}' in RagAgent._format_examples. Expected AGENT."
+                    )
+                    continue
+                
+                # Ensure content is not empty before adding
+                if not agent_message.content.strip():
+                    logger.warning("Skipping few-shot example with empty content for AIMessage in RagAgent.")
+                    continue
+
+                formatted_messages.append(agent_message.to_langchain())  # This will be AIMessage
+            except (KeyError, ValueError, TypeError) as e:
+                logger.warning(f"Error processing document for few-shot example in RagAgent: {doc}. Error: {e}. Skipping.")
+                continue
+        return formatted_messages

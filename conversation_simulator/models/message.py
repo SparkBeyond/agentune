@@ -4,6 +4,7 @@ import attrs
 from datetime import datetime
 
 from .roles import ParticipantRole
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 
 @attrs.frozen
@@ -17,6 +18,16 @@ class Message:
     def __str__(self) -> str:
         """String representation of the message."""
         return f"[{self.sender.upper()}] {self.content}"
+
+    def to_langchain(self) -> BaseMessage:
+        """Convert to LangChain message format."""
+        if self.sender == ParticipantRole.CUSTOMER:
+            return HumanMessage(content=self.content)
+        elif self.sender == ParticipantRole.AGENT:
+            return AIMessage(content=self.content)
+        else:
+            # Fallback or error for unknown roles, though ParticipantRole enum should prevent this
+            raise ValueError(f"Unknown participant role: {self.sender} for LangChain conversion")
 
 
 @attrs.frozen
