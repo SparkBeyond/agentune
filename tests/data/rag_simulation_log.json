@@ -1,0 +1,27 @@
+[
+  {
+    "timestamp": "2025-06-12T10:16:57.581154",
+    "sender": "customer",
+    "content": "Hello, my TV is broken."
+  },
+  {
+    "timestamp": "2025-06-12T10:16:59.669529",
+    "sender": "agent",
+    "content": "I'm sorry to hear that! Can you describe what specific issues you're experiencing with your Samsung QN90A? That will help me assist you better."
+  },
+  {
+    "timestamp": "2025-06-12T10:17:01.364443",
+    "sender": "customer",
+    "content": "It doesn\u2019t turn on at all. I've tried unplugging it and plugging it back in, but nothing happens."
+  },
+  {
+    "timestamp": "2025-06-12T10:17:06.618027",
+    "sender": "agent",
+    "content": "I understand how frustrating that can be. Since you've already tried unplugging it, here are a few more troubleshooting steps you can try:\n\n1. **Check the Power Outlet**: Make sure the power outlet is working by plugging in a different device.\n\n2. **Inspect the Power Cable**: Look for any visible damage to the power cable. If it's damaged, it may need to be replaced.\n\n3. **Use the Remote**: Try turning on the TV using the remote control. If it doesn't respond, check if the remote has working batteries.\n\n4. **Power Button**: If available, try turning it on using the physical power button located on the TV itself.\n\n5. **Reset the TV**: If the TV seems to be receiving power (you see a standby light) but won't turn on, try holding the power button for 10-15 seconds to force a reset.\n\nIf none of these steps work, it may be best to contact Samsung support or a technician for further assistance. Let me know how it goes!"
+  },
+  {
+    "timestamp": "2025-06-12T10:17:07.962625",
+    "sender": "customer",
+    "content": "I've tried all those steps already, and still nothing. This is really frustrating! What should I do next?"
+  }
+]
