@@ -6,9 +6,9 @@ from conversation_simulator.models import Message, ParticipantRole
 from conversation_simulator.models.conversation import Conversation
 
 from langchain_core.documents import Document
+from langchain_core.vectorstores import VectorStore
 from langchain_community.vectorstores import FAISS
 from conversation_simulator.rag.processing import _format_conversation_history # Ensure this is imported
-from conversation_simulator.rag import create_vector_stores_from_conversations
 from typing import List, Optional # For create_mock_doc_data helper
 
 
@@ -139,17 +139,6 @@ MOCK_CONVERSATIONS: List[Conversation] = [
     ),
 ]
 
-@pytest.mark.asyncio
-async def test_create_vector_stores_no_api_key():
-    """
-    Tests that a ValueError is raised if no OpenAI API key is provided.
-    """
-    with pytest.raises(ValueError, match="OpenAI API key is required"):
-        await create_vector_stores_from_conversations(
-            conversations=MOCK_CONVERSATIONS,
-            openai_api_key="",
-        )
-
 
 # --- Unit Tests for get_few_shot_examples_for_agent ---
 
@@ -225,7 +214,7 @@ FS_MOCK_CUSTOMER_DOC_MISSING_TIMESTAMP: MockDocData = {
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_success():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_agent, _format_conversation_history # Import locally
-    mock_agent_store = MagicMock(spec=FAISS)
+    mock_agent_store = MagicMock(spec=VectorStore)
     mock_agent_store.index = MagicMock()
     mock_agent_store.index.ntotal = 3 # Simulate a non-empty store
 
@@ -255,7 +244,7 @@ async def test_get_few_shot_examples_success():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_less_than_k_valid():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_agent, _format_conversation_history
-    mock_agent_store = MagicMock(spec=FAISS)
+    mock_agent_store = MagicMock(spec=VectorStore)
     mock_agent_store.index = MagicMock()
     mock_agent_store.index.ntotal = 1
 
@@ -292,7 +281,7 @@ async def test_get_few_shot_examples_less_than_k_valid():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_no_valid_pairs_formed():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_agent, _format_conversation_history
-    mock_agent_store = MagicMock(spec=FAISS)
+    mock_agent_store = MagicMock(spec=VectorStore)
     mock_agent_store.index = MagicMock()
     mock_agent_store.index.ntotal = 2
 
@@ -329,7 +318,7 @@ async def test_get_few_shot_examples_no_valid_pairs_formed():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_empty_store():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_agent
-    mock_agent_store_empty = MagicMock(spec=FAISS)
+    mock_agent_store_empty = MagicMock(spec=VectorStore)
     mock_agent_store_empty.index = MagicMock()
     mock_agent_store_empty.index.ntotal = 0 # Empty store
 
@@ -353,7 +342,7 @@ async def test_get_few_shot_examples_empty_store():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_empty_conversations_data():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_agent
-    mock_agent_store = MagicMock(spec=FAISS)
+    mock_agent_store = MagicMock(spec=VectorStore)
     mock_agent_store.index = MagicMock()
     mock_agent_store.index.ntotal = 1
     mock_agent_store.asimilarity_search = AsyncMock(return_value=[]) # Search can return empty
@@ -373,7 +362,7 @@ async def test_get_few_shot_examples_empty_conversations_data():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_similarity_search_error():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_agent
-    mock_agent_store = MagicMock(spec=FAISS)
+    mock_agent_store = MagicMock(spec=VectorStore)
     mock_agent_store.index = MagicMock()
     mock_agent_store.index.ntotal = 1
     mock_agent_store.asimilarity_search = AsyncMock(side_effect=Exception("DB error"))
@@ -393,7 +382,7 @@ async def test_get_few_shot_examples_similarity_search_error():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_missing_metadata():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_agent, _format_conversation_history
-    mock_agent_store = MagicMock(spec=FAISS)
+    mock_agent_store = MagicMock(spec=VectorStore)
     mock_agent_store.index = MagicMock()
     mock_agent_store.index.ntotal = 2 # Simulate a non-empty store
 
@@ -432,7 +421,7 @@ async def test_get_few_shot_examples_missing_metadata():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_wrong_role_in_metadata(): # Renamed test
     from conversation_simulator.rag.processing import get_few_shot_examples_for_agent, _format_conversation_history
-    mock_agent_store = MagicMock(spec=FAISS)
+    mock_agent_store = MagicMock(spec=VectorStore)
     mock_agent_store.index = MagicMock()
     mock_agent_store.index.ntotal = 2 # Simulate a non-empty store
 
@@ -476,7 +465,7 @@ async def test_get_few_shot_examples_wrong_role_in_metadata(): # Renamed test
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_for_customer_success():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_customer, _format_conversation_history # Import locally
-    mock_customer_store = MagicMock(spec=FAISS)
+    mock_customer_store = MagicMock(spec=VectorStore)
     mock_customer_store.index = MagicMock()
     mock_customer_store.index.ntotal = 3 # Simulate a non-empty store
 
@@ -539,7 +528,7 @@ async def test_get_few_shot_examples_for_customer_empty_store():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_for_customer_no_docs_retrieved():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_customer, _format_conversation_history
-    mock_customer_store = MagicMock(spec=FAISS)
+    mock_customer_store = MagicMock(spec=VectorStore)
     mock_customer_store.index = MagicMock()
     mock_customer_store.index.ntotal = 1 # Simulate non-empty store
     mock_customer_store.asimilarity_search = AsyncMock(return_value=[]) # Search returns empty list
@@ -558,7 +547,7 @@ async def test_get_few_shot_examples_for_customer_no_docs_retrieved():
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_for_customer_similarity_search_error():
     from conversation_simulator.rag.processing import get_few_shot_examples_for_customer, _format_conversation_history
-    mock_customer_store = MagicMock(spec=FAISS)
+    mock_customer_store = MagicMock(spec=VectorStore)
     mock_customer_store.index = MagicMock()
     mock_customer_store.index.ntotal = 1 # Simulate non-empty store
     mock_customer_store.asimilarity_search = AsyncMock(side_effect=Exception("Customer DB error"))

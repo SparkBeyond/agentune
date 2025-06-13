@@ -1,20 +1,14 @@
-import asyncio
-import pathlib
 
 import pytest
-from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
-from pydantic import SecretStr
+from langchain_community.vectorstores import FAISS # Still needed for loading/saving functionality
+from langchain_core.vectorstores import VectorStore
 from langchain_core.documents import Document # For creating dummy docs if needed
 from datetime import datetime
 
 from conversation_simulator.models import Conversation, Message, ParticipantRole
 from conversation_simulator.rag import create_vector_stores_from_conversations
 
-# Define a cache directory for FAISS indexes
-CACHE_DIR = pathlib.Path(__file__).parent / "test_data" / "faiss_indexes"
-CUSTOMER_INDEX_DIR = CACHE_DIR / "customer_store"
-AGENT_INDEX_DIR = CACHE_DIR / "agent_store"
+
 
 # Mock conversation data for integration tests
 MOCK_INTEGRATION_CONVERSATIONS = [
@@ -32,103 +26,53 @@ MOCK_INTEGRATION_CONVERSATIONS = [
     )
 ]
 
-@pytest.fixture(scope="module", autouse=True)
-def ensure_cache_dir():
-    """Ensures the cache directory exists."""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    # Optionally, clean up cache before/after module tests if desired
-    # For now, we'll let it persist to speed up subsequent runs
-    # yield
-    # shutil.rmtree(CACHE_DIR) # Example cleanup
-
 @pytest.mark.asyncio
-async def test_create_vector_stores_integration_with_caching(openai_api_key: str):
+async def test_create_vector_stores_integration():
     """
     Tests create_vector_stores_from_conversations with real OpenAI API calls,
-    implementing caching for the generated FAISS vector stores.
+    creating in-memory vector stores.
     """
-    # 1. Initialize OpenAIEmbeddings
+    # 1. Initialize OpenAIEmbeddings (implicitly handled by create_vector_stores_from_conversations)
     # The openai_api_key fixture from conftest.py provides the key
-    openai_embeddings = OpenAIEmbeddings(api_key=SecretStr(openai_api_key), model="text-embedding-ada-002")
 
-    customer_store: FAISS | None = None
-    agent_store: FAISS | None = None
+    customer_store: VectorStore | None = None
+    agent_store: VectorStore | None = None
 
-    # 2. Try to load from cache
-    allow_dangerous_deserialization = True # FAISS requires this for pickle
-    if CUSTOMER_INDEX_DIR.exists() and AGENT_INDEX_DIR.exists():
-        try:
-            print(f"Attempting to load customer store from {CUSTOMER_INDEX_DIR}")
-            customer_store = await asyncio.to_thread(
-                FAISS.load_local,
-                folder_path=str(CUSTOMER_INDEX_DIR),
-                embeddings=openai_embeddings,
-                index_name="index", # Default index name used by FAISS.save_local
-                allow_dangerous_deserialization=allow_dangerous_deserialization
-            )
-            print(f"Attempting to load agent store from {AGENT_INDEX_DIR}")
-            agent_store = await asyncio.to_thread(
-                FAISS.load_local,
-                folder_path=str(AGENT_INDEX_DIR),
-                embeddings=openai_embeddings,
-                index_name="index",
-                allow_dangerous_deserialization=allow_dangerous_deserialization
-            )
-            print("Successfully loaded FAISS stores from cache.")
-        except Exception as e:
-            print(f"Failed to load from cache: {e}. Rebuilding.")
-            customer_store = None
-            agent_store = None
+    # 2. Create vector stores
+    print("Creating vector stores using OpenAI API...")
+    # We explicitly pass FAISS here because the underlying create_vector_stores_from_conversations
+    # defaults to FAISS. If that default changes, this test might need adjustment
+    # or we make vector_store_class mandatory in the main function.
+    customer_store, agent_store = await create_vector_stores_from_conversations(
+        conversations=MOCK_INTEGRATION_CONVERSATIONS,
+        openai_embedding_model_name="text-embedding-ada-002",
+        vector_store_class=FAISS # Explicitly use FAISS for this test's purpose if needed, or remove if truly generic
+    )
+    
+    assert customer_store is not None, "Customer store creation failed"
+    assert agent_store is not None, "Agent store creation failed"
 
-    # 3. If not loaded from cache, create and save
-    if customer_store is None or agent_store is None:
-        print("Creating FAISS stores using OpenAI API...")
-        customer_store, agent_store = await create_vector_stores_from_conversations(
-            conversations=MOCK_INTEGRATION_CONVERSATIONS,
-            openai_api_key=openai_api_key,
-            openai_embedding_model_name="text-embedding-ada-002"
-        )
-        
-        assert customer_store is not None, "Customer store creation failed"
-        assert agent_store is not None, "Agent store creation failed"
+    # 3. Assertions
+    assert isinstance(customer_store, VectorStore), "Customer store is not a VectorStore instance."
+    assert isinstance(agent_store, VectorStore), "Agent store is not a VectorStore instance."
 
-        print(f"Saving customer store to {CUSTOMER_INDEX_DIR}")
-        await asyncio.to_thread(customer_store.save_local, folder_path=str(CUSTOMER_INDEX_DIR), index_name="index")
-        print(f"Saving agent store to {AGENT_INDEX_DIR}")
-        await asyncio.to_thread(agent_store.save_local, folder_path=str(AGENT_INDEX_DIR), index_name="index")
-        print("Successfully saved FAISS stores to cache.")
+    # Check if customer_store has content by performing a search
+    customer_results = await customer_store.asimilarity_search("customer query", k=1)
+    # MOCK_INTEGRATION_CONVERSATIONS has customer messages, so we expect results
+    assert len(customer_results) > 0, "Customer store similarity search returned no results when it should have."
+    assert isinstance(customer_results[0], Document), "Customer search result is not a Document."
+    print(f"Customer search result: {customer_results[0].page_content}")
 
-    # 4. Assertions
-    assert isinstance(customer_store, FAISS), "Customer store is not a FAISS instance."
-    assert isinstance(agent_store, FAISS), "Agent store is not a FAISS instance."
-
-    if customer_store.index.ntotal > 0:
-        customer_results = await asyncio.to_thread(
-            customer_store.similarity_search, "customer query", k=1
-        )
-        assert len(customer_results) > 0, "Customer store similarity search returned no results."
-        assert isinstance(customer_results[0], Document), "Customer search result is not a Document."
-        print(f"Customer search result: {customer_results[0].page_content}")
-    else:
-        print("Customer store is empty, skipping similarity search.")
-
-    if agent_store.index.ntotal > 0:
-        agent_results = await asyncio.to_thread(
-            agent_store.similarity_search, "agent response", k=1
-        )
-        assert len(agent_results) > 0, "Agent store similarity search returned no results."
-        assert isinstance(agent_results[0], Document), "Agent search result is not a Document."
-        print(f"Agent search result: {agent_results[0].page_content}")
-        assert agent_store.index.ntotal > 0, "Agent store should not be empty with current test data."
-    else:
-        print("Agent store is empty, skipping similarity search. This might be expected.")
-        # This path should not be hit with current MOCK_INTEGRATION_CONVERSATIONS
-        # as it contains an agent message.
-        assert False, "Agent store is unexpectedly empty."
+    # Check if agent_store has content by performing a search
+    agent_results = await agent_store.asimilarity_search("agent response", k=1)
+    # MOCK_INTEGRATION_CONVERSATIONS has agent messages, so we expect results
+    assert len(agent_results) > 0, "Agent store similarity search returned no results when it should have."
+    assert isinstance(agent_results[0], Document), "Agent search result is not a Document."
+    print(f"Agent search result: {agent_results[0].page_content}")
 
 
 @pytest.mark.asyncio
-async def test_empty_conversations_integration(openai_api_key: str, caplog):
+async def test_empty_conversations_integration(caplog):
     """
     Tests that create_vector_stores_from_conversations handles empty or no relevant conversations
     by creating empty FAISS stores.
@@ -136,13 +80,14 @@ async def test_empty_conversations_integration(openai_api_key: str, caplog):
     # Test with completely empty conversations list
     customer_store, agent_store = await create_vector_stores_from_conversations(
         conversations=[],
-        openai_api_key=openai_api_key
     )
     assert "No conversations provided. Returning empty vector stores." in caplog.text
-    assert isinstance(customer_store, FAISS)
-    assert isinstance(agent_store, FAISS)
-    assert customer_store.index.ntotal == 0
-    assert agent_store.index.ntotal == 0
+    assert isinstance(customer_store, VectorStore)
+    assert isinstance(agent_store, VectorStore)
+    customer_results = await customer_store.asimilarity_search("any query", k=1)
+    assert len(customer_results) == 1 and customer_results[0].page_content == "dummy", "Customer store should contain only a dummy document"
+    agent_results = await agent_store.asimilarity_search("any query", k=1)
+    assert len(agent_results) == 1 and agent_results[0].page_content == "dummy", "Agent store should contain only a dummy document"
     caplog.clear()
 
     # Test with conversations that have no agent messages
@@ -152,13 +97,14 @@ async def test_empty_conversations_integration(openai_api_key: str, caplog):
         ]))
     ]
     customer_store, agent_store = await create_vector_stores_from_conversations(
-        conversations=no_agent_messages_conv,
-        openai_api_key=openai_api_key
+        conversations=no_agent_messages_conv
     )
-    assert isinstance(customer_store, FAISS)
-    assert isinstance(agent_store, FAISS)
-    assert customer_store.index.ntotal == 0 # Changed from 1 based on logs
-    assert agent_store.index.ntotal == 0
+    assert isinstance(customer_store, VectorStore)
+    assert isinstance(agent_store, VectorStore)
+    customer_results = await customer_store.asimilarity_search("any query", k=1)
+    assert len(customer_results) == 1 and customer_results[0].page_content == "dummy", "Customer store should be dummy for single-message conv"
+    agent_results = await agent_store.asimilarity_search("any query", k=1)
+    assert len(agent_results) == 1 and agent_results[0].page_content == "dummy", "Agent store should be dummy for single-message conv"
     caplog.clear()
 
     # Test with conversations that have no customer messages
@@ -168,13 +114,14 @@ async def test_empty_conversations_integration(openai_api_key: str, caplog):
         ]))
     ]
     customer_store, agent_store = await create_vector_stores_from_conversations(
-        conversations=no_customer_messages_conv,
-        openai_api_key=openai_api_key
+        conversations=no_customer_messages_conv
     )
-    assert isinstance(customer_store, FAISS)
-    assert isinstance(agent_store, FAISS)
-    assert customer_store.index.ntotal == 0
-    assert agent_store.index.ntotal == 0 # Changed from 1 based on logs
+    assert isinstance(customer_store, VectorStore)
+    assert isinstance(agent_store, VectorStore)
+    customer_results = await customer_store.asimilarity_search("any query", k=1)
+    assert len(customer_results) == 1 and customer_results[0].page_content == "dummy", "Customer store should be dummy for single-message conv"
+    agent_results = await agent_store.asimilarity_search("any query", k=1)
+    assert len(agent_results) == 1 and agent_results[0].page_content == "dummy", "Agent store should be dummy for single-message conv"
     caplog.clear()
 
     # Test with conversations that have no messages at all (empty message list in Conversation object)
@@ -182,11 +129,12 @@ async def test_empty_conversations_integration(openai_api_key: str, caplog):
         Conversation(messages=tuple())
     ]
     customer_store, agent_store = await create_vector_stores_from_conversations(
-        conversations=all_empty_messages_conv,
-        openai_api_key=openai_api_key
+        conversations=all_empty_messages_conv
     )
-    assert isinstance(customer_store, FAISS)
-    assert isinstance(agent_store, FAISS)
-    assert customer_store.index.ntotal == 0
-    assert agent_store.index.ntotal == 0
+    assert isinstance(customer_store, VectorStore)
+    assert isinstance(agent_store, VectorStore)
+    customer_results = await customer_store.asimilarity_search("any query", k=1)
+    assert len(customer_results) == 1 and customer_results[0].page_content == "dummy", "Customer store should contain only a dummy document"
+    agent_results = await agent_store.asimilarity_search("any query", k=1)
+    assert len(agent_results) == 1 and agent_results[0].page_content == "dummy", "Agent store should contain only a dummy document"
     caplog.clear()

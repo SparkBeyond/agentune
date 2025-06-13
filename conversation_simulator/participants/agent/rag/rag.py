@@ -13,7 +13,7 @@ from langchain_core.vectorstores import VectorStore # Added VectorStore for type
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
+
 
 from ....models import Conversation, Message, ParticipantRole
 from ..base import Agent
@@ -33,17 +33,14 @@ class RagAgent(Agent):
     def __init__(
         self,
         agent_vector_store: VectorStore,
-        openai_api_key: str,
     ):
         """Initializes the RAG agent.
 
         Args:
             agent_vector_store: Vector store for agent messages.
-            openai_api_key: The OpenAI API key.
         """
         super().__init__()
         self.agent_vector_store = agent_vector_store
-        self.openai_api_key = openai_api_key
         self.intent_description: str | None = None # Store intent
         self.llm_chain = self._create_llm_chain()
     
@@ -71,7 +68,7 @@ class RagAgent(Agent):
             MessagesPlaceholder(variable_name="chat_history"),
         ])
 
-        llm = ChatOpenAI(api_key=SecretStr(self.openai_api_key), model="gpt-4o-mini")
+        llm = ChatOpenAI(model="gpt-4o-mini")
 
         # Return the runnable chain
         return prompt_template | llm | StrOutputParser()
@@ -83,7 +80,6 @@ class RagAgent(Agent):
         """
         new_agent = RagAgent(
             agent_vector_store=self.agent_vector_store,
-            openai_api_key=self.openai_api_key,
         )
         new_agent.intent_description = intent_description
         # Re-create the LLM chain with the new intent description
@@ -96,7 +92,7 @@ class RagAgent(Agent):
             return None
 
         # 1. Retrieval
-        few_shot_examples: List[Message] = await get_few_shot_examples_for_agent(
+        few_shot_examples: List[Document] = await get_few_shot_examples_for_agent(
             conversation_history=list(conversation.messages),
             agent_vector_store=self.agent_vector_store,
             k=3,

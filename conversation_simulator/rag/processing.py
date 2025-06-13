@@ -1,13 +1,13 @@
 
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Type
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_openai import OpenAIEmbeddings
-from pydantic import SecretStr
+
 from langchain_core.vectorstores import VectorStore
-from langchain_community.vectorstores import FAISS # Still needed for FAISS.from_texts, FAISS.afrom_documents
+from langchain_community.vectorstores import FAISS
 from ..models import Conversation, Message, ParticipantRole
 
 logger = logging.getLogger(__name__)
@@ -52,9 +52,10 @@ def _conversations_to_langchain_documents(
             metadata = {
                 "message_index": i,
                 "role": next_message.sender.value,
-                "content": next_message.content,  # Store the response content
-                "timestamp": next_message.timestamp.isoformat(),
             }
+            if next_message.content:
+                metadata["content"] = next_message.content  # Store the response content
+            metadata["timestamp"] = next_message.timestamp.isoformat()
 
             doc = Document(page_content=page_content, metadata=metadata)
 
@@ -74,41 +75,36 @@ def _conversations_to_langchain_documents(
 async def _langchain_documents_to_vector_store(
     docs: List[Document],
     openai_embeddings: OpenAIEmbeddings,
+    vector_store_class: Type[VectorStore] = FAISS,
 ) -> VectorStore:
-    """Creates a FaissVectorStore from a list of Langchain Document objects using OpenAI embeddings.
+    """Creates a vector store from a list of Langchain Document objects.
 
     Args:
         docs: List of Langchain Document objects.
         openai_embeddings: Initialized OpenAIEmbeddings instance.
+        vector_store_class: The vector store class to use (e.g., FAISS).
 
     Returns:
-        A populated FaissVectorStore instance.
+        A populated VectorStore instance.
     """
     if not docs:
-        # Create an empty FAISS index by creating a dummy store and deleting its content.
+        logger.warning(
+            f"No documents provided to create a vector store. "
+            f"Returning a {vector_store_class.__name__} store with one dummy document."
+        )
         dummy_doc = Document(page_content="dummy")
-        empty_store = await FAISS.afrom_documents([dummy_doc], openai_embeddings)
-        if empty_store.index_to_docstore_id:
-            ids_to_delete = list(empty_store.index_to_docstore_id.values())
-            empty_store.delete(ids_to_delete)
-        return empty_store
+        return await vector_store_class.afrom_documents([dummy_doc], openai_embeddings)
 
-    logger.info(f"Creating FAISS index from {len(docs)} documents using OpenAI embeddings. This may take a moment...")
+    logger.info(f"Creating {vector_store_class.__name__} index from {len(docs)} documents using OpenAI embeddings. This may take a moment...")
     try:
-        faiss_index = await FAISS.afrom_documents(documents=docs, embedding=openai_embeddings)
+        index = await vector_store_class.afrom_documents(documents=docs, embedding=openai_embeddings)
+        logger.info(f"Successfully created {vector_store_class.__name__} vector store with {len(docs)} documents.")
+        return index
     except Exception as e:
-        logger.error(f"Error creating FAISS index with OpenAI embeddings: {e}")
-        logger.warning("Returning an empty FAISS vector store due to an error during index creation.")
-        # Create and return an empty store on error
+        logger.error(f"Error creating {vector_store_class.__name__} index with OpenAI embeddings: {e}")
+        logger.warning(f"Returning a {vector_store_class.__name__} vector store with one dummy document due to an error.")
         dummy_doc = Document(page_content="dummy")
-        empty_store_on_error = await FAISS.afrom_documents([dummy_doc], openai_embeddings)
-        if empty_store_on_error.index_to_docstore_id:
-            ids_to_delete = list(empty_store_on_error.index_to_docstore_id.values())
-            empty_store_on_error.delete(ids_to_delete)
-        return empty_store_on_error
-
-    logger.info(f"Successfully created FAISS vector store with {len(docs)} documents.")
-    return faiss_index
+        return await vector_store_class.afrom_documents([dummy_doc], openai_embeddings)
 
 
 def convert_message_to_langchain(message: Message) -> BaseMessage:
@@ -123,52 +119,45 @@ def convert_message_to_langchain(message: Message) -> BaseMessage:
 
 async def create_vector_stores_from_conversations(
     conversations: List[Conversation],
-    openai_api_key: str,
     openai_embedding_model_name: str = "text-embedding-ada-002",
+    vector_store_class: Type[VectorStore] = FAISS,
 ) -> Tuple[VectorStore, VectorStore]:
-    """Orchestrates the creation of vector stores from generic conversation data using OpenAI.
+    """Orchestrates the creation of vector stores from generic conversation data.
 
     Args:
         conversations: List of conversation dictionaries.
-        openai_api_key: Your OpenAI API key.
         openai_embedding_model_name: Name of the OpenAI embedding model to use.
+        vector_store_class: The vector store class to use (e.g., FAISS).
 
     Returns:
         A tuple (customer_vector_store, agent_vector_store).
     """
-    if not openai_api_key:
-        raise ValueError("OpenAI API key is required.")
-
     logger.info(
         f"Starting vector store creation for {len(conversations)} conversations "
-        f"using OpenAI model: {openai_embedding_model_name}."
+        f"using OpenAI model: {openai_embedding_model_name} and "
+        f"vector store: {vector_store_class.__name__}."
     )
-
-    try:
-        openai_embeddings = OpenAIEmbeddings(
-            api_key=SecretStr(openai_api_key), model=openai_embedding_model_name
-        )
-    except Exception as e:
-        logger.error(f"Error initializing OpenAIEmbeddings: {e}")
-        raise ValueError(f"Failed to initialize OpenAIEmbeddings: {e}") from e
+    openai_embeddings = OpenAIEmbeddings(model=openai_embedding_model_name)
 
     if not conversations:
         logger.warning("No conversations provided. Returning empty vector stores.")
-        empty_store = await _langchain_documents_to_vector_store([], openai_embeddings)
+        empty_store = await _langchain_documents_to_vector_store(
+            [], openai_embeddings, vector_store_class=vector_store_class
+        )
         return empty_store, empty_store
 
     customer_docs, agent_docs = _conversations_to_langchain_documents(conversations)
 
-    logger.info("Creating customer vector store...")
+    logger.info(f"Creating customer vector store ({vector_store_class.__name__})...")
     customer_vector_store = await _langchain_documents_to_vector_store(
-        customer_docs, openai_embeddings
+        customer_docs, openai_embeddings, vector_store_class=vector_store_class
     )
-    logger.info("Creating agent vector store...")
+    logger.info(f"Creating agent vector store ({vector_store_class.__name__})...")
     agent_vector_store = await _langchain_documents_to_vector_store(
-        agent_docs, openai_embeddings
+        agent_docs, openai_embeddings, vector_store_class=vector_store_class
     )
 
-    logger.info("Successfully created customer and agent vector stores using OpenAI.")
+    logger.info(f"Successfully created customer and agent vector stores using {vector_store_class.__name__}.")
     return customer_vector_store, agent_vector_store
 
 

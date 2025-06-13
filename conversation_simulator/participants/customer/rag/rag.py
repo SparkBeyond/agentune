@@ -13,7 +13,7 @@ from langchain_core.vectorstores import VectorStore # Added VectorStore for type
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
+
 
 from ....models import Conversation, Message, ParticipantRole
 from ..base import Customer
@@ -39,11 +39,9 @@ class RagCustomer(Customer):
     def __init__(
         self,
         customer_vector_store: VectorStore,
-        openai_api_key: str,
     ):
         super().__init__()
         self.customer_vector_store = customer_vector_store
-        self.openai_api_key = openai_api_key
         self.intent_description: str | None = None
         self.llm_chain = self._create_llm_chain()
 
@@ -65,14 +63,13 @@ class RagCustomer(Customer):
                 MessagesPlaceholder(variable_name="chat_history"),
             ]
         )
-        llm = ChatOpenAI(api_key=SecretStr(self.openai_api_key), model="gpt-4o-mini")
+        llm = ChatOpenAI(model="gpt-4o-mini")
         return prompt | llm | StrOutputParser()
 
     def with_intent(self, intent_description: str) -> RagCustomer:
         """Return a new RagCustomer instance with the specified intent."""
         new_customer = RagCustomer(
             customer_vector_store=self.customer_vector_store,
-            openai_api_key=self.openai_api_key,
         )
         new_customer.intent_description = intent_description
         new_customer.llm_chain = new_customer._create_llm_chain(intent_description=intent_description)
@@ -84,7 +81,7 @@ class RagCustomer(Customer):
             return None
 
         # 1. Retrieval
-        few_shot_examples: List[Message] = await get_few_shot_examples_for_customer(
+        few_shot_examples: List[Document] = await get_few_shot_examples_for_customer(
             conversation_history=list(conversation.messages),
             customer_vector_store=self.customer_vector_store,
         )
