@@ -19,7 +19,7 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.12.6"
         cache: 'pip'
     
     - name: Install Poetry
@@ -30,6 +30,7 @@ jobs:
     - name: Install dependencies
       run: |
         poetry config virtualenvs.create false
+        poetry config installer.max-workers 10
         poetry install
     
     - name: Run ruff
