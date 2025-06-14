@@ -1,0 +1,194 @@
+"""Zero-shot outcome detection implementation."""
+
+from typing import Optional
+
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.language_models import BaseChatModel
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
+from langchain_core.runnables import Runnable
+from pydantic import BaseModel, Field
+
+from ..models.conversation import Conversation
+from ..models.intent import Intent
+from ..models.outcome import Outcome, Outcomes
+from .base import OutcomeDetector
+
+
+class OutcomeDetectionResult(BaseModel):
+    """Result of outcome detection with reasoning."""
+    
+    reasoning: str = Field(
+        description="Explanation of why this outcome was detected or not detected"
+    )
+    detected: bool = Field(
+        description="Whether a specific outcome was detected in the conversation"
+    )
+    outcome: Optional[str] = Field(
+        default=None,
+        description="Name of the detected outcome, or null if no outcome was detected"
+    )
+
+
+class ZeroshotOutcomeDetector(OutcomeDetector):
+    """Zeroshot outcome detection implementation using a language model.
+    
+    This detector sends the conversation, intent, and possible outcomes to the
+    language model and asks it to determine if any outcome has been reached.
+    
+    The model returns structured output with reasoning for its decision, enabling
+    better transparency and debugging of outcome detection.
+    
+    Attributes:
+        model: LangChain BaseChatModel instance
+    """
+    
+    def __init__(self, model: BaseChatModel):
+        """Initialize the detector.
+        
+        Args:
+            model: LangChain BaseChatModel instance to use for detection
+        """
+        self.model = model
+        self._output_parser = PydanticOutputParser(pydantic_object=OutcomeDetectionResult)
+    
+    async def detect_outcome(
+        self, 
+        conversation: Conversation, 
+        intent: Intent, 
+        possible_outcomes: Outcomes
+    ) -> Optional[Outcome]:
+        """Detect if conversation has reached any of the possible outcomes.
+        
+        Args:
+            conversation: Current conversation state
+            intent: Original intent/goal of the conversation
+            possible_outcomes: Set of outcomes to detect
+            
+        Returns:
+            Detected outcome or None if no outcome detected
+        """
+        # If conversation is empty, no outcome can be detected
+        if not conversation.messages:
+            return None
+            
+        # Set up the detection chain
+        chain = self._create_detection_chain()
+        
+        # Prepare inputs for the chain
+        chain_input = {
+            "system_prompt": self._build_system_prompt(intent, possible_outcomes),
+            "human_prompt": self._build_human_prompt(conversation)
+        }
+        
+        # Execute chain
+        result = await chain.ainvoke(chain_input)
+        
+        # Parse the response to determine if an outcome was detected
+        detected_outcome = self._parse_outcome(result, possible_outcomes)
+        return detected_outcome
+        
+    def _create_detection_chain(self) -> Runnable:
+        """Create the LangChain chain for outcome detection.
+        
+        Returns:
+            A LangChain chain that processes the input prompts through the model and parser
+        """
+        # Create prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("{system_prompt}"),
+            HumanMessagePromptTemplate.from_template("{human_prompt}")
+        ])
+        
+        # Build the chain: prompt | model | output_parser
+        chain = prompt | self.model | self._output_parser
+        
+        return chain
+    
+    def _build_system_prompt(self, intent: Intent, possible_outcomes: Outcomes) -> str:
+        """Build the system prompt for outcome detection.
+        
+        Args:
+            intent: The conversation intent/goal
+            possible_outcomes: Possible outcomes to detect
+            
+        Returns:
+            System prompt string
+        """
+        outcomes_str = "\n".join([f"- {outcome.name}: {outcome.description}" for outcome in possible_outcomes.outcomes])
+        format_instructions = self._output_parser.get_format_instructions()
+        
+        return f"""You are analyzing a conversation between a customer and an agent to determine if a specific outcome has been reached.
+
+INTENT/GOAL: {intent.role.title()} Intent: {intent.description}
+
+POSSIBLE OUTCOMES:
+{outcomes_str}
+
+Your task is to determine if the conversation has reached any of these outcomes or if no outcome has been reached yet.
+
+Provide your analysis with reasoning for your decision. Format your response as a JSON object with the following structure:
+{format_instructions}
+
+If an outcome has been reached, set 'detected' to true and specify the exact outcome name in 'outcome'.
+If no outcome has been reached yet, set 'detected' to false and 'outcome' to null.
+Always provide detailed reasoning for your decision.
+"""
+    
+    def _build_human_prompt(self, conversation: Conversation) -> str:
+        """Build the human prompt containing the conversation.
+        
+        Args:
+            conversation: The conversation to analyze
+            
+        Returns:
+            Human prompt string
+        """
+        conversation_text = "\n".join([
+            f"{message.sender}: {message.content}"
+            for message in conversation.messages
+        ])
+        
+        return f"""Here is the conversation to analyze:
+
+{conversation_text}
+
+Has this conversation reached one of the defined outcomes? If so, which one?
+"""
+    
+    def _parse_outcome(self, result: OutcomeDetectionResult, possible_outcomes: Outcomes) -> Optional[Outcome]:
+        """Parse the detection result to find a matching outcome.
+        
+        Args:
+            result: Structured outcome detection result
+            possible_outcomes: Available outcomes to match against
+            
+        Returns:
+            Matched Outcome object or None if no outcome detected
+            
+        Raises:
+            ValueError: If model detected an outcome that doesn't match any defined outcomes
+        """
+        # If no outcome was detected according to the result
+        if not result.detected or not result.outcome:
+            return None
+            
+        # Try to match outcome name
+        normalized_outcome = result.outcome.lower().strip()
+        
+        # Try exact match first
+        for outcome in possible_outcomes.outcomes:
+            if outcome.name.lower() == normalized_outcome:
+                return outcome
+                
+        # Try partial match if exact match not found
+        for outcome in possible_outcomes.outcomes:
+            if outcome.name.lower() in normalized_outcome:
+                return outcome
+                
+        # If we get here, the model detected an outcome but we couldn't match it
+        # to any of our defined outcomes - this should be treated as an error
+        valid_outcomes = ", ".join([o.name for o in possible_outcomes.outcomes])
+        raise ValueError(
+            f"Model detected outcome '{result.outcome}' which doesn't match any defined outcomes: {valid_outcomes}. "
+            f"Reasoning: {result.reasoning}"
+        )
