@@ -9,7 +9,7 @@ from ..models.conversation import Conversation
 from ..models.intent import Intent
 from ..models.message import Message, MessageDraft
 from ..models.outcome import Outcome, Outcomes
-from ..models.simulation import ConversationResult
+from ..models.results import ConversationResult
 from ..outcome_detection.base import OutcomeDetector
 from ..participants.base import Participant
 

@@ -2,7 +2,7 @@
 
 import abc
 
-from ..models.simulation import ConversationResult
+from ..models.results import ConversationResult
 
 
 class Runner(abc.ABC):

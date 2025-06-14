@@ -1,6 +1,6 @@
-"""Agent participant base class."""
+"""Agent participant base class and factory interface."""
 
-from __future__ import annotations
+import abc
 
 from ..base import Participant
 from ...models.roles import ParticipantRole
@@ -17,3 +17,16 @@ class Agent(Participant):
     def role(self) -> ParticipantRole:
         """Agent role identifier."""
         return ParticipantRole.AGENT
+
+
+class AgentFactory(abc.ABC):
+    """Abstract base factory for creating agent participants."""
+    
+    @abc.abstractmethod
+    def create_participant(self) -> Agent:
+        """Create an agent participant.
+            
+        Returns:
+            Configured agent instance
+        """
+        ...

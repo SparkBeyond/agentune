@@ -10,7 +10,7 @@ from langchain_core.runnables import Runnable
 
 from ....models.conversation import Conversation
 from ....models.message import Message
-from ..base import Customer
+from ..base import Customer, CustomerFactory
 from .prompts import CustomerPromptBuilder
 
 
@@ -87,3 +87,23 @@ class ZeroShotCustomer(Customer):
                 content=customer_response.strip(),
                 timestamp=response_timestamp
             )
+
+
+class ZeroShotCustomerFactory(CustomerFactory):
+    """Factory for creating zero-shot customer participants."""
+    
+    def __init__(self, model: BaseChatModel) -> None:
+        """Initialize the factory.
+        
+        Args:
+            model: LangChain chat model for customer responses
+        """
+        self.model = model
+    
+    def create_participant(self) -> ZeroShotCustomer:
+        """Create a zero-shot customer participant.
+        
+        Returns:
+            ZeroShotCustomer instance
+        """
+        return ZeroShotCustomer(model=self.model)

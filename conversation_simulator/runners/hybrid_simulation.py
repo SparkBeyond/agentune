@@ -1,7 +1,7 @@
 """Hybrid simulation runner implementation."""
 
 from .base import Runner
-from ..models.simulation import ConversationResult
+from ..models.results import ConversationResult
 
 
 class HybridSimulationRunner(Runner):
