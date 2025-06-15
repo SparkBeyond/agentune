@@ -93,21 +93,6 @@ class MockOutcomeDetector(OutcomeDetector):
         return None
 
 
-# A fixed base time for predictable timestamps in RAG tests
-BASE_RAG_TEST_TIME = datetime(2023, 5, 1, 10, 0, 0)
-
-MOCK_CONVERSATIONS_FOR_RAG_TEST: list[Conversation] = [
-    Conversation(
-        messages=tuple([
-            Message(sender=ParticipantRole.CUSTOMER, content="I need help with my TV.", timestamp=BASE_RAG_TEST_TIME),
-            Message(sender=ParticipantRole.AGENT, content="Sure, what is the model number?", timestamp=BASE_RAG_TEST_TIME + timedelta(seconds=5)),
-            Message(sender=ParticipantRole.CUSTOMER, content="It's a Samsung QN90A.", timestamp=BASE_RAG_TEST_TIME + timedelta(seconds=10)),
-            Message(sender=ParticipantRole.AGENT, content="Thank you. The QN90A has a known issue with the one connect box. Have you tried unplugging it?", timestamp=BASE_RAG_TEST_TIME + timedelta(seconds=15)),
-        ])
-    )
-]
-
-
 class MockProgressHandler(ProgressHandler):
     """Mock progress handler for testing that records all events."""
     

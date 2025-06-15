@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from typing import TypedDict, Dict, Any
+from typing import TypedDict, Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from conversation_simulator.models import Message, ParticipantRole
 from conversation_simulator.models.conversation import Conversation
@@ -8,8 +8,7 @@ from conversation_simulator.models.conversation import Conversation
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore
 from langchain_community.vectorstores import FAISS
-from conversation_simulator.rag.processing import _format_conversation_history # Ensure this is imported
-from typing import List, Optional # For create_mock_doc_data helper
+from conversation_simulator.rag.processing import _format_conversation_history
 
 
 # --- Timestamps ---

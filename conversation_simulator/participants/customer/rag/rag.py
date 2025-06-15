@@ -39,13 +39,15 @@ class RagCustomer(Customer):
     def __init__(
         self,
         customer_vector_store: VectorStore,
+        model: str
     ):
         super().__init__()
         self.customer_vector_store = customer_vector_store
+        self.model = model
         self.intent_description: str | None = None
-        self.llm_chain = self._create_llm_chain()
+        self.llm_chain = self._create_llm_chain(model=model)
 
-    def _create_llm_chain(self, intent_description: str | None = None) -> Runnable:
+    def _create_llm_chain(self, model: str, intent_description: str | None = None) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the customer."""
         base_system_prompt = CUSTOMER_SYSTEM_PROMPT
 
@@ -63,16 +65,17 @@ class RagCustomer(Customer):
                 MessagesPlaceholder(variable_name="chat_history"),
             ]
         )
-        llm = ChatOpenAI(model="gpt-4o-mini")
+        llm = ChatOpenAI(model=model)
         return prompt | llm | StrOutputParser()
 
     def with_intent(self, intent_description: str) -> RagCustomer:
         """Return a new RagCustomer instance with the specified intent."""
         new_customer = RagCustomer(
             customer_vector_store=self.customer_vector_store,
+            model=self.model
         )
         new_customer.intent_description = intent_description
-        new_customer.llm_chain = new_customer._create_llm_chain(intent_description=intent_description)
+        new_customer.llm_chain = new_customer._create_llm_chain(model=self.model, intent_description=intent_description)
         return new_customer
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:

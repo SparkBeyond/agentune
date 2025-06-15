@@ -33,18 +33,21 @@ class RagAgent(Agent):
     def __init__(
         self,
         agent_vector_store: VectorStore,
+        model: str
     ):
         """Initializes the RAG agent.
 
         Args:
-            agent_vector_store: Vector store for agent messages.
+            agent_vector_store: Vector store containing agent messages.
+            model: The LLM model name to use.
         """
         super().__init__()
         self.agent_vector_store = agent_vector_store
+        self.model = model
         self.intent_description: str | None = None # Store intent
-        self.llm_chain = self._create_llm_chain()
+        self.llm_chain = self._create_llm_chain(model=model)
     
-    def _create_llm_chain(self, intent_description: str | None = None) -> Runnable:
+    def _create_llm_chain(self, model: str, intent_description: str | None = None) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the agent."""
         # Construct the system prompt
         base_system_prompt = """You are a helpful customer service agent.
@@ -68,22 +71,20 @@ class RagAgent(Agent):
             MessagesPlaceholder(variable_name="chat_history"),
         ])
 
-        llm = ChatOpenAI(model="gpt-4o-mini")
+        llm = ChatOpenAI(model=model)
 
         # Return the runnable chain
         return prompt_template | llm | StrOutputParser()
 
     def with_intent(self, intent_description: str) -> RagAgent:
-        """Return a new RagAgent instance with the specified intent.
-        
-        The intent is primarily used to guide the initial system prompt.
-        """
+        """Return a new RagAgent instance with the specified intent."""
         new_agent = RagAgent(
             agent_vector_store=self.agent_vector_store,
+            model=self.model
         )
         new_agent.intent_description = intent_description
         # Re-create the LLM chain with the new intent description
-        new_agent.llm_chain = new_agent._create_llm_chain(intent_description=intent_description)
+        new_agent.llm_chain = new_agent._create_llm_chain(model=self.model, intent_description=intent_description)
         return new_agent
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:

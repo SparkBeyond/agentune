@@ -1,13 +1,14 @@
+"""Integration tests for RAG processing functionality."""
 
 import pytest
-from langchain_community.vectorstores import FAISS # Still needed for loading/saving functionality
+from langchain_community.vectorstores import FAISS
 from langchain_core.vectorstores import VectorStore
-from langchain_core.documents import Document # For creating dummy docs if needed
+from langchain_core.documents import Document
 from datetime import datetime
+import os
 
 from conversation_simulator.models import Conversation, Message, ParticipantRole
 from conversation_simulator.rag import create_vector_stores_from_conversations
-
 
 
 # Mock conversation data for integration tests
@@ -26,33 +27,35 @@ MOCK_INTEGRATION_CONVERSATIONS = [
     )
 ]
 
+
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_create_vector_stores_integration():
     """
     Tests create_vector_stores_from_conversations with real OpenAI API calls,
     creating in-memory vector stores.
     """
-    # 1. Initialize OpenAIEmbeddings (implicitly handled by create_vector_stores_from_conversations)
-    # The openai_api_key fixture from conftest.py provides the key
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        pytest.skip("OPENAI_API_KEY not set, skipping RAG integration test.")
 
     customer_store: VectorStore | None = None
     agent_store: VectorStore | None = None
 
-    # 2. Create vector stores
+    # Create vector stores
     print("Creating vector stores using OpenAI API...")
     # We explicitly pass FAISS here because the underlying create_vector_stores_from_conversations
     # defaults to FAISS. If that default changes, this test might need adjustment
-    # or we make vector_store_class mandatory in the main function.
     customer_store, agent_store = await create_vector_stores_from_conversations(
         conversations=MOCK_INTEGRATION_CONVERSATIONS,
         openai_embedding_model_name="text-embedding-ada-002",
-        vector_store_class=FAISS # Explicitly use FAISS for this test's purpose if needed, or remove if truly generic
+        vector_store_class=FAISS  # Explicitly use FAISS for this test's purpose
     )
     
     assert customer_store is not None, "Customer store creation failed"
     assert agent_store is not None, "Agent store creation failed"
 
-    # 3. Assertions
+    # Assertions
     assert isinstance(customer_store, VectorStore), "Customer store is not a VectorStore instance."
     assert isinstance(agent_store, VectorStore), "Agent store is not a VectorStore instance."
 
@@ -71,12 +74,17 @@ async def test_create_vector_stores_integration():
     print(f"Agent search result: {agent_results[0].page_content}")
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_empty_conversations_integration(caplog):
     """
     Tests that create_vector_stores_from_conversations handles empty or no relevant conversations
     by creating empty FAISS stores.
     """
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        pytest.skip("OPENAI_API_KEY not set, skipping RAG integration test.")
+
     # Test with completely empty conversations list
     customer_store, agent_store = await create_vector_stores_from_conversations(
         conversations=[],

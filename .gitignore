@@ -47,3 +47,6 @@ dmypy.json
 
 # Windsurf files
 .windsurf/
+
+# test data
+tests/data/
