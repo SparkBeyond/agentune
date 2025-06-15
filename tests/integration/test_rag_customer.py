@@ -108,12 +108,12 @@ class TestRagCustomerIntegration:
         return customer_store, agent_store
 
     @pytest.mark.asyncio
-    async def test_rag_customer_responds_to_agent_query(self, vector_stores):
+    async def test_rag_customer_responds_to_agent_query(self, vector_stores, openai_model):
         """Test RagCustomer responds appropriately to an agent query."""
         customer_store, _ = vector_stores
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=customer_store, model="gpt-4o-mini")
+        customer = RagCustomer(customer_vector_store=customer_store, model=openai_model)
         
         # Create a conversation with an agent query
         agent_message = Message(
@@ -149,12 +149,12 @@ class TestRagCustomerIntegration:
         assert response.content[-1] in [".", "!", "?"], "Response should end with punctuation"
             
     @pytest.mark.asyncio
-    async def test_rag_customer_responds_to_unrelated_query(self, vector_stores):
+    async def test_rag_customer_responds_to_unrelated_query(self, vector_stores, openai_model):
         """Test RagCustomer can respond to a query unrelated to vector store content."""
         customer_store, _ = vector_stores
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=customer_store, model="gpt-4o-mini")
+        customer = RagCustomer(customer_vector_store=customer_store, model=openai_model)
         
         # Create a conversation with an unrelated query
         agent_message = Message(
@@ -187,12 +187,14 @@ class TestRagCustomerIntegration:
             f"Response should be a coherent customer message. Got: {response.content}"
 
     @pytest.mark.asyncio
-    async def test_multi_turn_customer_conversation(self, vector_stores):
+    async def test_multi_turn_customer_conversation(self, vector_stores, openai_model):
         """Test a multi-turn conversation with a RagCustomer."""
         customer_store, _ = vector_stores
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=customer_store, model="gpt-4o-mini")
+        customer = RagCustomer(customer_vector_store=customer_store, model=openai_model)
+        intent_description = "Ask for help with TV issues"
+        customer = customer.with_intent(intent_description)
         
         # Initialize conversation
         now = datetime.now()

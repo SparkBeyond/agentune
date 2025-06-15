@@ -1,23 +1,23 @@
 """RAG-based customer participant implementation."""
 
 from __future__ import annotations
-import logging # Added
+
+import logging
 import random
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Sequence
 
-from langchain_core.documents import Document # Added
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage # AIMessage, HumanMessage Added
+from langchain_core.documents import Document
+from langchain_core.messages import BaseMessage, AIMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.vectorstores import VectorStore # Added VectorStore for type hint consistency
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
-from langchain_openai import ChatOpenAI
-
+from langchain_core.language_models import BaseChatModel
+from langchain_core.vectorstores import VectorStore
 
 from ....models import Conversation, Message, ParticipantRole
+from ....rag import _get_few_shot_examples
 from ..base import Customer
-from ....rag import get_few_shot_examples_for_customer
 
 logger = logging.getLogger(__name__)
 
@@ -34,26 +34,21 @@ CUSTOMER_SYSTEM_PROMPT = """You are a customer interacting with a customer servi
 class RagCustomer(Customer):
     """RAG LLM-based customer participant."""
 
-    llm_chain: Runnable
-
     def __init__(
         self,
         customer_vector_store: VectorStore,
-        model: str
+        model: BaseChatModel
     ):
         super().__init__()
         self.customer_vector_store = customer_vector_store
         self.model = model
         self.intent_description: str | None = None
-        self.llm_chain = self._create_llm_chain(model=model)
 
-    def _create_llm_chain(self, model: str, intent_description: str | None = None) -> Runnable:
+    def _create_llm_chain(self, model: BaseChatModel) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the customer."""
         base_system_prompt = CUSTOMER_SYSTEM_PROMPT
 
-        if intent_description:
-            system_prompt_content = f"Your goal: {intent_description}\n\n{base_system_prompt}"
-        elif self.intent_description:
+        if self.intent_description:
             system_prompt_content = f"Your goal: {self.intent_description}\n\n{base_system_prompt}"
         else:
             system_prompt_content = base_system_prompt
@@ -65,8 +60,7 @@ class RagCustomer(Customer):
                 MessagesPlaceholder(variable_name="chat_history"),
             ]
         )
-        llm = ChatOpenAI(model=model)
-        return prompt | llm | StrOutputParser()
+        return prompt | model | StrOutputParser()
 
     def with_intent(self, intent_description: str) -> RagCustomer:
         """Return a new RagCustomer instance with the specified intent."""
@@ -75,7 +69,6 @@ class RagCustomer(Customer):
             model=self.model
         )
         new_customer.intent_description = intent_description
-        new_customer.llm_chain = new_customer._create_llm_chain(model=self.model, intent_description=intent_description)
         return new_customer
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:
@@ -84,17 +77,19 @@ class RagCustomer(Customer):
             return None
 
         # 1. Retrieval
-        few_shot_examples: List[Document] = await get_few_shot_examples_for_customer(
-            conversation_history=list(conversation.messages),
-            customer_vector_store=self.customer_vector_store,
+        few_shot_examples: List[Document] = await self.get_few_shot_examples_for_customer(
+            conversation.messages,
+            k=3,
+            vector_store=self.customer_vector_store
         )
 
         # 2. Augmentation
         formatted_examples = self._format_examples(few_shot_examples)
-        chat_history_langchain = conversation.to_langchain_messages()
+        chat_history_langchain: List[BaseMessage] = conversation.to_langchain_messages()
 
         # 3. Generation
-        response_content = await self.llm_chain.ainvoke(
+        chain = self._create_llm_chain(model=self.model)
+        response_content = await chain.ainvoke(
             {
                 "few_shot_examples": formatted_examples,
                 "chat_history": chat_history_langchain,
@@ -162,3 +157,12 @@ class RagCustomer(Customer):
                 logger.warning(f"Error processing document for few-shot example in RagCustomer: {doc}. Error: {e}. Skipping.")
                 continue
         return formatted_messages
+
+    @staticmethod
+    async def get_few_shot_examples_for_customer(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> List[Document]:
+        return await _get_few_shot_examples(
+            conversation_history=conversation_history,
+            vector_store=vector_store,
+            k=k,
+            target_role=ParticipantRole.CUSTOMER
+        )

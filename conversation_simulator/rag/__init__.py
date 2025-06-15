@@ -6,12 +6,10 @@ which can then be used by RAG-enabled participants in the conversation simulator
 
 from .processing import (
     create_vector_stores_from_conversations,
-    get_few_shot_examples_for_agent,
-    get_few_shot_examples_for_customer,
+    _get_few_shot_examples,
 )
 
 __all__ = [
     "create_vector_stores_from_conversations",
-    "get_few_shot_examples_for_agent",
-    "get_few_shot_examples_for_customer",
+    "_get_few_shot_examples",
 ]

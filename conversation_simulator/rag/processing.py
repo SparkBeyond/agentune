@@ -1,6 +1,6 @@
 
 import logging
-from typing import List, Tuple, Type
+from typing import List, Tuple, Type, Sequence
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -13,7 +13,7 @@ from ..models import Conversation, Message, ParticipantRole
 logger = logging.getLogger(__name__)
 
 
-def _format_conversation_history(messages: List[Message]) -> str:
+def _format_conversation_history(messages: Sequence[Message]) -> str:
     """Formats a list of messages into a single string."""
     return "\n".join([f"{msg.sender.value.capitalize()}: {msg.content}" for msg in messages])
 
@@ -162,107 +162,31 @@ async def create_vector_stores_from_conversations(
 
 
 async def _get_few_shot_examples(
-    conversation_history: List[Message],
-    vector_store: VectorStore | None,
+    conversation_history: Sequence[Message],
+    vector_store: VectorStore,
     k: int,
     target_role: ParticipantRole,
-    role_name_for_logs: str,
 ) -> List[Document]:
     """Retrieves k relevant documents for a given role from a vector store."""
-    if not vector_store:
-        logger.info(
-            f"{role_name_for_logs.capitalize()} vector store is not available. "
-            "Cannot retrieve few-shot examples."
-        )
-        return []
-
     query = _format_conversation_history(conversation_history)
 
-    try:
-        retrieved_docs: List[Document] = await vector_store.asimilarity_search(
-            query=query, k=k
-        )
-    except Exception as e:
-        logger.error(
-            f"Error during similarity search for {role_name_for_logs} few-shot examples: {e}"
-        )
-        return []
-
-    if not retrieved_docs:
-        logger.info(
-            f"No relevant {role_name_for_logs} documents found for query: "
-            f"'{query[:100]}...' for few-shot examples."
-        )
-        return []
-
-    valid_docs: List[Document] = []
-    for doc in retrieved_docs:
-        try:
-            # Ensure essential metadata is present and role is correct
-            if doc.metadata.get("role") == target_role.value:
-                _ = doc.metadata["content"]  # Check for presence
-                _ = doc.metadata["timestamp"]  # Check for presence
-                valid_docs.append(doc)
-            else:
-                logger.warning(
-                    f"Document from {role_name_for_logs}_vector_store has unexpected role '"
-                    f"{doc.metadata.get('role')}'. Expected '{target_role.value}'. Skipping."
-                )
-        except KeyError as e:
-            logger.error(
-                f"Document missing essential metadata ('role', 'content', or 'timestamp'): "
-                f"{doc.metadata}. Error: {e}. Skipping."
-            )
-            continue
-        except (TypeError, ValueError) as e:
-            logger.error(
-                f"Error processing document metadata: {doc.metadata}. Error: {e}. Skipping."
-            )
-            continue
-
-    logger.info(
-        f"Retrieved {len(valid_docs)} valid documents for {role_name_for_logs} few-shot examples."
+    # Let exceptions propagate instead of catching them
+    retrieved_docs: List[Document] = await vector_store.asimilarity_search(
+        query=query, k=k
     )
-    # The asimilarity_search already respects k, so no need to slice with [:k] here.
+
+    if not retrieved_docs: 
+        raise ValueError("No documents retrieved from vector store.")
+
+    # Check that the retrieved documents have the correct metadata using list comprehension
+
+    valid_docs = [
+        doc for doc in retrieved_docs
+        if all(key in doc.metadata for key in ["role", "content", "timestamp"])
+        and doc.metadata.get("role") == target_role.value
+    ]
+
+    if len(valid_docs) < k: 
+        raise ValueError(f"Not enough valid documents retrieved from vector store. Expected {k}, got {len(valid_docs)}.")
+    
     return valid_docs
-
-
-async def get_few_shot_examples_for_customer(
-    conversation_history: List[Message],
-    customer_vector_store: VectorStore | None, 
-    k: int = 3,
-) -> List[Document]:
-    """Retrieves k relevant documents for customer few-shot examples."""
-    return await _get_few_shot_examples(
-        conversation_history=conversation_history,
-        vector_store=customer_vector_store,
-        k=k,
-        target_role=ParticipantRole.CUSTOMER,
-        role_name_for_logs="customer",
-    )
-
-
-async def get_few_shot_examples_for_agent(
-    conversation_history: List[Message],
-    agent_vector_store: VectorStore | None,
-    k: int = 3,
-) -> List[Document]:
-    """
-    Retrieves k relevant documents for agent few-shot examples.
-
-    Args:
-        conversation_history: The history of the current conversation.
-        agent_vector_store: The vector store containing agent messages.
-        k: The desired number of few-shot examples.
-
-    Returns:
-        A list of `Document` objects, where each document's page_content is the history
-        and metadata contains the agent's response.
-    """
-    return await _get_few_shot_examples(
-        conversation_history=conversation_history,
-        vector_store=agent_vector_store,
-        k=k,
-        target_role=ParticipantRole.AGENT,
-        role_name_for_logs="agent",
-    )

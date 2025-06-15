@@ -138,12 +138,12 @@ class TestRagAgentIntegration:
         )
 
     @pytest.mark.asyncio
-    async def test_rag_agent_responds_to_related_query(self, vector_stores):
+    async def test_rag_agent_responds_to_related_query(self, vector_stores, openai_model):
         """Test RagAgent responds appropriately to a query related to vector store content."""
         _, agent_store = vector_stores
         
         # Create RAG agent
-        agent = RagAgent(agent_vector_store=agent_store, model="gpt-4o-mini")
+        agent = RagAgent(agent_vector_store=agent_store, model=openai_model)
         
         # Create a conversation with a related query
         customer_message = Message(
@@ -169,12 +169,12 @@ class TestRagAgentIntegration:
             "Response should be related to TV issues"
 
     @pytest.mark.asyncio
-    async def test_rag_agent_responds_to_unrelated_query(self, vector_stores):
+    async def test_rag_agent_responds_to_unrelated_query(self, vector_stores, openai_model):
         """Test RagAgent can respond to a query unrelated to vector store content."""
         _, agent_store = vector_stores
         
         # Create RAG agent
-        agent = RagAgent(agent_vector_store=agent_store, model="gpt-4o-mini")
+        agent = RagAgent(agent_vector_store=agent_store, model=openai_model)
         
         # Create a conversation with an unrelated query
         customer_message = Message(
@@ -213,6 +213,7 @@ class TestRagAgentIntegration:
         base_timestamp: datetime,
         sample_intent: Intent,
         sample_outcomes: Outcomes,
+        openai_model
     ) -> None:
         """Test a full simulation flow using the RagAgent."""
         openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -228,10 +229,9 @@ class TestRagAgentIntegration:
 
         # 2. Setup participants
         # The agent is our RagAgent
-        agent = RagAgent(
-            agent_vector_store=agent_store,
-            model="gpt-4o-mini"
-        )
+        agent = RagAgent(agent_vector_store=agent_store, model=openai_model)
+        intent_description = "Provide TV troubleshooting solutions"
+        agent = agent.with_intent(intent_description)
 
         # The customer sends one message and then is done.
         customer_messages = (
