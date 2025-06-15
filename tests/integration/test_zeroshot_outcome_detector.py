@@ -128,3 +128,32 @@ class TestZeroshotOutcomeDetectorIntegration:
         assert detected_outcome is not None
         assert detected_outcome.name == "escalated"
         logger.info("Detected outcome: %s", detected_outcome)
+    
+    @pytest.mark.asyncio
+    async def test_empty_conversation(self, openai_model):
+        """Test that an empty conversation returns None."""
+        # Define outcomes
+        outcomes = Outcomes(outcomes=(
+            Outcome(name="resolved", description="Customer issue was resolved"),
+            Outcome(name="escalated", description="Conversation was escalated to supervisor"),
+            Outcome(name="pending", description="Issue requires further investigation")
+        ))
+        
+        # Create intent
+        intent = Intent(
+            role=ParticipantRole.CUSTOMER,
+            description="Customer has a billing question"
+        )
+        
+        # Create empty conversation
+        conversation = Conversation(messages=())
+        
+        # Create detector
+        detector = ZeroshotOutcomeDetector(model=openai_model)
+        
+        # Detect outcome
+        detected_outcome = await detector.detect_outcome(conversation, intent, outcomes)
+        
+        # Assert no outcome is detected for an empty conversation
+        assert detected_outcome is None
+        logger.info("No outcome detected for empty conversation, as expected")
