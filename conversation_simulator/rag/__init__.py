@@ -4,12 +4,12 @@ This module provides tools for creating and managing vector stores from conversa
 which can then be used by RAG-enabled participants in the conversation simulator.
 """
 
-from .processing import (
-    create_vector_stores_from_conversations,
-    _get_few_shot_examples,
+from .commons import (
+    conversations_to_langchain_documents,
+    get_few_shot_examples,
 )
 
 __all__ = [
-    "create_vector_stores_from_conversations",
-    "_get_few_shot_examples",
+    "conversations_to_langchain_documents",
+    "get_few_shot_examples",
 ]

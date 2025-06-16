@@ -16,7 +16,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 
 from ....models import Conversation, Message, ParticipantRole
-from ....rag import _get_few_shot_examples
+from ....rag import get_few_shot_examples
 from ..base import Customer
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class RagCustomer(Customer):
             return None
 
         # 1. Retrieval
-        few_shot_examples: List[Document] = await self.get_few_shot_examples_for_customer(
+        few_shot_examples: List[Document] = await self._get_few_shot_examples(
             conversation.messages,
             k=3,
             vector_store=self.customer_vector_store
@@ -159,8 +159,8 @@ class RagCustomer(Customer):
         return formatted_messages
 
     @staticmethod
-    async def get_few_shot_examples_for_customer(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> List[Document]:
-        return await _get_few_shot_examples(
+    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> List[Document]:
+        return await get_few_shot_examples(
             conversation_history=conversation_history,
             vector_store=vector_store,
             k=k,

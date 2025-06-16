@@ -7,12 +7,13 @@ from datetime import datetime
 import logging
 
 from conversation_simulator.participants.customer.rag import RagCustomer
-from conversation_simulator.rag import create_vector_stores_from_conversations
 from conversation_simulator.models.conversation import Conversation
 from conversation_simulator.models.message import Message
 from conversation_simulator.models.roles import ParticipantRole
 from langchain_core.vectorstores import VectorStore
 from langchain_community.vectorstores import FAISS
+from conversation_simulator.rag import conversations_to_langchain_documents
+from langchain.embeddings import OpenAIEmbeddings
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +82,10 @@ class TestRagCustomerIntegration:
             pytest.skip("OPENAI_API_KEY not set, skipping RAG integration test.")
         
         # Create vector stores directly in memory
-        customer_store, agent_store = await create_vector_stores_from_conversations(
-            conversations=MOCK_RAG_CONVERSATIONS,
-            vector_store_class=FAISS,
-            openai_embedding_model_name="text-embedding-ada-002"
-        )
+        customer_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS, ParticipantRole.CUSTOMER)
+        agent_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS, ParticipantRole.AGENT)
+        customer_store = await FAISS.afrom_documents(customer_documents, OpenAIEmbeddings(model="text-embedding-ada-002"))
+        agent_store = await FAISS.afrom_documents(agent_documents, OpenAIEmbeddings(model="text-embedding-ada-002"))
         
         assert isinstance(customer_store, VectorStore)
         assert isinstance(agent_store, VectorStore)
@@ -110,10 +110,9 @@ class TestRagCustomerIntegration:
     @pytest.mark.asyncio
     async def test_rag_customer_responds_to_agent_query(self, vector_stores, openai_model):
         """Test RagCustomer responds appropriately to an agent query."""
-        customer_store, _ = vector_stores
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=customer_store, model=openai_model)
+        customer = RagCustomer(customer_vector_store=vector_stores[0], model=openai_model)
         
         # Create a conversation with an agent query
         agent_message = Message(
@@ -151,10 +150,9 @@ class TestRagCustomerIntegration:
     @pytest.mark.asyncio
     async def test_rag_customer_responds_to_unrelated_query(self, vector_stores, openai_model):
         """Test RagCustomer can respond to a query unrelated to vector store content."""
-        customer_store, _ = vector_stores
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=customer_store, model=openai_model)
+        customer = RagCustomer(customer_vector_store=vector_stores[0], model=openai_model)
         
         # Create a conversation with an unrelated query
         agent_message = Message(
@@ -189,10 +187,9 @@ class TestRagCustomerIntegration:
     @pytest.mark.asyncio
     async def test_multi_turn_customer_conversation(self, vector_stores, openai_model):
         """Test a multi-turn conversation with a RagCustomer."""
-        customer_store, _ = vector_stores
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=customer_store, model=openai_model)
+        customer = RagCustomer(customer_vector_store=vector_stores[0], model=openai_model)
         intent_description = "Ask for help with TV issues"
         customer = customer.with_intent(intent_description)
         
