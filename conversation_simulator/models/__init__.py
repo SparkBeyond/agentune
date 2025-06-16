@@ -11,7 +11,7 @@ from .outcome import Outcome, Outcomes
 from .scenario import Scenario
 
 # Result models  
-from .results import ConversationResult, OriginalConversation, SimulatedConversation, SimulationSessionResult
+from .results import ConversationResult, OriginalConversation, SimulatedConversation, SimulationSessionResult, SimulationAnalysisResult
 
 # Analysis models
 from .analysis import (
@@ -38,6 +38,7 @@ __all__ = [
     "OriginalConversation", 
     "SimulatedConversation",
     "SimulationSessionResult",
+    "SimulationAnalysisResult",
     # Analysis
     "OutcomeDistribution",
     "OutcomeDistributionComparison",

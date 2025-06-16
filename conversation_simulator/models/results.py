@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 from datetime import datetime
-from typing import Any
 import attrs
 
 from .conversation import Conversation
+from .scenario import Scenario
 from .analysis import OutcomeDistributionComparison, MessageDistributionComparison, AdversarialEvaluationResult
 
 
@@ -48,6 +48,7 @@ class SimulatedConversation:
     """A simulated conversation generated from an original conversation."""
     
     id: str  # Unique identifier for this simulated conversation
+    scenario_id: str  # ID of the scenario that generated this conversation
     original_conversation_id: str  # Links back to the original
     conversation: Conversation
 
@@ -65,15 +66,11 @@ class SimulationSessionResult:
     
     # Core data
     original_conversations: tuple[OriginalConversation, ...]
+    scenarios: tuple[Scenario, ...]
     simulated_conversations: tuple[SimulatedConversation, ...]
     
     # Analysis results
-    outcome_comparison: OutcomeDistributionComparison
-    message_distribution_comparison: MessageDistributionComparison
-    adversarial_evaluation: AdversarialEvaluationResult
-    
-    # Session-level metadata
-    session_parameters: dict[str, Any] = attrs.field(factory=dict)
+    analysis_result: SimulationAnalysisResult
     
     @property
     def total_original_conversations(self) -> int:
@@ -99,3 +96,12 @@ class SimulationSessionResult:
             f"{self.total_original_conversations} original → {self.total_simulated_conversations} simulated "
             f"({self.duration_seconds:.2f}s)"
         )
+
+
+@attrs.frozen
+class SimulationAnalysisResult:
+    """Wrapper for all simulation analysis results."""
+    
+    outcome_comparison: OutcomeDistributionComparison
+    message_distribution_comparison: MessageDistributionComparison
+    adversarial_evaluation: AdversarialEvaluationResult

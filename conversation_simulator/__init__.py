@@ -8,7 +8,7 @@ from .models.message import Message, MessageDraft
 from .models.outcome import Outcome, Outcomes
 
 # Result models
-from .models.results import ConversationResult, SimulationSessionResult, OriginalConversation, SimulatedConversation
+from .models.results import ConversationResult, SimulationSessionResult, OriginalConversation, SimulatedConversation, SimulationAnalysisResult
 
 # Analysis models  
 from .models.analysis import OutcomeDistribution, MessageDistributionStats, AdversarialEvaluationResult
@@ -22,6 +22,9 @@ from .runners.base import Runner
 
 # Runners
 from .runners.full_simulation import FullSimulationRunner
+
+# Simulation orchestration
+from .simulation import SimulationSession
 
 __version__ = "0.1.0"
 
@@ -38,7 +41,8 @@ __all__ = [
     "ConversationResult",
     "SimulationSessionResult",
     "OriginalConversation",
-    "SimulatedConversation", 
+    "SimulatedConversation",
+    "SimulationAnalysisResult", 
     # Analysis models
     "OutcomeDistribution",
     "MessageDistributionStats", 
@@ -50,4 +54,6 @@ __all__ = [
     "Runner",
     # Runners
     "FullSimulationRunner",
+    # Simulation orchestration
+    "SimulationSession",
 ]

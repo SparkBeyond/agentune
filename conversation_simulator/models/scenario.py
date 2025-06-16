@@ -13,9 +13,13 @@ class Scenario:
     
     Represents a planned simulation including the intent, how it should start,
     and which original conversation inspired it.
+    
+    ID Hierarchy:
+    simulated_conversation_id -> scenario.id -> original_conversation_id
+    This allows tracing any simulated conversation back to its source.
     """
     
-    id: str  # Unique identifier for this scenario
+    id: str  # Unique identifier for this scenario (NOT the same as simulated conversation ID)
     original_conversation_id: str  # Links back to the original conversation that inspired this scenario
     intent: Intent  # The extracted or assigned intent for this scenario
     initial_message: MessageDraft  # How the conversation should start
