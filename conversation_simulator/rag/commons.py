@@ -25,13 +25,17 @@ def conversations_to_langchain_documents(
             continue # Need at least one message for history and one for the 'next message'
 
         for i in range(1, len(conversation.messages)):
-            history_messages: List[Message] = list(conversation.messages[:i])
             next_message: Message = conversation.messages[i]
-
+            
+            # Skip if the next message's role doesn't match the target role
+            if next_message.sender != role:
+                continue
+                
             if not next_message.content:
                 logger.debug(f"Skipping empty next_message at index {i} in conversation starting with: {conversation.messages[0].content[:50]}...")
                 continue
 
+            history_messages: List[Message] = list(conversation.messages[:i])
             # The history becomes the content to be embedded
             page_content = _format_conversation_history(history_messages)
 
@@ -39,16 +43,11 @@ def conversations_to_langchain_documents(
             metadata = {
                 "message_index": i,
                 "role": next_message.sender.value,
+                "content": next_message.content,  # Store the response content
+                "timestamp": next_message.timestamp.isoformat()
             }
-            if next_message.content:
-                metadata["content"] = next_message.content  # Store the response content
-            metadata["timestamp"] = next_message.timestamp.isoformat()
 
-            doc = Document(page_content=page_content, metadata=metadata)
-
-            # Assign document to a store based on the role of the 'next message'
-            if next_message.sender == role:
-                documents.append(doc)
+            documents.append(Document(page_content=page_content, metadata=metadata))
     return documents
 
 async def get_few_shot_examples(

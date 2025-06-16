@@ -15,7 +15,7 @@ from conversation_simulator.models.outcome import Outcome, Outcomes
 from langchain_core.vectorstores import VectorStore
 from langchain_community.vectorstores import FAISS
 from conversation_simulator.rag import conversations_to_langchain_documents
-from langchain.embeddings import OpenAIEmbeddings
+
 
 from conversation_simulator.runners.full_simulation import FullSimulationRunner
 from tests.runners.test_full_simulation import (
@@ -85,7 +85,7 @@ class TestRagAgentIntegration:
     """Integration tests for RAG agent with real vector stores and LLM."""
     
     @pytest_asyncio.fixture(scope="class")
-    async def vector_stores(self, request):
+    async def agent_vector_store(self, request, embedding_model):
         """Create in-memory vector stores for testing.
         
         This fixture ensures no disk operations are performed during testing.
@@ -95,22 +95,13 @@ class TestRagAgentIntegration:
             pytest.skip("OPENAI_API_KEY not set, skipping RAG integration test.")
         
         # Create vector stores directly in memory
-        customer_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS, ParticipantRole.CUSTOMER)
         agent_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS, ParticipantRole.AGENT)
-        customer_store = await FAISS.afrom_documents(customer_documents, OpenAIEmbeddings(model="text-embedding-ada-002"))
-        agent_store = await FAISS.afrom_documents(agent_documents, OpenAIEmbeddings(model="text-embedding-ada-002"))
-        
-        assert isinstance(customer_store, VectorStore)
+        agent_store = await FAISS.afrom_documents(agent_documents, embedding_model)        
         assert isinstance(agent_store, VectorStore)
         
         # Add cleanup to ensure no files are left behind
         def cleanup():
             # FAISS in-memory stores don't need cleanup, but this is a safeguard
-            if hasattr(customer_store, 'delete'):
-                try:
-                    customer_store.delete()
-                except Exception as e:
-                    logger.warning(f"Error cleaning up customer store: {e}")
             if hasattr(agent_store, 'delete'):
                 try:
                     agent_store.delete()
@@ -118,7 +109,7 @@ class TestRagAgentIntegration:
                     logger.warning(f"Error cleaning up agent store: {e}")
         
         request.addfinalizer(cleanup)
-        return customer_store, agent_store
+        return agent_store
 
     @pytest.fixture(scope="class")
     def base_timestamp(self) -> datetime:
@@ -138,11 +129,11 @@ class TestRagAgentIntegration:
         )
 
     @pytest.mark.asyncio
-    async def test_rag_agent_responds_to_related_query(self, vector_stores, openai_model):
+    async def test_rag_agent_responds_to_related_query(self, agent_vector_store, openai_model):
         """Test RagAgent responds appropriately to a query related to vector store content."""
         
         # Create RAG agent
-        agent = RagAgent(agent_vector_store=vector_stores[1], model=openai_model)
+        agent = RagAgent(agent_vector_store=agent_vector_store, model=openai_model)
         
         # Create a conversation with a related query
         customer_message = Message(
@@ -168,11 +159,11 @@ class TestRagAgentIntegration:
             "Response should be related to TV issues"
 
     @pytest.mark.asyncio
-    async def test_rag_agent_responds_to_unrelated_query(self, vector_stores, openai_model):
+    async def test_rag_agent_responds_to_unrelated_query(self, agent_vector_store, openai_model):
         """Test RagAgent can respond to a query unrelated to vector store content."""
         
         # Create RAG agent
-        agent = RagAgent(agent_vector_store=vector_stores[1], model=openai_model)
+        agent = RagAgent(agent_vector_store=agent_vector_store, model=openai_model)
         
         # Create a conversation with an unrelated query
         customer_message = Message(
@@ -209,7 +200,7 @@ class TestRagAgentIntegration:
     async def test_rag_agent_simulation_flow(
         self,
         base_timestamp: datetime,
-        vector_stores: tuple[VectorStore, VectorStore],
+        agent_vector_store: VectorStore,
         sample_intent: Intent,
         sample_outcomes: Outcomes,
         openai_model
@@ -220,8 +211,7 @@ class TestRagAgentIntegration:
             pytest.skip("OPENAI_API_KEY not set, skipping RAG integration test.")
 
         # 1. Create vector stores from historical data
-        customer_store, agent_store = vector_stores
-        assert customer_store is not None
+        agent_store = agent_vector_store
         assert agent_store is not None
 
         # 2. Setup participants

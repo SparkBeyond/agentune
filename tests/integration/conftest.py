@@ -11,6 +11,7 @@ from conversation_simulator.participants.agent.config import AgentConfig
 from conversation_simulator.models.intent import Intent
 from conversation_simulator.models.outcome import Outcome, Outcomes
 from conversation_simulator.models.roles import ParticipantRole
+from langchain_community.embeddings import OpenAIEmbeddings
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,6 +33,16 @@ def openai_model(openai_api_key):
         api_key=SecretStr(openai_api_key),
         model="gpt-4o-mini",
         temperature=0.7
+    )
+
+
+@pytest.fixture(scope="class")
+def embedding_model(openai_api_key):
+    """Standard OpenAI embedding model for tests."""
+    
+    return OpenAIEmbeddings(
+        model="text-embedding-ada-002",
+        api_key=openai_api_key
     )
 
 

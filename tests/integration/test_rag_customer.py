@@ -13,7 +13,6 @@ from conversation_simulator.models.roles import ParticipantRole
 from langchain_core.vectorstores import VectorStore
 from langchain_community.vectorstores import FAISS
 from conversation_simulator.rag import conversations_to_langchain_documents
-from langchain.embeddings import OpenAIEmbeddings
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +74,7 @@ class TestRagCustomerIntegration:
     """Integration tests for RAG customer with real vector stores and LLM."""
     
     @pytest_asyncio.fixture(scope="class")
-    async def vector_stores(self, request):
+    async def customer_vector_store(self, request, embedding_model):
         """Create in-memory vector stores for testing."""
         openai_api_key = os.getenv("OPENAI_API_KEY")
         if not openai_api_key:
@@ -83,12 +82,9 @@ class TestRagCustomerIntegration:
         
         # Create vector stores directly in memory
         customer_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS, ParticipantRole.CUSTOMER)
-        agent_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS, ParticipantRole.AGENT)
-        customer_store = await FAISS.afrom_documents(customer_documents, OpenAIEmbeddings(model="text-embedding-ada-002"))
-        agent_store = await FAISS.afrom_documents(agent_documents, OpenAIEmbeddings(model="text-embedding-ada-002"))
+        customer_store = await FAISS.afrom_documents(customer_documents, embedding_model)
         
         assert isinstance(customer_store, VectorStore)
-        assert isinstance(agent_store, VectorStore)
         
         # Add cleanup to ensure no files are left behind
         def cleanup():
@@ -98,21 +94,16 @@ class TestRagCustomerIntegration:
                     customer_store.delete()
                 except Exception as e:
                     logger.warning(f"Error cleaning up customer store: {e}")
-            if hasattr(agent_store, 'delete'):
-                try:
-                    agent_store.delete()
-                except Exception as e:
-                    logger.warning(f"Error cleaning up agent store: {e}")
         
         request.addfinalizer(cleanup)
-        return customer_store, agent_store
+        return customer_store
 
     @pytest.mark.asyncio
-    async def test_rag_customer_responds_to_agent_query(self, vector_stores, openai_model):
+    async def test_rag_customer_responds_to_agent_query(self, customer_vector_store, openai_model):
         """Test RagCustomer responds appropriately to an agent query."""
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=vector_stores[0], model=openai_model)
+        customer = RagCustomer(customer_vector_store=customer_vector_store, model=openai_model)
         
         # Create a conversation with an agent query
         agent_message = Message(
@@ -148,11 +139,11 @@ class TestRagCustomerIntegration:
         assert response.content[-1] in [".", "!", "?"], "Response should end with punctuation"
             
     @pytest.mark.asyncio
-    async def test_rag_customer_responds_to_unrelated_query(self, vector_stores, openai_model):
+    async def test_rag_customer_responds_to_unrelated_query(self, customer_vector_store, openai_model):
         """Test RagCustomer can respond to a query unrelated to vector store content."""
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=vector_stores[0], model=openai_model)
+        customer = RagCustomer(customer_vector_store=customer_vector_store, model=openai_model)
         
         # Create a conversation with an unrelated query
         agent_message = Message(
@@ -185,11 +176,11 @@ class TestRagCustomerIntegration:
             f"Response should be a coherent customer message. Got: {response.content}"
 
     @pytest.mark.asyncio
-    async def test_multi_turn_customer_conversation(self, vector_stores, openai_model):
+    async def test_multi_turn_customer_conversation(self, customer_vector_store, openai_model):
         """Test a multi-turn conversation with a RagCustomer."""
         
         # Create RAG customer
-        customer = RagCustomer(customer_vector_store=vector_stores[0], model=openai_model)
+        customer = RagCustomer(customer_vector_store=customer_vector_store, model=openai_model)
         intent_description = "Ask for help with TV issues"
         customer = customer.with_intent(intent_description)
         
