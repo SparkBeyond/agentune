@@ -62,7 +62,6 @@ class SimulationSessionResult:
     session_description: str
     started_at: datetime
     completed_at: datetime
-    duration_seconds: float  # Total duration of the session in seconds
     
     # Core data
     original_conversations: tuple[OriginalConversation, ...]
@@ -93,8 +92,7 @@ class SimulationSessionResult:
         """String representation of the session result."""
         return (
             f"SimulationSessionResult: '{self.session_name}' - "
-            f"{self.total_original_conversations} original → {self.total_simulated_conversations} simulated "
-            f"({self.duration_seconds:.2f}s)"
+            f"{self.total_original_conversations} original → {self.total_simulated_conversations} simulated"
         )
 
 

@@ -90,7 +90,6 @@ class SimulationSession:
         
         # Step 3: Analyze results
         session_end = datetime.now()
-        session_duration = (session_end - session_start).total_seconds()
         
         # Run comprehensive analysis
         analysis_result = await analyze_simulation_results(
@@ -104,7 +103,6 @@ class SimulationSession:
             session_description=self.session_description,
             started_at=session_start,
             completed_at=session_end,
-            duration_seconds=session_duration,
             original_conversations=original_conversations,
             scenarios=scenarios,
             simulated_conversations=simulated_conversations,
