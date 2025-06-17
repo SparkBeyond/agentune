@@ -19,6 +19,7 @@ from ..participants.customer.base import CustomerFactory
 from ..runners.full_simulation import FullSimulationRunner
 from ..outcome_detection.base import OutcomeDetector
 from .analysis import analyze_simulation_results
+from .adversarial import AdversarialTester
 
 
 class SimulationSession:
@@ -34,6 +35,7 @@ class SimulationSession:
         agent_factory: AgentFactory,
         customer_factory: CustomerFactory,
         outcome_detector: OutcomeDetector,
+        adversarial_tester: AdversarialTester,
         session_name: str = "Simulation Session",
         session_description: str = "Automated conversation simulation",
         max_messages: int = 100,
@@ -53,6 +55,7 @@ class SimulationSession:
         self.agent_factory = agent_factory
         self.customer_factory = customer_factory
         self.outcome_detector = outcome_detector
+        self.adversarial_tester = adversarial_tester
         self.session_name = session_name
         self.session_description = session_description
         self.max_messages = max_messages
@@ -90,9 +93,10 @@ class SimulationSession:
         session_duration = (session_end - session_start).total_seconds()
         
         # Run comprehensive analysis
-        analysis_result = analyze_simulation_results(
+        analysis_result = await analyze_simulation_results(
             original_conversations=tuple(conv.conversation for conv in original_conversations),
-            simulated_conversations=simulated_conversations
+            simulated_conversations=simulated_conversations,
+            adversarial_tester=self.adversarial_tester,
         )
         
         return SimulationSessionResult(

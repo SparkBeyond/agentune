@@ -25,6 +25,7 @@ from conversation_simulator.outcome_detection.base import OutcomeDetector
 from conversation_simulator.participants.agent.config import AgentConfig
 from conversation_simulator.participants.agent.zero_shot import ZeroShotAgentFactory
 from conversation_simulator.participants.customer.zero_shot import ZeroShotCustomerFactory
+from conversation_simulator.simulation.adversarial import AdversarialTester
 
 
 class SimpleOutcomeDetector(OutcomeDetector):
@@ -35,6 +36,17 @@ class SimpleOutcomeDetector(OutcomeDetector):
         if possible_outcomes.outcomes:
             return possible_outcomes.outcomes[0]
         return None
+
+class DummyAdversarialTester(AdversarialTester):
+    """Mock adversarial tester for testing purposes."""
+    
+    async def identify_real_conversation(
+            self,
+            conversation_1: Conversation,
+            conversation_2: Conversation,
+        ) -> int:
+            # Simple heuristic: if conversation_1 has more messages, it's real
+            return 0 if len(conversation_1.messages) > len(conversation_2.messages) else 1
 
 
 @pytest.mark.integration
@@ -107,7 +119,8 @@ class TestFullPipelineIntegration:
             intent_extractor=intent_extractor,
             agent_factory=agent_factory,
             customer_factory=customer_factory,
-            outcome_detector=outcome_detector
+            outcome_detector=outcome_detector,
+            adversarial_tester=DummyAdversarialTester(),
         )
 
     @pytest.mark.asyncio

@@ -11,18 +11,20 @@ from ..models.analysis import (
     MessageDistributionComparison,
     AdversarialEvaluationResult,
 )
+from .adversarial import AdversarialTester
 
 
-def analyze_simulation_results(
+async def analyze_simulation_results(
     original_conversations: tuple[Conversation, ...],
-    simulated_conversations: tuple[SimulatedConversation, ...]
+    simulated_conversations: tuple[SimulatedConversation, ...],
+    adversarial_tester: AdversarialTester,
 ) -> SimulationAnalysisResult:
     """Analyze simulation results and generate comprehensive comparison.
     
     Args:
         original_conversations: Real conversations used as input
         simulated_conversations: Generated conversations from simulation
-        scenarios: Scenarios used for simulation (for future extensibility)
+        adversarial_tester: Adversarial tester for evaluation
         
     Returns:
         Complete analysis result with all comparisons
@@ -37,7 +39,9 @@ def analyze_simulation_results(
     message_comparison = _analyze_message_distributions(
         list(original_conversations), simulated_convs
     )
-    adversarial_evaluation = _create_placeholder_adversarial_evaluation()
+    adversarial_evaluation = await _evaluate_adversarial_quality(
+        list(original_conversations), simulated_convs, adversarial_tester
+    )
     
     return SimulationAnalysisResult(
         outcome_comparison=outcome_comparison,
@@ -156,6 +160,29 @@ def _analyze_message_distributions(
     return MessageDistributionComparison(
         original_stats=original_stats,
         simulated_stats=simulated_stats,
+    )
+
+
+async def _evaluate_adversarial_quality(
+    original_conversations: list[Conversation],
+    simulated_conversations: list[Conversation],
+    adversarial_tester: AdversarialTester,
+) -> AdversarialEvaluationResult:
+    """Evaluate simulation quality using adversarial testing.
+    
+    Args:
+        original_conversations: Real conversations
+        simulated_conversations: Generated conversations  
+        adversarial_tester: Tester to distinguish real vs simulated
+        
+    Returns:
+        Adversarial evaluation results with accuracy metrics
+    """
+    # todo: Implement adversarial evaluation logic
+    
+    return AdversarialEvaluationResult(
+        total_pairs_evaluated=-1,
+        correct_identifications=-1,
     )
 
 
