@@ -67,13 +67,10 @@ class MessageDistributionComparison:
 
 @attrs.frozen
 class AdversarialEvaluationResult:
-    """Result of adversarial evaluation (LLM trying to distinguish real vs simulated)."""
+    """Result of adversarial evaluation - trying to distinguish real vs simulated."""
     
-    evaluator_model: str  # Name/identifier of the LLM used for evaluation
     total_pairs_evaluated: int
     correct_identifications: int  # How many times LLM correctly identified real vs simulated
-    false_positives: int  # Simulated conversations incorrectly identified as real
-    false_negatives: int  # Real conversations incorrectly identified as simulated
     
     @property
     def accuracy(self) -> float:
@@ -81,19 +78,3 @@ class AdversarialEvaluationResult:
         if self.total_pairs_evaluated == 0:
             return 0.0
         return self.correct_identifications / self.total_pairs_evaluated
-    
-    @property
-    def precision(self) -> float:
-        """Precision for identifying real conversations."""
-        true_positives = self.correct_identifications - self.false_positives
-        if true_positives + self.false_positives == 0:
-            return 0.0
-        return true_positives / (true_positives + self.false_positives)
-    
-    @property
-    def recall(self) -> float:
-        """Recall for identifying real conversations."""
-        true_positives = self.correct_identifications - self.false_positives
-        if true_positives + self.false_negatives == 0:
-            return 0.0
-        return true_positives / (true_positives + self.false_negatives)

@@ -166,9 +166,6 @@ def _create_placeholder_adversarial_evaluation() -> AdversarialEvaluationResult:
         Placeholder evaluation result
     """
     return AdversarialEvaluationResult(
-        evaluator_model="placeholder",
         total_pairs_evaluated=0,
-        correct_identifications=0,
-        false_positives=0,
-        false_negatives=0,
+        correct_identifications=0
     )
