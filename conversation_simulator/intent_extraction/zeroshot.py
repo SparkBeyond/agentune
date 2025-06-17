@@ -29,21 +29,30 @@ class ZeroshotIntentExtractor(IntentExtractor):
     2. What their specific intent/goal is
     3. Your confidence in this assessment (0.0 to 1.0)
     
-    Important notes:
+    Important guidelines for identifying intent:
     - The first speaker might just be making a greeting (e.g., "How can I help you?") rather than expressing intent
-    - Look for the first message that contains a clear purpose or request
+    - Look for the first message that contains a clear purpose, request, or offer
     - The intent could be expressed by either the customer or the agent
+    - If an AGENT initiates with a clear offer, proposal, or request for action, that should be considered the intent
+    - A CUSTOMER asking for information in response to an AGENT's offer is not a new intent
+    - Focus on who is driving the conversation purpose
     
     Common intent categories include but are not limited to:
     - IT Support (e.g., reporting technical issues, access problems)
-    - Sales/Purchasing (e.g., buying a product, inquiring about pricing)
+    - Sales/Purchasing (e.g., buying a product, inquiring about pricing, making an offer)
     - Support/Help (e.g., account problems, service issues)
     - Information Request (e.g., asking specific questions, gathering details)
     - Feedback/Complaint (e.g., providing feedback, making a complaint)
     - Scheduling/Booking (e.g., making appointments, reservations)
+    - Proactive Offer (e.g., agent making a special offer or upgrade)
     
     Be specific in describing the intent. For example, instead of just "IT issue",
     specify the nature of the issue (e.g., "cannot access email account").
+    
+    Examples:
+    - If an AGENT says "I'm calling about your car's extended warranty", the intent is from the AGENT
+    - If a CUSTOMER says "I need help with my password", the intent is from the CUSTOMER
+    - If an AGENT makes an offer and the CUSTOMER asks questions about it, the intent is still from the AGENT
     """
     
     # Default human prompt template
