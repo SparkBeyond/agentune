@@ -1,17 +1,45 @@
 """Zero-shot intent extraction implementation using a language model."""
 
-from typing import ClassVar
-
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    HumanMessagePromptTemplate,
-    SystemMessagePromptTemplate,
-)
+from pydantic import BaseModel, Field
+from typing import Optional
 
 from ..models.conversation import Conversation
-from .base import IntentExtractionResult, IntentExtractor
+from ..models.intent import Intent
+from ..models.roles import ParticipantRole
+from .base import IntentExtractor
+from .prompts import create_intent_extraction_prompt, format_conversation
+
+
+class IntentExtractionResult(BaseModel):
+    """Result of intent extraction with reasoning."""
+    
+    detected: bool = Field(
+        description="Whether an intent was detected in the conversation"
+    )
+    reasoning: str = Field(
+        description="Explanation of the extracted intent and why it was chosen"
+    )
+    role: Optional[ParticipantRole] = Field(
+        description="Role of the participant who initiated the intent (CUSTOMER or AGENT), "
+                  "or None if no intent was detected"
+    )
+    description: Optional[str] = Field(
+        description="Description of the extracted intent, or None if no intent was detected"
+    )
+    
+    def to_intent(self) -> Intent | None:
+        """Convert the extraction result to an Intent object.
+        
+        Returns:
+            An Intent object if an intent was detected with valid role and description, 
+            None otherwise
+        """
+        if not self.detected or self.role is None or self.description is None:
+            return None
+        return Intent(role=self.role, description=self.description)
+
 
 
 class ZeroshotIntentExtractor(IntentExtractor):
@@ -20,50 +48,6 @@ class ZeroshotIntentExtractor(IntentExtractor):
     This extractor uses a language model to analyze conversation history and extract
     the primary intent of the conversation initiator (customer or agent).
     """
-    
-    # Default system prompt for intent extraction
-    SYSTEM_PROMPT: ClassVar[str] = """You are an expert at analyzing conversations and identifying user intents.
-    
-    Your task is to analyze the conversation and determine:
-    1. Who was the first to express a clear intent (CUSTOMER or AGENT)
-    2. What their specific intent/goal is
-    3. Your confidence in this assessment (0.0 to 1.0)
-    
-    Important guidelines for identifying intent:
-    - The first speaker might just be making a greeting (e.g., "How can I help you?") rather than expressing intent
-    - Look for the first message that contains a clear purpose, request, or offer
-    - The intent could be expressed by either the customer or the agent
-    - If an AGENT initiates with a clear offer, proposal, or request for action, that should be considered the intent
-    - A CUSTOMER asking for information in response to an AGENT's offer is not a new intent
-    - Focus on who is driving the conversation purpose
-    
-    Common intent categories include but are not limited to:
-    - IT Support (e.g., reporting technical issues, access problems)
-    - Sales/Purchasing (e.g., buying a product, inquiring about pricing, making an offer)
-    - Support/Help (e.g., account problems, service issues)
-    - Information Request (e.g., asking specific questions, gathering details)
-    - Feedback/Complaint (e.g., providing feedback, making a complaint)
-    - Scheduling/Booking (e.g., making appointments, reservations)
-    - Proactive Offer (e.g., agent making a special offer or upgrade)
-    
-    Be specific in describing the intent. For example, instead of just "IT issue",
-    specify the nature of the issue (e.g., "cannot access email account").
-    
-    Examples:
-    - If an AGENT says "I'm calling about your car's extended warranty", the intent is from the AGENT
-    - If a CUSTOMER says "I need help with my password", the intent is from the CUSTOMER
-    - If an AGENT makes an offer and the CUSTOMER asks questions about it, the intent is still from the AGENT
-    """
-    
-    # Default human prompt template
-    HUMAN_PROMPT_TEMPLATE: ClassVar[str] = """Analyze the following conversation and determine the intent:
-    
-    {conversation}
-    
-    Format your response according to the following guidelines:
-    {format_instructions}
-    
-    Your analysis:"""
     
     def __init__(self, llm: BaseChatModel):
         """Initialize the zero-shot intent extractor.
@@ -74,24 +58,15 @@ class ZeroshotIntentExtractor(IntentExtractor):
         self.llm = llm
         self.parser = PydanticOutputParser(pydantic_object=IntentExtractionResult)
         
-        # Set up the prompt templates
-        system_prompt = SystemMessagePromptTemplate.from_template(self.SYSTEM_PROMPT)
-        human_prompt = HumanMessagePromptTemplate.from_template(
-            self.HUMAN_PROMPT_TEMPLATE,
-            partial_variables={"format_instructions": self.parser.get_format_instructions()}
+        # Create the prompt template with format instructions
+        prompt_template = create_intent_extraction_prompt(
+            format_instructions=self.parser.get_format_instructions()
         )
         
-        self.chain = (
-            {"conversation": lambda x: "\n".join(
-                f"{msg.sender.value.upper()}: {msg.content}" 
-                for msg in x.messages
-            )}
-            | ChatPromptTemplate.from_messages([system_prompt, human_prompt])
-            | self.llm
-            | self.parser
-        )
+        # Create the processing chain
+        self._chain = prompt_template | self.llm | self.parser
     
-    async def extract_intent(self, conversation: Conversation) -> IntentExtractionResult | None:
+    async def extract_intent(self, conversation: Conversation) -> Intent | None:
         """Extract intent from a conversation using a zero-shot approach.
         
         Args:
@@ -104,10 +79,12 @@ class ZeroshotIntentExtractor(IntentExtractor):
             return None
             
         try:
-            result = await self.chain.ainvoke(conversation)
-            if not isinstance(result, IntentExtractionResult):
-                return None
-            return result
+            # Format the conversation and process it through the chain
+            formatted_conversation = format_conversation(conversation)
+            result: IntentExtractionResult = await self._chain.ainvoke({"conversation": formatted_conversation})
+            
+            return result.to_intent()
+            
         except Exception as e:
             # Log the error and return None
             # In a production environment, you might want to log this to a proper logging system

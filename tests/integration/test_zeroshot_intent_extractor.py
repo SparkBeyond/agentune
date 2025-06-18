@@ -49,8 +49,6 @@ class TestZeroshotIntentExtractorIntegration:
         assert result is not None
         assert result.role == ParticipantRole.CUSTOMER
         assert "email" in result.description.lower() or "authentication" in result.description.lower()
-        assert 0.0 <= result.confidence <= 1.0
-        assert len(result.reasoning) > 0
     
     @pytest.mark.asyncio
     async def test_extract_agent_intent(self, openai_model):
@@ -84,8 +82,6 @@ class TestZeroshotIntentExtractorIntegration:
             f"Expected AGENT but got {result.role}. Description: {result.description}"
         assert any(term in result.description.lower() for term in ["upgrade", "premium", "offer", "deal"]), \
             f"Expected intent about upgrade/offer, got: {result.description}"
-        assert 0.0 <= result.confidence <= 1.0
-        assert len(result.reasoning) > 0
     
     @pytest.mark.asyncio
     async def test_empty_conversation_returns_none(self, openai_model):
@@ -125,5 +121,35 @@ class TestZeroshotIntentExtractorIntegration:
         assert result is not None
         assert result.role == ParticipantRole.CUSTOMER
         assert "password" in result.description.lower() or "reset" in result.description.lower()
-        assert 0.0 <= result.confidence <= 1.0
-        assert len(result.reasoning) > 0
+    
+    @pytest.mark.asyncio
+    async def test_no_intent_detected(self, openai_model):
+        """Test that the intent extractor returns None for greeting-only conversations."""
+        # Create a conversation with just greetings
+        now = datetime.now()
+        conversation = Conversation(messages=(
+            Message(
+                sender=ParticipantRole.AGENT,
+                content="Hello! Thank you for calling customer support.",
+                timestamp=now
+            ),
+            Message(
+                sender=ParticipantRole.CUSTOMER,
+                content="Hi there! How are you today?",
+                timestamp=now
+            ),
+            Message(
+                sender=ParticipantRole.AGENT,
+                content="I'm doing well, thank you for asking. How can I assist you today?",
+                timestamp=now
+            ),
+        ))
+        
+        # Create extractor
+        extractor = ZeroshotIntentExtractor(llm=openai_model)
+        
+        # Extract intent
+        result = await extractor.extract_intent(conversation)
+        
+        # Assertions - should return None since there's no clear intent
+        assert result is None, "Expected no intent to be detected for greeting-only conversation"
