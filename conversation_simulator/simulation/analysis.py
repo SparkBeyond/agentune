@@ -1,6 +1,7 @@
 """Analysis functionality for simulation results."""
 
-from __future__ import annotations
+from collections import Counter
+from typing import Iterable
 
 from ..models.conversation import Conversation
 from ..models.results import SimulatedConversation, SimulationAnalysisResult
@@ -50,53 +51,34 @@ async def analyze_simulation_results(
     )
 
 
+def _outcome_distribution(conversations: Iterable[Conversation]) -> OutcomeDistribution:
+    """Compute an ``OutcomeDistribution`` for a collection of conversations."""
+    counts: Counter[str] = Counter()
+    no_outcome = 0
+
+    for conv in conversations:
+        if conv.outcome:
+            counts[conv.outcome.name] += 1
+        else:
+            no_outcome += 1
+
+    total_conversations = counts.total() + no_outcome
+    return OutcomeDistribution(
+        total_conversations=total_conversations,
+        outcome_counts=dict(counts),
+        conversations_without_outcome=no_outcome,
+    )
+
+
 def _analyze_outcome_distributions(
     original_conversations: list[Conversation],
     simulated_conversations: list[Conversation],
 ) -> OutcomeDistributionComparison:
-    """Analyze and compare outcome distributions.
-    
-    Args:
-        original_conversations: Real conversations
-        simulated_conversations: Generated conversations
-        
-    Returns:
-        Comparison of outcome distributions
-    """
-    # Analyze original conversations
-    original_counts: dict[str, int] = {}
-    original_no_outcome = 0
-    
-    for conv in original_conversations:
-        if conv.outcome:
-            outcome_name = conv.outcome.name
-            original_counts[outcome_name] = original_counts.get(outcome_name, 0) + 1
-        else:
-            original_no_outcome += 1
-    
-    original_dist = OutcomeDistribution(
-        total_conversations=len(original_conversations),
-        outcome_counts=original_counts,
-        conversations_without_outcome=original_no_outcome,
-    )
-    
-    # Analyze simulated conversations
-    simulated_counts: dict[str, int] = {}
-    simulated_no_outcome = 0
-    
-    for conv in simulated_conversations:
-        if conv.outcome:
-            outcome_name = conv.outcome.name
-            simulated_counts[outcome_name] = simulated_counts.get(outcome_name, 0) + 1
-        else:
-            simulated_no_outcome += 1
-    
-    simulated_dist = OutcomeDistribution(
-        total_conversations=len(simulated_conversations),
-        outcome_counts=simulated_counts,
-        conversations_without_outcome=simulated_no_outcome,
-    )
-    
+    """Analyze and compare outcome distributions for real vs. generated conversations."""
+
+    original_dist = _outcome_distribution(original_conversations)
+    simulated_dist = _outcome_distribution(simulated_conversations)
+
     return OutcomeDistributionComparison(
         original_distribution=original_dist,
         simulated_distribution=simulated_dist,
