@@ -1,6 +1,6 @@
 """RAG-based agent participant."""
 
-from .rag import RagAgent
+from .rag import RagAgent, RagAgentFactory
 
-__all__ = ["RagAgent"]
+__all__ = ["RagAgent", "RagAgentFactory"]
 

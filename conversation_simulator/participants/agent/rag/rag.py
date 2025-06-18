@@ -17,7 +17,8 @@ from langchain_core.vectorstores import VectorStore
 
 from ....models import Conversation, Message, ParticipantRole
 from ....rag import get_few_shot_examples
-from ..base import Agent
+from ..base import Agent, AgentFactory
+from ..config import AgentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -175,4 +176,36 @@ class RagAgent(Agent):
             vector_store=vector_store,
             k=k,
             target_role=ParticipantRole.AGENT
+        )
+
+
+class RagAgentFactory(AgentFactory):
+    """Factory for creating RAG-based agent participants."""
+    
+    def __init__(
+        self, 
+        model: BaseChatModel, 
+        agent_vector_store: VectorStore,
+        agent_config: AgentConfig | None = None
+    ) -> None:
+        """Initialize the factory.
+        
+        Args:
+            model: LangChain chat model for agent responses
+            agent_vector_store: Vector store containing agent message examples
+            agent_config: Optional configuration for the agent's role and company context
+        """
+        self.model = model
+        self.agent_vector_store = agent_vector_store
+        self.agent_config = agent_config
+    
+    def create_participant(self) -> RagAgent:
+        """Create a RAG agent participant.
+        
+        Returns:
+            RagAgent instance configured with the vector store
+        """
+        return RagAgent(
+            agent_vector_store=self.agent_vector_store,
+            model=self.model
         )

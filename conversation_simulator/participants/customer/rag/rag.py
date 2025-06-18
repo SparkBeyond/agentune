@@ -17,7 +17,7 @@ from langchain_core.vectorstores import VectorStore
 
 from ....models import Conversation, Message, ParticipantRole
 from ....rag import get_few_shot_examples
-from ..base import Customer
+from ..base import Customer, CustomerFactory
 
 logger = logging.getLogger(__name__)
 
@@ -165,4 +165,33 @@ class RagCustomer(Customer):
             vector_store=vector_store,
             k=k,
             target_role=ParticipantRole.CUSTOMER
+        )
+
+
+class RagCustomerFactory(CustomerFactory):
+    """Factory for creating RAG-based customer participants."""
+    
+    def __init__(
+        self, 
+        model: BaseChatModel, 
+        customer_vector_store: VectorStore
+    ) -> None:
+        """Initialize the factory.
+        
+        Args:
+            model: LangChain chat model for customer responses
+            customer_vector_store: Vector store containing customer message examples
+        """
+        self.model = model
+        self.customer_vector_store = customer_vector_store
+    
+    def create_participant(self) -> RagCustomer:
+        """Create a RAG customer participant.
+        
+        Returns:
+            RagCustomer instance configured with the vector store
+        """
+        return RagCustomer(
+            customer_vector_store=self.customer_vector_store,
+            model=self.model
         )
