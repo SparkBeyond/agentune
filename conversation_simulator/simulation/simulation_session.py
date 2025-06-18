@@ -1,4 +1,3 @@
-
 """Full simulation flow implementation."""
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ class SimulationSession:
         intent_extractor: IntentExtractor,
         agent_factory: AgentFactory,
         customer_factory: CustomerFactory,
+        outcomes: Outcomes,
         outcome_detector: OutcomeDetector,
         adversarial_tester: AdversarialTester,
         session_name: str = "Simulation Session",
@@ -46,6 +46,7 @@ class SimulationSession:
             intent_extractor: Strategy for extracting intents from conversations
             agent_factory: Factory for creating agent participants
             customer_factory: Factory for creating customer participants
+            outcomes: Legal outcome labels for this simulation run
             outcome_detector: Strategy for detecting conversation outcomes
             session_name: Human-readable name for this session
             session_description: Description of this simulation session
@@ -53,6 +54,7 @@ class SimulationSession:
         """
         self.intent_extractor = intent_extractor
         self.agent_factory = agent_factory
+        self.outcomes = outcomes
         self.customer_factory = customer_factory
         self.outcome_detector = outcome_detector
         self.adversarial_tester = adversarial_tester
@@ -63,14 +65,12 @@ class SimulationSession:
     async def run_simulation(
         self,
         real_conversations: list[Conversation],
-        outcomes: Outcomes,
     ) -> SimulationSessionResult:
         """Execute the full simulation flow.
         
         Args:
             real_conversations: Original conversations to base simulations on
-            outcomes: Legal outcome labels for this simulation run
-            
+         
         Returns:
             Complete simulation results with analysis
         """
@@ -86,8 +86,8 @@ class SimulationSession:
         scenarios = await self._generate_scenarios(original_conversations)
         
         # Step 2: Run simulations for each scenario
-        simulated_conversations = await self._run_simulations(scenarios, outcomes)
-        
+        simulated_conversations = await self._run_simulations(scenarios)
+         
         # Step 3: Analyze results
         session_end = datetime.now()
         
@@ -159,7 +159,6 @@ class SimulationSession:
     async def _run_simulations(
         self,
         scenarios: tuple[Scenario, ...],
-        outcomes: Outcomes,
     ) -> tuple[SimulatedConversation, ...]:
         """Run conversation simulations for all scenarios.
         
@@ -169,7 +168,6 @@ class SimulationSession:
         
         Args:
             scenarios: Scenarios to simulate
-            outcomes: Legal outcome labels
             
         Returns:
             Tuple of simulated conversations with proper ID mapping
@@ -187,7 +185,7 @@ class SimulationSession:
                 agent=agent,
                 initial_message=scenario.initial_message,
                 intent=scenario.intent,
-                outcomes=outcomes,
+                outcomes=self.outcomes,
                 outcome_detector=self.outcome_detector,
                 max_messages=self.max_messages,
             )

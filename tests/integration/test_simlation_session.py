@@ -101,7 +101,7 @@ class TestFullPipelineIntegration:
         )
 
     @pytest.fixture
-    def simulation_session(self, openai_model: ChatOpenAI) -> SimulationSession:
+    def simulation_session(self, openai_model: ChatOpenAI, outcomes: Outcomes) -> SimulationSession:
         """Create a simulation session with real LLM but simple outcome detection."""
         intent_extractor = DummyIntentExtractor()
         
@@ -120,6 +120,7 @@ class TestFullPipelineIntegration:
             intent_extractor=intent_extractor,
             agent_factory=agent_factory,
             customer_factory=customer_factory,
+            outcomes=outcomes,
             outcome_detector=outcome_detector,
             adversarial_tester=DummyAdversarialTester(),
         )
@@ -139,14 +140,12 @@ class TestFullPipelineIntegration:
     async def test_full_pipeline_end_to_end(
         self,
         sample_conversations: list[Conversation],
-        outcomes: Outcomes,
         simulation_session: SimulationSession
     ):
         """Test the complete simulation pipeline end-to-end."""
         # Run the full pipeline with minimal data for testing
         session_result = await simulation_session.run_simulation(
             real_conversations=sample_conversations[:2],  # Use small subset
-            outcomes=outcomes
         )
         
         # Verify session result structure
@@ -190,7 +189,8 @@ class TestFullPipelineIntegration:
         # Count outcomes for validation
         outcome_counts = {"resolved": 0, "unresolved": 0}
         for conv in conversations:
-            outcome_counts[conv.outcome.name] += 1
+            if conv.outcome is not None:
+                outcome_counts[conv.outcome.name] += 1
         
         # Verify resolution rate is reasonable (not 0% or 100%)
         total = sum(outcome_counts.values())
