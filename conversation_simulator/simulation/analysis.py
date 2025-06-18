@@ -184,15 +184,3 @@ async def _evaluate_adversarial_quality(
         total_pairs_evaluated=-1,
         correct_identifications=-1,
     )
-
-
-def _create_placeholder_adversarial_evaluation() -> AdversarialEvaluationResult:
-    """Create placeholder adversarial evaluation result.
-    
-    Returns:
-        Placeholder evaluation result
-    """
-    return AdversarialEvaluationResult(
-        total_pairs_evaluated=0,
-        correct_identifications=0
-    )

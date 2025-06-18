@@ -39,15 +39,14 @@ class SimpleOutcomeDetector(OutcomeDetector):
 
 class DummyAdversarialTester(AdversarialTester):
     """Mock adversarial tester for testing purposes."""
-    
-    async def identify_real_conversation(
-            self,
-            conversation_1: Conversation,
-            conversation_2: Conversation,
-        ) -> int:
-            # Simple heuristic: if conversation_1 has more messages, it's real
-            return 0 if len(conversation_1.messages) > len(conversation_2.messages) else 1
 
+    async def identify_real_conversation(
+        self,
+        real_conversation: Conversation,
+        simulated_conversation: Conversation
+    ) -> bool:
+        """Mock adversarial testing - always return 0 (first conversation is real)."""
+        return len(real_conversation.messages) >= len(simulated_conversation.messages)
 
 @pytest.mark.integration
 class TestFullPipelineIntegration:
