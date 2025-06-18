@@ -1,16 +1,19 @@
 """Zero-shot intent extraction implementation using a language model."""
 
+import logging
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from typing import Optional
 
-import logging
 from ..models.conversation import Conversation
 from ..models.intent import Intent
 from ..models.roles import ParticipantRole
+
 from .base import IntentExtractor
 from .prompts import create_intent_extraction_prompt, format_conversation
+
+logger = logging.getLogger(__name__)
 
 
 class IntentExtractionResult(BaseModel):
@@ -89,5 +92,5 @@ class ZeroshotIntentExtractor(IntentExtractor):
         except Exception as e:
             # Log the error and return None
             # In a production environment, you might want to log this to a proper logging system
-            logging.error(f"Failed to extract intent: {e}")
+            logger.error(f"Failed to extract intent: {e}")
             return None
