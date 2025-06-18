@@ -17,7 +17,7 @@ from .models.analysis import OutcomeDistribution, MessageDistributionStats, Adve
 from .models.scenario import Scenario
 
 # Base classes
-from .participants.base import Participant
+from .participants.base import Participant, ParticipantFactory
 from .runners.base import Runner
 
 # Runners
@@ -51,6 +51,7 @@ __all__ = [
     "Scenario",
     # Base classes
     "Participant",
+    "ParticipantFactory",
     "Runner",
     # Runners
     "FullSimulationRunner",

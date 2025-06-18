@@ -36,3 +36,20 @@ class Participant(abc.ABC):
             New participant instance with the intent installed
         """
         ...
+
+
+class ParticipantFactory(abc.ABC):
+    """Abstract base factory for creating conversation participants.
+    
+    This base class provides a common interface for all participant factories,
+    enabling polymorphic creation of both customer and agent participants.
+    """
+    
+    @abc.abstractmethod
+    def create_participant(self) -> Participant:
+        """Create a conversation participant.
+        
+        Returns:
+            Configured participant instance
+        """
+        ...

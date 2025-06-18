@@ -2,7 +2,7 @@
 
 import abc
 
-from ..base import Participant
+from ..base import Participant, ParticipantFactory
 from ...models.roles import ParticipantRole
 
 
@@ -19,7 +19,7 @@ class Agent(Participant):
         return ParticipantRole.AGENT
 
 
-class AgentFactory(abc.ABC):
+class AgentFactory(ParticipantFactory):
     """Abstract base factory for creating agent participants."""
     
     @abc.abstractmethod

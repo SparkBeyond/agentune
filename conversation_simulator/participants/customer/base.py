@@ -2,7 +2,7 @@
 
 import abc
 
-from ..base import Participant
+from ..base import Participant, ParticipantFactory
 from ...models.roles import ParticipantRole
 
 
@@ -19,7 +19,7 @@ class Customer(Participant):
         return ParticipantRole.CUSTOMER
 
 
-class CustomerFactory(abc.ABC):
+class CustomerFactory(ParticipantFactory):
     """Abstract base factory for creating customer participants."""
     
     @abc.abstractmethod
