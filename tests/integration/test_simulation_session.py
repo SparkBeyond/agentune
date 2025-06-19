@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from datetime import datetime
 
 import pytest
-import cattrs
+from cattrs.preconf.orjson import make_converter
 from langchain_openai import ChatOpenAI
 
 from conversation_simulator import SimulationSession
@@ -28,6 +27,10 @@ from conversation_simulator.participants.agent.config import AgentConfig
 from conversation_simulator.participants.agent.zero_shot import ZeroShotAgentFactory
 from conversation_simulator.participants.customer.zero_shot import ZeroShotCustomerFactory
 from conversation_simulator.simulation.adversarial import AdversarialTester
+
+
+# Configure cattrs for JSON serialization with datetime handling
+converter = make_converter()
 
 
 class SimpleOutcomeDetector(OutcomeDetector):
@@ -165,18 +168,18 @@ class TestFullPipelineIntegration:
         """Test that the simplified dataset has expected properties."""
 
         # Configure cattrs with only necessary hooks
-        converter = cattrs.Converter()
+        # converter = cattrs.Converter()
 
-        def timestamp_from_str(ts_str: str) -> datetime:
-            if not isinstance(ts_str, str):
-                raise ValueError("Invalid timestamp format")
-            return datetime.fromisoformat(ts_str)
+        # def timestamp_from_str(ts_str: str) -> datetime:
+        #     if not isinstance(ts_str, str):
+        #         raise ValueError("Invalid timestamp format")
+        #     return datetime.fromisoformat(ts_str)
         
-        # Register datetime conversion hook
-        converter.register_structure_hook(
-            datetime, 
-            lambda ts_str, _: timestamp_from_str(ts_str)
-        )
+        # # Register datetime conversion hook
+        # converter.register_structure_hook(
+        #     datetime, 
+        #     lambda ts_str, _: timestamp_from_str(ts_str)
+        # )
         
         # Load and convert data
         with open(dch2_dataset_path, encoding="utf-8") as f:
