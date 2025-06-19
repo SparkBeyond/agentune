@@ -166,20 +166,6 @@ class TestFullPipelineIntegration:
 
     def test_dataset_statistics(self, dch2_dataset_path: Path):
         """Test that the simplified dataset has expected properties."""
-
-        # Configure cattrs with only necessary hooks
-        # converter = cattrs.Converter()
-
-        # def timestamp_from_str(ts_str: str) -> datetime:
-        #     if not isinstance(ts_str, str):
-        #         raise ValueError("Invalid timestamp format")
-        #     return datetime.fromisoformat(ts_str)
-        
-        # # Register datetime conversion hook
-        # converter.register_structure_hook(
-        #     datetime, 
-        #     lambda ts_str, _: timestamp_from_str(ts_str)
-        # )
         
         # Load and convert data
         with open(dch2_dataset_path, encoding="utf-8") as f:
