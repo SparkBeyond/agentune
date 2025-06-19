@@ -14,6 +14,7 @@ documentation = "https://github.com/SparkBeyond/conversation-simulator"
 python = "3.12.6"
 # Core dependencies
 attrs = "^25.3.0"
+cattrs = "^25.1.1"
 
 # LLM Integration
 langchain = "^0.3.25"
