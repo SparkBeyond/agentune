@@ -38,9 +38,9 @@ class SimulationSessionBuilder:
     """
     
     chat_model: BaseChatModel
+    outcomes: Outcomes
     agent_factory: AgentFactory
     customer_factory: CustomerFactory
-    outcomes: Outcomes
     session_name: str = "Simulation Session"
     session_description: str = "Automated conversation simulation"
     max_messages: int = 100
@@ -96,10 +96,10 @@ class SimulationSessionBuilder:
             SimulationSession: A fully configured simulation session
         """
         return SimulationSession(
-            intent_extractor=self._intent_extractor or ZeroshotIntentExtractor(self.chat_model),
+            outcomes=self.outcomes,
             agent_factory=self.agent_factory,
             customer_factory=self.customer_factory,
-            outcomes=self.outcomes,
+            intent_extractor=self._intent_extractor or ZeroshotIntentExtractor(self.chat_model),
             outcome_detector=self._outcome_detector or ZeroshotOutcomeDetector(self.chat_model),
             adversarial_tester=self._adversarial_tester or DummyAdversarialTester(),
             session_name=self.session_name,

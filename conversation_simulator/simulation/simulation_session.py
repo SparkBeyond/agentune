@@ -30,10 +30,10 @@ class SimulationSession:
     
     def __init__(
         self,
-        intent_extractor: IntentExtractor,
+        outcomes: Outcomes,
         agent_factory: AgentFactory,
         customer_factory: CustomerFactory,
-        outcomes: Outcomes,
+        intent_extractor: IntentExtractor,
         outcome_detector: OutcomeDetector,
         adversarial_tester: AdversarialTester,
         session_name: str = "Simulation Session",
@@ -43,19 +43,20 @@ class SimulationSession:
         """Initialize the simulation session.
         
         Args:
-            intent_extractor: Strategy for extracting intents from conversations
+            outcomes: Legal outcome labels for this simulation run
             agent_factory: Factory for creating agent participants
             customer_factory: Factory for creating customer participants
-            outcomes: Legal outcome labels for this simulation run
+            intent_extractor: Strategy for extracting intents from conversations
             outcome_detector: Strategy for detecting conversation outcomes
+            adversarial_tester: Strategy for adversarial testing
             session_name: Human-readable name for this session
             session_description: Description of this simulation session
             max_messages: Maximum number of messages per conversation in simulation
         """
-        self.intent_extractor = intent_extractor
-        self.agent_factory = agent_factory
         self.outcomes = outcomes
+        self.agent_factory = agent_factory
         self.customer_factory = customer_factory
+        self.intent_extractor = intent_extractor
         self.outcome_detector = outcome_detector
         self.adversarial_tester = adversarial_tester
         self.session_name = session_name
