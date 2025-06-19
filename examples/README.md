@@ -39,29 +39,29 @@ python examples/simple_rag_simulation.py
 - Saves results to `simple_simulation_results.json`
 
 **What it demonstrates:**
-1. **Data Loading**: Parse real conversation data from JSON using cattrs ([`load_sample_conversations()`](./simple_rag_simulation.py#L59-L78))
-2. **Outcome Extraction**: Automatically extract unique outcomes from conversations ([`extract_outcomes_from_conversations()`](./simple_rag_simulation.py#L84-L102))
-3. **Vector Store Setup**: Create InMemoryVectorStore embeddings for RAG retrieval ([`build_simple_vector_stores()`](./simple_rag_simulation.py#L105-L145))
-4. **Participant Creation**: Initialize RAG-based agents and customers ([`run_rag_simulation()`](./simple_rag_simulation.py#L180-L192))
-5. **Session Building**: Configure simulation parameters ([`run_rag_simulation()`](./simple_rag_simulation.py#L194-L207))
-6. **Execution**: Run the complete simulation pipeline ([`run_rag_simulation()`](./simple_rag_simulation.py#L209-L218))
-7. **Analysis**: Generate outcome distributions and analysis ([`print_simple_summary()`](./simple_rag_simulation.py#L222-L266))
-8. **Results Export**: Save structured results to JSON with datetime handling ([`main()`](./simple_rag_simulation.py#L295-L304))
+1. **Data Loading**: Parse real conversation data from JSON using cattrs
+2. **Outcome Extraction**: Automatically extract unique outcomes from conversations
+3. **Vector Store Setup**: Create InMemoryVectorStore embeddings for RAG retrieval
+4. **Participant Creation**: Initialize RAG-based agents and customers
+5. **Session Building**: Configure simulation parameters
+6. **Execution**: Run the complete simulation pipeline
+7. **Analysis**: Generate outcome distributions and analysis
+8. **Results Export**: Save structured results to JSON with datetime handling
 
 ## Code Structure Reference
 
 For developers who want to understand or modify the example:
 
-- **Main execution flow**: [`main()`](./simple_rag_simulation.py#L275-L318)
-- **Data loading utilities**: [`load_sample_conversations()`](./simple_rag_simulation.py#L59-L78), [`extract_outcomes_from_conversations()`](./simple_rag_simulation.py#L84-L102)
-- **Vector store setup**: [`build_simple_vector_stores()`](./simple_rag_simulation.py#L105-L148)
+- **Main execution flow**: [`main()`](./simple_rag_simulation.py#L271-L315)
+- **Data loading utilities**: [`load_sample_conversations()`](./simple_rag_simulation.py#L59-L81), [`extract_outcomes_from_conversations()`](./simple_rag_simulation.py#L84-L107)
+- **Vector store setup**: [`build_simple_vector_stores()`](./simple_rag_simulation.py#L109-L149)
 - **Core simulation logic**: [`run_rag_simulation()`](./simple_rag_simulation.py#L151-L220)
 - **Results analysis**: [`print_simple_summary()`](./simple_rag_simulation.py#L223-L269)
 
 ### Key Library Components Used
 
 - **Models**: [`Conversation`](../conversation_simulator/models/conversation.py), [`Outcomes`](../conversation_simulator/models/outcome.py), [`SimulationSessionResult`](../conversation_simulator/models/results.py)
-- **Participants**: [`RagAgentFactory`](../conversation_simulator/participants/agent/rag.py), [`RagCustomerFactory`](../conversation_simulator/participants/customer/rag.py)
+- **Participants**: [`RagAgentFactory`](../conversation_simulator/participants/agent/rag/rag.py), [`RagCustomerFactory`](../conversation_simulator/participants/customer/rag/rag.py)
 - **Session Builder**: [`SimulationSessionBuilder`](../conversation_simulator/simulation/session_builder.py)
 - **RAG Utilities**: [`conversations_to_langchain_documents`](../conversation_simulator/rag/commons.py)
 

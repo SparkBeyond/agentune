@@ -197,13 +197,11 @@ async def run_rag_simulation(
         chat_model=chat_model,
         agent_factory=agent_factory,
         customer_factory=customer_factory,
-        outcomes=outcomes
+        outcomes=outcomes,
+        session_name="RAG Simulation",
+        session_description=f"RAG-based simulation using {chat_model_name} with {len(reference_conversations)} reference conversations",
+        max_messages=20,  # Reasonable limit for the example
     ).build()
-    
-    # Configure session
-    session.session_name = "RAG Simulation"
-    session.session_description = f"RAG-based simulation using {chat_model_name} with {len(reference_conversations)} reference conversations"
-    session.max_messages = 20  # Keep it reasonable for the example
     
     logger.info(f"Running simulation with max {session.max_messages} messages per conversation")
     

@@ -14,7 +14,7 @@ def _format_conversation_history(messages: Sequence[Message]) -> str:
     """Formats a list of messages into a single string."""
     return "\n".join([f"{msg.sender.value.capitalize()}: {msg.content}" for msg in messages])
 
-# Decouple this too. 
+
 def conversations_to_langchain_documents(
     conversations: List[Conversation],
     role: ParticipantRole,
