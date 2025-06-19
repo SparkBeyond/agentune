@@ -12,9 +12,12 @@ A tool for simulating Customer-Agent conversations based on real chat data.
 
 2. Set up the development environment (see [Development Guide](./docs/development/dev_guide.md))
 
+3. Try the examples to see the library in action (see [Examples](./examples/README.md))
+
 ## Project Structure
 
 - `conversation_simulator/` - Package source code
+- `examples/` - Usage examples and tutorials
 - `tests/` - Test files
 - `docs/` - Project documentation
 
