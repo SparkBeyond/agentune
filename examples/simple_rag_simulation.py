@@ -43,11 +43,7 @@ from conversation_simulator.participants.customer.rag import RagCustomerFactory
 from conversation_simulator.rag import conversations_to_langchain_documents
 from conversation_simulator.simulation.session_builder import SimulationSessionBuilder
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Get module logger
 logger = logging.getLogger(__name__)
 
 # Configure cattrs for JSON serialization with datetime handling
@@ -309,4 +305,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
     asyncio.run(main())
