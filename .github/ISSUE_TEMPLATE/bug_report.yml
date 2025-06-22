@@ -1,0 +1,25 @@
+name: Bug Report
+description: Something isn't working
+labels: [type:bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      placeholder: |
+        Describe the bug
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to Reproduce
+      placeholder: |
+        ```python
+        # Code that reproduces the issue
+        ```
+    validations:
+      required: false
