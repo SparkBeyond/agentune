@@ -1,6 +1,6 @@
 """Full simulation flow implementation."""
 
-from __future__ import annotations
+import asyncio
 from datetime import datetime
 
 from ..models.conversation import Conversation
@@ -173,15 +173,13 @@ class SimulationSession:
         Returns:
             Tuple of simulated conversations with proper ID mapping
         """
-        simulated_conversations = []
         
-        for scenario in scenarios:
+        def create_runner(scenario: Scenario) -> FullSimulationRunner:
             # Create participants - FullSimulationRunner will install intent as needed
             customer = self.customer_factory.create_participant()
             agent = self.agent_factory.create_participant()
             
-            # Create and run simulation
-            runner = FullSimulationRunner(
+            return FullSimulationRunner(
                 customer=customer,
                 agent=agent,
                 initial_message=scenario.initial_message,
@@ -190,20 +188,24 @@ class SimulationSession:
                 outcome_detector=self.outcome_detector,
                 max_messages=self.max_messages,
             )
-            
-            result = await runner.run()
-            
-            # Create simulated conversation record with simple unique ID
-            # The original_conversation_id field maintains the mapping back to source
-            simulated_id = f"simulated_{len(simulated_conversations)}"
-            simulated_conv = SimulatedConversation(
-                id=simulated_id,          
+        
+        # Create all runners
+        runners = [create_runner(scenario) for scenario in scenarios]
+        
+        # Run all simulations concurrently
+        results = await asyncio.gather(*[runner.run() for runner in runners])
+        
+        # Wrap results with SimulatedConversation
+        simulated_conversations = tuple(
+            SimulatedConversation(
+                id=f"simulated_{i}",
                 scenario_id=scenario.id,
                 original_conversation_id=scenario.original_conversation_id,
                 conversation=result.conversation,
             )
-            simulated_conversations.append(simulated_conv)
+            for i, (scenario, result) in enumerate(zip(scenarios, results))
+        )
         
-        return tuple(simulated_conversations)
+        return simulated_conversations
 
 
