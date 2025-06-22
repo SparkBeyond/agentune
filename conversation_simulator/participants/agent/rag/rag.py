@@ -85,8 +85,8 @@ class RagAgent(Agent):
         # 3. Generation
         chain = self._create_llm_chain(model=self.model)
         response_content = await chain.ainvoke({
-            "examples": "\n\n".join([msg.content for msg in formatted_examples]),
-            "current_conversation": "\n".join([msg.content for msg in chat_history]),
+            "examples": "\n\n".join([str(msg.content) for msg in formatted_examples]),
+            "current_conversation": "\n".join([str(msg.content) for msg in chat_history]),
         })
 
         if not response_content.strip():

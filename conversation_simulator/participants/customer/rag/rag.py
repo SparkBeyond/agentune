@@ -83,8 +83,8 @@ class RagCustomer(Customer):
         customer_goal = self.intent_description if self.intent_description else "resolve your issue"
         response_content = await chain.ainvoke(
             {
-                "examples": "\n\n".join([msg.content for msg in formatted_examples]),
-                "current_conversation": "\n".join([msg.content for msg in chat_history_langchain]),
+                "examples": "\n\n".join([str(msg.content) for msg in formatted_examples]),
+                "current_conversation": "\n".join([str(msg.content) for msg in chat_history_langchain]),
                 "customer_goal": customer_goal
             }
         )
