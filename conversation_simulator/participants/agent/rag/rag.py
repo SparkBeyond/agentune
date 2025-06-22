@@ -8,9 +8,8 @@ from datetime import datetime, timedelta
 from typing import List, Sequence
 
 from langchain_core.documents import Document
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
@@ -19,6 +18,7 @@ from ....models import Conversation, Message, ParticipantRole
 from ....rag import get_few_shot_examples
 from ..base import Agent, AgentFactory
 from ..config import AgentConfig
+from .prompt import AGENT_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -49,29 +49,12 @@ class RagAgent(Agent):
     
     def _create_llm_chain(self, model: BaseChatModel) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the agent."""
-        # Construct the system prompt
-        base_system_prompt = """You are a helpful customer service agent.
-- Your primary goal is to assist the user with their issue based on the conversation history and relevant examples.
-- If few-shot examples are provided, use them to understand the tone, style, and common solutions.
-- If no examples are relevant, rely on your general knowledge and the conversation history.
-- Keep your responses clear, concise, and professional."""
-
-        if self.intent_description:
-            system_prompt_content = f"Your primary goal is: {self.intent_description}\n\n{base_system_prompt}"
-        else:
-            system_prompt_content = base_system_prompt
-
-        # The `MessagesPlaceholder` is a special variable that can hold a sequence of messages.
-        # `few_shot_examples` will be a list of alternating Human/AI messages.
-        # `chat_history` will be the messages from the current conversation.
-        prompt_template = ChatPromptTemplate.from_messages([
-            SystemMessage(content=system_prompt_content),
-            MessagesPlaceholder(variable_name="few_shot_examples"),
-            MessagesPlaceholder(variable_name="chat_history"),
-        ])
-
-        # Return the runnable chain
-        return prompt_template | model | StrOutputParser()
+        # Use the imported AGENT_PROMPT from prompt.py
+        # If there's an intent description, we can modify the system message
+        prompt = AGENT_PROMPT
+        
+        # Return the runnable chain with the imported prompt
+        return prompt | model | StrOutputParser()
 
     def with_intent(self, intent_description: str) -> RagAgent:
         """Return a new RagAgent instance with the specified intent."""
@@ -102,8 +85,8 @@ class RagAgent(Agent):
         # 3. Generation
         chain = self._create_llm_chain(model=self.model)
         response_content = await chain.ainvoke({
-            "few_shot_examples": formatted_examples,
-            "chat_history": chat_history,
+            "examples": "\n\n".join([msg.content for msg in formatted_examples]),
+            "current_conversation": "\n".join([msg.content for msg in chat_history]),
         })
 
         if not response_content.strip():

@@ -8,9 +8,8 @@ from datetime import datetime, timedelta
 from typing import List, Sequence
 
 from langchain_core.documents import Document
-from langchain_core.messages import BaseMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
@@ -18,6 +17,7 @@ from langchain_core.vectorstores import VectorStore
 from ....models import Conversation, Message, ParticipantRole
 from ....rag import get_few_shot_examples
 from ..base import Customer, CustomerFactory
+from .prompt import CUSTOMER_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -46,20 +46,11 @@ class RagCustomer(Customer):
 
     def _create_llm_chain(self, model: BaseChatModel) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the customer."""
-        base_system_prompt = CUSTOMER_SYSTEM_PROMPT
-
-        if self.intent_description:
-            system_prompt_content = f"Your goal: {self.intent_description}\n\n{base_system_prompt}"
-        else:
-            system_prompt_content = base_system_prompt
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                SystemMessage(content=system_prompt_content),
-                MessagesPlaceholder(variable_name="few_shot_examples"),
-                MessagesPlaceholder(variable_name="chat_history"),
-            ]
-        )
+        # Use the imported CUSTOMER_PROMPT from prompt.py
+        # The customer goal will be passed in the invoke parameters
+        prompt = CUSTOMER_PROMPT
+        
+        # Prepare the chain with the imported prompt
         return prompt | model | StrOutputParser()
 
     def with_intent(self, intent_description: str) -> RagCustomer:
@@ -89,10 +80,12 @@ class RagCustomer(Customer):
 
         # 3. Generation
         chain = self._create_llm_chain(model=self.model)
+        customer_goal = self.intent_description if self.intent_description else "resolve your issue"
         response_content = await chain.ainvoke(
             {
-                "few_shot_examples": formatted_examples,
-                "chat_history": chat_history_langchain,
+                "examples": "\n\n".join([msg.content for msg in formatted_examples]),
+                "current_conversation": "\n".join([msg.content for msg in chat_history_langchain]),
+                "customer_goal": customer_goal
             }
         )
 
