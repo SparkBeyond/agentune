@@ -1,6 +1,7 @@
 """Full simulation flow implementation."""
 
 from __future__ import annotations
+import asyncio
 from datetime import datetime
 
 from ..models.conversation import Conversation
@@ -126,36 +127,102 @@ class SimulationSession:
         Returns:
             Tuple of scenarios for simulation
         """
+        # Filter out empty conversations first
+        valid_conversations = [
+            conv for conv in original_conversations
+            if conv.conversation.messages
+        ]
+        
+        if not valid_conversations:
+            return tuple()
+        
+        # Try to use batch processing if available, otherwise fall back to sequential
+        intents = await self._extract_intents_batch(valid_conversations)
+        
         scenarios = []
-
-        for original_conv in original_conversations:
-            # Skip empty conversations
-            if not original_conv.conversation.messages:
-                continue
-
-            # Use first message as initial message for scenario
-            initial_message = MessageDraft(
-                sender=original_conv.conversation.messages[0].sender,
-                content=original_conv.conversation.messages[0].content,
-            )
-
-            # Extract intent from conversation
-            intent = await self.intent_extractor.extract_intent(original_conv.conversation)
-            
+        for conv, intent in zip(valid_conversations, intents):
             if intent is None:
                 continue  # Skip conversations where intent couldn't be extracted
+            
+            # Use first message as initial message for scenario
+            initial_message = MessageDraft(
+                sender=conv.conversation.messages[0].sender,
+                content=conv.conversation.messages[0].content,
+            )
+
             # Create scenario with simple unique ID
             scenario_id = f"scenario_{len(scenarios)}"
             
             scenario = Scenario(
                 id=scenario_id,
-                original_conversation_id=original_conv.id,
+                original_conversation_id=conv.id,
                 intent=intent,
                 initial_message=initial_message,
             )
             scenarios.append(scenario)
         
         return tuple(scenarios)
+    
+    async def _extract_intents_batch(
+        self,
+        conversations: list[OriginalConversation],
+    ) -> list[Intent | None]:
+        """Extract intents from multiple conversations, using batch processing if available.
+        
+        Args:
+            conversations: List of conversations to extract intents from
+            
+        Returns:
+            List of extracted intents (or None for failed extractions)
+        """
+        # Check if the intent extractor supports batch processing
+        if hasattr(self.intent_extractor, '_chain') and hasattr(self.intent_extractor._chain, 'abatch'):
+            # Use LangChain's abatch for concurrent processing
+            try:
+                from .prompts import format_conversation
+                
+                # Prepare batch inputs
+                batch_inputs = []
+                for conv in conversations:
+                    formatted_conversation = format_conversation(conv.conversation)
+                    batch_inputs.append({"conversation": formatted_conversation})
+                
+                # Process batch
+                results = await self.intent_extractor._chain.abatch(batch_inputs)
+                
+                # Convert results to intents
+                intents = []
+                for result in results:
+                    try:
+                        intent = result.to_intent() if hasattr(result, 'to_intent') else None
+                        intents.append(intent)
+                    except Exception:
+                        intents.append(None)
+                
+                return intents
+                
+            except Exception:
+                # Fall back to sequential processing if batch fails
+                pass
+        
+        # Fall back to sequential processing using asyncio.gather for concurrency
+        tasks = [
+            self.intent_extractor.extract_intent(conv.conversation)
+            for conv in conversations
+        ]
+        
+        # Use gather with return_exceptions=True to handle individual failures
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Convert exceptions to None
+        intents = []
+        for result in results:
+            if isinstance(result, Exception):
+                intents.append(None)
+            else:
+                intents.append(result)
+        
+        return intents
     
     async def _run_simulations(
         self,
@@ -173,9 +240,9 @@ class SimulationSession:
         Returns:
             Tuple of simulated conversations with proper ID mapping
         """
-        simulated_conversations = []
         
-        for scenario in scenarios:
+        async def run_single_simulation(scenario: Scenario, sim_index: int) -> SimulatedConversation:
+            """Run a single simulation and return the result."""
             # Create participants - FullSimulationRunner will install intent as needed
             customer = self.customer_factory.create_participant()
             agent = self.agent_factory.create_participant()
@@ -195,14 +262,21 @@ class SimulationSession:
             
             # Create simulated conversation record with simple unique ID
             # The original_conversation_id field maintains the mapping back to source
-            simulated_id = f"simulated_{len(simulated_conversations)}"
-            simulated_conv = SimulatedConversation(
+            simulated_id = f"simulated_{sim_index}"
+            return SimulatedConversation(
                 id=simulated_id,          
                 scenario_id=scenario.id,
                 original_conversation_id=scenario.original_conversation_id,
                 conversation=result.conversation,
             )
-            simulated_conversations.append(simulated_conv)
+        
+        # Run all simulations concurrently using asyncio.gather
+        simulation_tasks = [
+            run_single_simulation(scenario, i) 
+            for i, scenario in enumerate(scenarios)
+        ]
+        
+        simulated_conversations = await asyncio.gather(*simulation_tasks)
         
         return tuple(simulated_conversations)
 
