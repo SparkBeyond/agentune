@@ -1,0 +1,11 @@
+name: Maintenance
+description: Code cleanup, dependencies, technical debt, doc updates, etc.
+labels: [type:maintenance]
+body:
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      placeholder: Brief context
+    validations:
+      required: true

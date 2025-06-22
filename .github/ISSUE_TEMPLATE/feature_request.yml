@@ -1,0 +1,16 @@
+name: Feature Request
+description: Propose a new capability
+labels: [type:feature]
+body:
+  - type: textarea
+    id: feature
+    attributes:
+      label: Description
+      placeholder: |
+        Describe the feature or capability you want to add.
+        ## What should it do? How should it work?
+
+        ## Rough approach or design thoughts
+        # Can be code, architecture notes, or just concepts
+    validations:
+      required: true
