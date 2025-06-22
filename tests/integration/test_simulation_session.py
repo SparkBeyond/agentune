@@ -26,7 +26,7 @@ from conversation_simulator.outcome_detection.base import OutcomeDetector
 from conversation_simulator.participants.agent.config import AgentConfig
 from conversation_simulator.participants.agent.zero_shot import ZeroShotAgentFactory
 from conversation_simulator.participants.customer.zero_shot import ZeroShotCustomerFactory
-from conversation_simulator.simulation.adversarial import AdversarialTester
+from conversation_simulator.simulation.adversarial import ZeroShotAdversarialTester
 
 
 # Configure cattrs for JSON serialization with datetime handling
@@ -35,23 +35,12 @@ converter = make_converter()
 
 class SimpleOutcomeDetector(OutcomeDetector):
     """Mock outcome detector for testing."""
-    
+
     async def detect_outcome(self, conversation: Conversation, intent: Intent, possible_outcomes: Outcomes) -> Outcome | None:
         """Mock outcome detection - return first available outcome."""
         if possible_outcomes.outcomes:
             return possible_outcomes.outcomes[0]
         return None
-
-class DummyAdversarialTester(AdversarialTester):
-    """Mock adversarial tester for testing purposes."""
-
-    async def identify_real_conversation(
-        self,
-        real_conversation: Conversation,
-        simulated_conversation: Conversation
-    ) -> bool:
-        """Mock adversarial testing - always return 0 (first conversation is real)."""
-        return len(real_conversation.messages) >= len(simulated_conversation.messages)
 
 @pytest.mark.integration
 class TestFullPipelineIntegration:
@@ -125,7 +114,7 @@ class TestFullPipelineIntegration:
             customer_factory=customer_factory,
             outcomes=outcomes,
             outcome_detector=outcome_detector,
-            adversarial_tester=DummyAdversarialTester(),
+            adversarial_tester=ZeroShotAdversarialTester(model=openai_model, max_concurrency=10),
         )
 
     @pytest.mark.asyncio

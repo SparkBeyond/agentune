@@ -25,7 +25,7 @@ from .runners.full_simulation import FullSimulationRunner
 
 # Simulation orchestration
 from .simulation import SimulationSession
-from .simulation.session_builder import SimulationSessionBuilder, DummyAdversarialTester
+from .simulation.session_builder import SimulationSessionBuilder
 
 __version__ = "0.1.0"
 
@@ -59,5 +59,4 @@ __all__ = [
     # Simulation orchestration
     "SimulationSession",
     "SimulationSessionBuilder",
-    "DummyAdversarialTester",
 ]

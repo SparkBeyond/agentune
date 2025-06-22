@@ -17,7 +17,7 @@ from conversation_simulator.outcome_detection.zeroshot import ZeroshotOutcomeDet
 from conversation_simulator.participants.agent.base import AgentFactory
 from conversation_simulator.participants.customer.base import CustomerFactory
 from conversation_simulator.simulation.adversarial.base import AdversarialTester
-from conversation_simulator.simulation.adversarial.dummy import DummyAdversarialTester
+from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
 from conversation_simulator.simulation.simulation_session import SimulationSession
 
 
@@ -90,7 +90,7 @@ class SimulationSessionBuilder:
         This method instantiates default components if they weren't explicitly set:
         - ZeroshotIntentExtractor for intent extraction
         - ZeroshotOutcomeDetector for outcome detection
-        - DummyAdversarialTester for adversarial testing
+        - ZeroShotAdversarialTester for adversarial testing
         
         Returns:
             SimulationSession: A fully configured simulation session
@@ -101,7 +101,7 @@ class SimulationSessionBuilder:
             customer_factory=self.customer_factory,
             intent_extractor=self._intent_extractor or ZeroshotIntentExtractor(self.chat_model),
             outcome_detector=self._outcome_detector or ZeroshotOutcomeDetector(self.chat_model),
-            adversarial_tester=self._adversarial_tester or DummyAdversarialTester(),
+            adversarial_tester=self._adversarial_tester or ZeroShotAdversarialTester(self.chat_model, max_concurrency=50),
             session_name=self.session_name,
             session_description=self.session_description,
             max_messages=self.max_messages,
