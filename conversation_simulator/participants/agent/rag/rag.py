@@ -131,7 +131,7 @@ class RagAgent(Agent):
                 
                 agent_message = Message(
                     sender=ParticipantRole(metadata["role"]),
-                    content=str(metadata["content"]),
+                    content="Agent response: " + str(metadata["content"]),
                     timestamp=datetime.fromisoformat(str(metadata["timestamp"])),
                 )
 

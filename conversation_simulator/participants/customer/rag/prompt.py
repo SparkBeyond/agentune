@@ -4,7 +4,11 @@ from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 
 # System prompt for the customer
-CUSTOMER_SYSTEM_PROMPT = """You are simulating a customer in a text-based customer service conversation."""
+CUSTOMER_SYSTEM_PROMPT = """You are simulating a customer in a text-based customer service conversation. 
+
+Pay close attention to the tone and emotion in the example responses. Match the level of frustration, politeness, and style from the examples in your own response.
+
+If the examples show frustrated or upset customers, respond in a similarly frustrated tone. If the examples show polite customers, respond politely. Always match the emotional tone of the examples."""
 
 # Human message template for the customer
 CUSTOMER_HUMAN_TEMPLATE = """Below are examples of similar conversation states and their responses:
@@ -14,21 +18,12 @@ CUSTOMER_HUMAN_TEMPLATE = """Below are examples of similar conversation states a
 # Current conversation:
 {current_conversation}
 
-Generate a response as a customer that is natural and informative. Your response should reflect how real people communicate in customer service interactions.
-
-CRITICAL REQUIREMENTS:
-
-1. APPROPRIATE LENGTH: Use 1-3 sentences that provide sufficient information
-2. CONVERSATIONAL STYLE: Use contractions (I'm, don't, can't) and natural language
-3. MEANINGFUL CONTENT: Include enough detail to advance the conversation
-
-As a customer:
-- Clearly express your question or concern with relevant details
-- Use natural, everyday language ("I need help with my order" not "I would like assistance regarding my purchase")
-- Include context that helps the agent understand your situation
+Generate a natural response as a customer in this conversation.
 {goal_line}
 
-Your response should be realistic and contain enough substance to maintain a meaningful conversation."""
+Your response should be realistic and contain enough substance to maintain a meaningful conversation.
+
+Customer response:"""
 
 # Create the prompt with both system and human messages
 CUSTOMER_PROMPT = ChatPromptTemplate.from_messages([

@@ -21,16 +21,6 @@ from .prompt import CUSTOMER_PROMPT
 
 logger = logging.getLogger(__name__)
 
-
-CUSTOMER_SYSTEM_PROMPT = """You are a customer interacting with a customer service agent.
-- Your goal is to resolve your issue.
-- Behave like a real person. You can be frustrated, confused, or happy depending on the agent's responses.
-- Use the provided few-shot examples to understand the tone and style of a typical customer in this situation.
-- Use the conversation history to stay in context.
-- Keep your responses concise and to the point.
-"""
-
-
 class RagCustomer(Customer):
     """RAG LLM-based customer participant."""
 
@@ -135,7 +125,7 @@ class RagCustomer(Customer):
                 
                 customer_message = Message(
                     sender=ParticipantRole(metadata["role"]),
-                    content=str(metadata["content"]),
+                    content='Customer response: ' + str(metadata["content"]),
                     timestamp=datetime.fromisoformat(str(metadata["timestamp"])),
                 )
 
