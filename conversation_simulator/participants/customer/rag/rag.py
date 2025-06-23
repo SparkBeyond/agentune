@@ -80,14 +80,19 @@ class RagCustomer(Customer):
 
         # 3. Generation
         chain = self._create_llm_chain(model=self.model)
-        customer_goal = self.intent_description if self.intent_description else "resolve your issue"
-        response_content = await chain.ainvoke(
-            {
-                "examples": "\n\n".join([str(msg.content) for msg in formatted_examples]),
-                "current_conversation": "\n".join([str(msg.content) for msg in chat_history_langchain]),
-                "customer_goal": customer_goal
-            }
-        )
+
+        
+        # Add the goal line to the conversation if there's an intent
+        goal_line = f"- Your goal in this conversation is: {self.intent_description}" if self.intent_description else ""
+        
+        # Prepare the input for the chain
+        chain_input = {
+            "examples": "\n\n".join([str(msg.content) for msg in formatted_examples]),
+            "current_conversation": "\n".join([str(msg.content) for msg in chat_history_langchain]),
+            "goal_line": goal_line
+        }
+            
+        response_content = await chain.ainvoke(chain_input)
 
         if not response_content.strip():
             return None

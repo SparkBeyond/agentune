@@ -26,7 +26,7 @@ As a customer:
 - Clearly express your question or concern with relevant details
 - Use natural, everyday language ("I need help with my order" not "I would like assistance regarding my purchase")
 - Include context that helps the agent understand your situation
-- Your goal in this conversation is: {customer_goal}
+{goal_line}
 
 Your response should be realistic and contain enough substance to maintain a meaningful conversation."""
 
