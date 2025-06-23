@@ -58,11 +58,11 @@ class ZeroShotAdversarialTester(AdversarialTester):
 
         try:
             parsed_response = await self._chain.ainvoke(prompt_inputs)
-            identified_label = parsed_response.get("identified_as_real")
+            identified_label = parsed_response.get("real_conversation")
 
             if not isinstance(identified_label, str) or identified_label not in ("A", "B"):
                 logger.warning(
-                    f"LLM returned an invalid value for `identified_as_real`: {identified_label}"
+                    f"LLM returned an invalid value for `real_conversation`: {identified_label}"
                 )
                 return False
 
