@@ -143,7 +143,7 @@ class ZeroShotAdversarialTester(AdversarialTester):
                 # Keep the result as False
                 continue
 
-            identified_label = output.get("identified_as_real")
+            identified_label = output.get("real_conversation")
             if isinstance(identified_label, str) and identified_label in ("A", "B"):
                 final_results[original_index] = identified_label == real_label
             else:
