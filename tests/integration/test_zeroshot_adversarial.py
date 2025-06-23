@@ -1,9 +1,8 @@
 """Integration tests for the ZeroShotAdversarialTester."""
 from datetime import datetime
-
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from langchain_openai import ChatOpenAI
 
 from conversation_simulator.models import Conversation, Message
@@ -11,31 +10,90 @@ from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.simulation.adversarial import ZeroShotAdversarialTester
 
 
-@pytest.fixture
-def test_conversations() -> tuple[Conversation, Conversation]:
-    """Create a pair of conversations for testing. One is clearly more human-like."""
+def create_dch2_conversation() -> Conversation:
+    """Create a hardcoded version of the first conversation from the dch2 dataset."""
     customer = ParticipantRole.CUSTOMER
     agent = ParticipantRole.AGENT
-    real_conversation = Conversation(
+    
+    return Conversation(
         messages=(
             Message(
                 sender=customer,
-                content="Hi, I'm having trouble with my order. The website is really confusing.",
-                timestamp=datetime.fromtimestamp(0),
+                content=("Last night, I waited in line for 2 hours in the business office, but because I only had a copy of my ID card and didn't bring the original, "
+                        "I was not allowed to cancel the broadband service, and I had to charge for suspending the service! I brought the original ID with me "
+                        "according to the reservation tonight, but the store manager actually said that the set-top box should be returned to cancel it or 500 "
+                        "yuan deposit should be paid first. Many restrictions have been imposed on customers to cancel their business, and you have not yet "
+                        "made it clear to customers. We need to come to the store for so many times! Is it fun to play with consumers? @ China Telecom Guangdong "
+                        "Customer Service Guangzhou·Jingxi"),
+                timestamp=datetime(2024, 1, 15, 9, 0, 0),
             ),
             Message(
                 sender=agent,
-                content="I'm so sorry to hear that! I can definitely help you sort this out. Could you please tell me your order number?",
-                timestamp=datetime.fromtimestamp(1),
+                content=("We're very sorry, I am the Guangdong Customer Service Staff of China Telecom. I have paid attention to your feedback. We will continue to improve "
+                        "our service to satisfy our customers. Please continue to supervise. Thank you."),
+                timestamp=datetime(2024, 1, 15, 9, 2, 0),
+            ),
+            Message(
+                sender=customer,
+                content="How can consumers supervise you if you don't solve your own problems?",
+                timestamp=datetime(2024, 1, 15, 9, 5, 0),
+            ),
+            Message(
+                sender=agent,
+                content=("We will continue to improve various services and improve our service quality. Thank you for your suggestion."),
+                timestamp=datetime(2024, 1, 15, 9, 9, 0),
+            ),
+            Message(
+                sender=customer,
+                content=("Nonsense. China Telecom has failed to make progress for so many years. It's simply a national shame. No wonder more and more people have decided "
+                        "never to use you again!"),
+                timestamp=datetime(2024, 1, 15, 9, 14, 0),
+            ),
+            Message(
+                sender=agent,
+                content=("We're really sorry for the inconvenience. I suggest that you can register feedback through online complaints+consultation and "
+                        "complaints-self-service-China Telecom Huango website· Guangdong. After registration, the processing specialist will carefully check "
+                        "it and reply to you. Thank you."),
+                timestamp=datetime(2024, 1, 15, 9, 16, 0),
             ),
         )
     )
+
+
+@pytest.fixture
+def test_conversations() -> tuple[Conversation, Conversation]:
+    """Create a pair of conversations for testing. One is real (from dch2), one is simulated."""
+    # Use the first conversation from dch2 as our real conversation
+    real_conversation = create_dch2_conversation()
+    
+    # Create a simple simulated conversation for comparison
+    customer = ParticipantRole.CUSTOMER
+    agent = ParticipantRole.AGENT
     simulated_conversation = Conversation(
         messages=(
-            Message(sender=customer, content="Order issue.", timestamp=datetime.fromtimestamp(0)),
-            Message(sender=agent, content="Provide order number.", timestamp=datetime.fromtimestamp(1)),
+            Message(
+                sender=customer,
+                content="I want to cancel my broadband service.",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+            ),
+            Message(
+                sender=agent,
+                content="Please provide your account details.",
+                timestamp=datetime(2024, 1, 1, 10, 1, 0),
+            ),
+            Message(
+                sender=customer,
+                content="Why is it so complicated to cancel?",
+                timestamp=datetime(2024, 1, 1, 10, 2, 0),
+            ),
+            Message(
+                sender=agent,
+                content="I'm sorry for the inconvenience. Let me help you with that.",
+                timestamp=datetime(2024, 1, 1, 10, 3, 0),
+            ),
         )
     )
+    
     return real_conversation, simulated_conversation
 
 
@@ -74,8 +132,8 @@ async def test_identify_real_conversations_batch_integration(openai_model: ChatO
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_identify_real_conversation_empty_integration(openai_model: ChatOpenAI):
-    """Test that empty conversations are handled gracefully without calling the LLM."""
+async def test_identify_real_conversation_returns_none_for_empty(openai_model: ChatOpenAI):
+    """Test that empty conversations return None."""
     real_conversation = Conversation(
         messages=(
             Message(
@@ -87,23 +145,48 @@ async def test_identify_real_conversation_empty_integration(openai_model: ChatOp
     )
     empty_conversation = Conversation(messages=())
 
-    # To test that the LLM is not called, we mock the chain creation process
+    tester = ZeroShotAdversarialTester(model=openai_model)
+
+    # Test with empty first conversation
+    result1 = await tester.identify_real_conversation(empty_conversation, real_conversation)
+    assert result1 is None
+
+    # Test with empty second conversation
+    result2 = await tester.identify_real_conversation(real_conversation, empty_conversation)
+    assert result2 is None
+
+    # Test batch with empty conversation
+    results = await tester.identify_real_conversations(
+        [empty_conversation, real_conversation],
+        [real_conversation, empty_conversation]
+    )
+    assert results == [None, None]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_identify_real_conversation_invalid_response(openai_model: ChatOpenAI, test_conversations: tuple[Conversation, Conversation]):
+    """Test that invalid LLM responses log a warning and return None."""
+    real_conv, sim_conv = test_conversations
+    
+    # Mock the chain to return an invalid response
     mock_chain = AsyncMock()
-    with patch.object(
-        ZeroShotAdversarialTester, "_create_adversarial_chain", return_value=mock_chain
-    ):
-        # Instantiate the tester within the patch context to ensure it uses the mock chain
-        tester_with_mock_chain = ZeroShotAdversarialTester(model=openai_model)
-
-        result1 = await tester_with_mock_chain.identify_real_conversation(
-            empty_conversation, real_conversation
-        )
-        assert result1 is False
-
-        result2 = await tester_with_mock_chain.identify_real_conversation(
-            real_conversation, empty_conversation
-        )
-        assert result2 is False
-
-    # Verify that the ainvoke method on our mock chain was never called
-    mock_chain.ainvoke.assert_not_called()
+    mock_chain.ainvoke.return_value = {"real_conversation": "X"}  # Invalid response
+    mock_chain.abatch.return_value = [{"real_conversation": "X"}]
+    
+    with patch.object(ZeroShotAdversarialTester, '_create_adversarial_chain', return_value=mock_chain), \
+         patch('conversation_simulator.simulation.adversarial.zeroshot.logger.warning') as mock_warning:
+        tester = ZeroShotAdversarialTester(model=openai_model)
+        
+        # Test single conversation - should return None for invalid response
+        result = await tester.identify_real_conversation(real_conv, sim_conv)
+        assert result is None
+        mock_warning.assert_called()
+        
+        # Clear the mock for the next test
+        mock_warning.reset_mock()
+        
+        # Test batch - should also return None for invalid response
+        results = await tester.identify_real_conversations([real_conv], [sim_conv])
+        assert results == [None]  # Should be None due to invalid response
+        mock_warning.assert_called()

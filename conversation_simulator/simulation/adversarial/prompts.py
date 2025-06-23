@@ -1,7 +1,5 @@
 """Prompts for adversarial testing conversation simulation quality."""
 
-import random
-from typing import Tuple
 
 from ...models.conversation import Conversation
 
@@ -48,29 +46,23 @@ Conversation B:
 def create_comparison_prompt_inputs(
     real_conversation: Conversation,
     simulated_conversation: Conversation,
-) -> Tuple[dict, str]:
+    is_real_a: bool,
+) -> dict[str, str]:
     """Create inputs for the conversation comparison prompt.
-
-    Randomly assigns the real and simulated conversations to labels 'A' and 'B'.
 
     Args:
         real_conversation: The real conversation.
         simulated_conversation: The simulated conversation.
+        is_real_a: Whether the real conversation should be labeled 'A' (True) or 'B' (False).
 
     Returns:
-        A tuple containing:
-        - A dictionary with formatted conversations for the prompt.
-        - The label ('A' or 'B') of the real conversation.
+        A dictionary with formatted conversations for the prompt.
     """
-    is_real_a = random.choice([True, False])
-
     if is_real_a:
         conv_a = format_conversation(real_conversation)
         conv_b = format_conversation(simulated_conversation)
-        real_label = "A"
     else:
         conv_a = format_conversation(simulated_conversation)
         conv_b = format_conversation(real_conversation)
-        real_label = "B"
 
-    return {"conversation_a": conv_a, "conversation_b": conv_b}, real_label
+    return {"conversation_a": conv_a, "conversation_b": conv_b}
