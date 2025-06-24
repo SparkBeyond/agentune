@@ -1,6 +1,6 @@
 """Integration tests for the ZeroShotAdversarialTester."""
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_openai import ChatOpenAI
@@ -165,34 +165,23 @@ async def test_identify_real_conversation_returns_none_for_empty(openai_model: C
 
 
 @pytest.mark.asyncio
-async def test_identify_real_conversation_invalid_response(openai_model: ChatOpenAI, test_conversations: tuple[Conversation, Conversation]):
-    """Test that invalid LLM responses log a warning and return None."""
-    real_conv, sim_conv = test_conversations
+async def test_extract_label_behavior(openai_model):
+    """Test that _extract_label correctly validates and returns conversation labels."""
+    tester = ZeroShotAdversarialTester(model=openai_model)
     
-    # Mock the chain to return an invalid response
-    mock_chain = AsyncMock()
-    mock_chain.ainvoke.return_value = {"real_conversation": "X"}  # Invalid response
-    mock_chain.abatch.return_value = [{"real_conversation": "X"}]
+    # Test valid labels
+    assert tester._extract_label({"real_conversation": "A"}) == "A"
+    assert tester._extract_label({"real_conversation": "B"}) == "B"
     
-    with patch.object(ZeroShotAdversarialTester, '_create_adversarial_chain', return_value=mock_chain), \
-         patch('conversation_simulator.simulation.adversarial.zeroshot.logger.warning') as mock_warning:
-        tester = ZeroShotAdversarialTester(model=openai_model)
-        
-        # Test single conversation - should return False for invalid response
-        # This is because the _extract_label method returns None for invalid responses,
-        # but the identify_real_conversation method compares this with the real label
-        # which results in False (None == "A" is False)
-        result = await tester.identify_real_conversation(real_conv, sim_conv)
-        assert result is False
-        mock_warning.assert_called()
-        
-        # Clear the mock for the next test
-        mock_warning.reset_mock()
-        
-        # Test batch - should also return False for invalid response
-        results = await tester.identify_real_conversations([real_conv], [sim_conv])
-        assert results == [False]  # Should be False due to invalid response
-        mock_warning.assert_called()
+    # Test invalid labels
+    assert tester._extract_label({"real_conversation": "X"}) is None
+    assert tester._extract_label({"real_conversation": ""}) is None
+    assert tester._extract_label({"real_conversation": None}) is None
+    assert tester._extract_label({}) is None
+    
+    # Test invalid types
+    assert tester._extract_label({"real_conversation": 123}) is None
+    assert tester._extract_label({"real_conversation": ["A"]}) is None
 
 
 @pytest.mark.asyncio

@@ -121,10 +121,11 @@ class ZeroShotAdversarialTester(AdversarialTester):
 
         # Process valid conversations in batch
         try:
-            outputs = await self._chain.abatch(prompt_inputs, max_concurrency=self.max_concurrency)
+            identified_labels = await self._chain.abatch(prompt_inputs, max_concurrency=self.max_concurrency)
             
-            for idx, output, real_label in zip(valid_indices, outputs, real_labels):
-                identified_label = self._extract_label(output)
+            for idx, identified_label, real_label in zip(valid_indices, identified_labels, real_labels):
+                if identified_label is None:
+                    continue
                 results[idx] = identified_label == real_label
 
         except Exception as e:
