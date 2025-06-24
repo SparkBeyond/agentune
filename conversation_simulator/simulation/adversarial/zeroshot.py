@@ -37,7 +37,8 @@ class ZeroShotAdversarialTester(AdversarialTester):
         self._random = random.Random(random_seed)
         self._chain = self._create_adversarial_chain()
 
-    def _extract_label(self, output: dict) -> str | None:
+    @staticmethod
+    def _extract_label(output: dict) -> str | None:
         """Extracts the identified conversation label from the model output."""
         identified_label = output.get("real_conversation")
         if not isinstance(identified_label, str) or identified_label not in ("A", "B"):
@@ -124,8 +125,6 @@ class ZeroShotAdversarialTester(AdversarialTester):
             
             for idx, output, real_label in zip(valid_indices, outputs, real_labels):
                 identified_label = self._extract_label(output)
-                if identified_label is None:
-                    continue
                 results[idx] = identified_label == real_label
 
         except Exception as e:
