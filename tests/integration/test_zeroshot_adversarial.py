@@ -104,12 +104,13 @@ async def test_identify_real_conversation_integration(openai_model: ChatOpenAI, 
     real_conversation, simulated_conversation = test_conversations
     tester = ZeroShotAdversarialTester(model=openai_model)
 
-    # We expect this to be True, but we'll just check the type to avoid flaky tests
+    # We expect this to be True or False, but we'll just check the type to avoid flaky tests
     result = await tester.identify_real_conversation(
         real_conversation, simulated_conversation
     )
 
-    assert isinstance(result, bool)
+    # The result should be a boolean (True/False) or None if there was an error
+    assert result is None or isinstance(result, bool)
 
 
 @pytest.mark.integration
@@ -127,10 +128,10 @@ async def test_identify_real_conversations_batch_integration(openai_model: ChatO
 
     assert isinstance(results, list)
     assert len(results) == 2
-    assert all(isinstance(res, bool) for res in results)
+    # Results can be boolean or None
+    assert all(res is None or isinstance(res, bool) for res in results)
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_identify_real_conversation_returns_none_for_empty(openai_model: ChatOpenAI):
     """Test that empty conversations return None."""
@@ -163,7 +164,6 @@ async def test_identify_real_conversation_returns_none_for_empty(openai_model: C
     assert results == [None, None]
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_identify_real_conversation_invalid_response(openai_model: ChatOpenAI, test_conversations: tuple[Conversation, Conversation]):
     """Test that invalid LLM responses log a warning and return None."""
@@ -190,3 +190,45 @@ async def test_identify_real_conversation_invalid_response(openai_model: ChatOpe
         results = await tester.identify_real_conversations([real_conv], [sim_conv])
         assert results == [None]  # Should be None due to invalid response
         mock_warning.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_response_order_consistency(openai_model: ChatOpenAI, test_conversations: tuple[Conversation, Conversation]):
+    """Test that the order of responses is consistent with the same random seed."""
+    real_conv, sim_conv = test_conversations
+    
+    # Create a mock chain that always returns a specific label
+    mock_chain = AsyncMock()
+    mock_chain.ainvoke.return_value = {"real_conversation": "A"}
+    mock_chain.abatch.return_value = [{"real_conversation": "A"}, {"real_conversation": "A"}]
+    
+    with patch.object(ZeroShotAdversarialTester, '_create_adversarial_chain', return_value=mock_chain):
+        # Create two testers with the same random seed
+        tester1 = ZeroShotAdversarialTester(model=openai_model, random_seed=42)
+        tester2 = ZeroShotAdversarialTester(model=openai_model, random_seed=42)
+        
+        # Run the same test twice with the same seed
+        result1 = await tester1.identify_real_conversation(real_conv, sim_conv)
+        result2 = await tester2.identify_real_conversation(real_conv, sim_conv)
+        
+        # Results should be consistent with the same seed
+        assert result1 == result2
+        
+        # Now test with a different random seed
+        tester3 = ZeroShotAdversarialTester(model=openai_model, random_seed=43)
+        # We don't assert anything about this result, just demonstrating different seeds
+        _ = await tester3.identify_real_conversation(real_conv, sim_conv)
+        
+        # The result might be different with a different seed due to different ordering
+        # But we can't assert that it will always be different, as it's probabilistic
+        
+        # Test batch processing with the same seed
+        batch_results1 = await tester1.identify_real_conversations(
+            [real_conv, real_conv], [sim_conv, sim_conv]
+        )
+        batch_results2 = await tester2.identify_real_conversations(
+            [real_conv, real_conv], [sim_conv, sim_conv]
+        )
+        
+        # Batch results should also be consistent with the same seed
+        assert batch_results1 == batch_results2

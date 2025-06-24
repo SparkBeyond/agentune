@@ -8,6 +8,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import (ChatPromptTemplate, HumanMessagePromptTemplate,
                                   SystemMessagePromptTemplate)
 from langchain_core.runnables import Runnable
+from langchain_core.runnables import RunnableLambda
 
 from ...models.conversation import Conversation
 from .base import AdversarialTester
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 class ZeroShotAdversarialTester(AdversarialTester):
     """Zero-shot adversarial tester using a language model and a structured parser."""
 
-    def __init__(self, model: BaseChatModel, max_concurrency: int = 50, random_seed: int | None = None):
+    def __init__(self, model: BaseChatModel, max_concurrency: int = 50, random_seed: int = 0):
         """Initializes the adversarial tester.
 
         Args:
@@ -36,13 +37,24 @@ class ZeroShotAdversarialTester(AdversarialTester):
         self._random = random.Random(random_seed)
         self._chain = self._create_adversarial_chain()
 
+    def _extract_label(self, output: dict) -> str | None:
+        """Extracts the identified conversation label from the model output."""
+        identified_label = output.get("real_conversation")
+        if not isinstance(identified_label, str) or identified_label not in ("A", "B"):
+            logger.warning(f"LLM returned invalid value: {identified_label}")
+            return None
+        return identified_label
+
     def _create_adversarial_chain(self) -> Runnable:
         """Creates the LangChain runnable for adversarial evaluation."""
         prompt = ChatPromptTemplate.from_messages([
             SystemMessagePromptTemplate.from_template(SYSTEM_PROMPT),
             HumanMessagePromptTemplate.from_template(HUMAN_PROMPT_TEMPLATE),
         ])
-        return prompt | self.model | JsonOutputParser()
+
+        label_extractor = RunnableLambda(self._extract_label)
+        return prompt | self.model | JsonOutputParser() | label_extractor
+
 
     async def identify_real_conversation(
         self, real_conversation: Conversation, simulated_conversation: Conversation
@@ -108,15 +120,12 @@ class ZeroShotAdversarialTester(AdversarialTester):
 
         # Process valid conversations in batch
         try:
-            outputs = await self._chain.abatch(prompt_inputs)
+            outputs = await self._chain.abatch(prompt_inputs, max_concurrency=self.max_concurrency)
             
             for idx, output, real_label in zip(valid_indices, outputs, real_labels):
-                identified_label = output.get("real_conversation")
-                if not isinstance(identified_label, str) or identified_label not in ("A", "B"):
-                    logger.warning(
-                        f"LLM returned invalid value: {identified_label}"
-                    )
-                    continue  # Keep as None for invalid responses
+                identified_label = self._extract_label(output)
+                if identified_label is None:
+                    continue
                 results[idx] = identified_label == real_label
 
         except Exception as e:
