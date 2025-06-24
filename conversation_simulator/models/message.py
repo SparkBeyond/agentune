@@ -22,9 +22,9 @@ class Message:
     def to_langchain(self) -> BaseMessage:
         """Convert to LangChain message format."""
         if self.sender == ParticipantRole.CUSTOMER:
-            return HumanMessage(content="Customer: " + self.content)
+            return HumanMessage(content=self.content)
         elif self.sender == ParticipantRole.AGENT:
-            return AIMessage(content="Agent: " + self.content)
+            return AIMessage(content=self.content)
         else:
             # Fallback or error for unknown roles, though ParticipantRole enum should prevent this
             raise ValueError(f"Unknown participant role: {self.sender} for LangChain conversion")

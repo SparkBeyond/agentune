@@ -140,7 +140,10 @@ class RagCustomer(Customer):
                     logger.warning("Skipping few-shot example with empty content for HumanMessage in RagCustomer.")
                     continue
 
-                formatted_messages.append(customer_message.to_langchain())  # This will be HumanMessage
+                customer_message_langchain = customer_message.to_langchain()
+                customer_message_langchain.content = 'Customer response: ' + str(customer_message.content)
+                formatted_messages.append(customer_message_langchain)
+
             except (KeyError, ValueError, TypeError) as e:
                 logger.warning(f"Error processing document for few-shot example in RagCustomer: {doc}. Error: {e}. Skipping.")
                 continue

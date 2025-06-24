@@ -146,7 +146,9 @@ class RagAgent(Agent):
                     logger.warning("Skipping few-shot example with empty content for AIMessage in RagAgent.")
                     continue
 
-                formatted_messages.append(agent_message.to_langchain())  # This will be AIMessage
+                agent_message_langchain = agent_message.to_langchain()
+                agent_message_langchain.content = 'Agent response: ' + str(agent_message.content)
+                formatted_messages.append(agent_message_langchain)
             except (KeyError, ValueError, TypeError) as e:
                 logger.warning(f"Error processing document for few-shot example in RagAgent: {doc}. Error: {e}. Skipping.")
                 continue
