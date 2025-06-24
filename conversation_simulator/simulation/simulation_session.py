@@ -1,6 +1,5 @@
 """Full simulation flow implementation."""
 
-import asyncio
 from datetime import datetime
 
 from ..models.conversation import Conversation
@@ -19,7 +18,7 @@ from ..runners.full_simulation import FullSimulationRunner
 from ..outcome_detection.base import OutcomeDetector
 from .analysis import analyze_simulation_results
 from .adversarial import AdversarialTester
-
+from ..util import asyncutil
 
 class SimulationSession:
     """Orchestrates the full simulation flow from real conversations to analysis.
@@ -66,11 +65,14 @@ class SimulationSession:
     async def run_simulation(
         self,
         real_conversations: list[Conversation],
+        max_concurrent_conversations: int = 10
     ) -> SimulationSessionResult:
         """Execute the full simulation flow.
         
         Args:
             real_conversations: Original conversations to base simulations on
+            max_concurrent_conversations: Maximum number of conversations to run concurrently.
+                                          Conversations will be processed in the order of the input list.
          
         Returns:
             Complete simulation results with analysis
@@ -87,7 +89,7 @@ class SimulationSession:
         scenarios = await self._generate_scenarios(original_conversations)
         
         # Step 2: Run simulations for each scenario
-        simulated_conversations = await self._run_simulations(scenarios)
+        simulated_conversations = await self._run_simulations(scenarios, max_concurrent_conversations)
          
         # Step 3: Analyze results
         session_end = datetime.now()
@@ -160,6 +162,7 @@ class SimulationSession:
     async def _run_simulations(
         self,
         scenarios: tuple[Scenario, ...],
+        max_concurrent_conversations: int
     ) -> tuple[SimulatedConversation, ...]:
         """Run conversation simulations for all scenarios.
         
@@ -192,8 +195,12 @@ class SimulationSession:
         # Create all runners
         runners = [create_runner(scenario) for scenario in scenarios]
         
-        # Run all simulations concurrently
-        results = await asyncio.gather(*[runner.run() for runner in runners])
+        # Run all simulations with bounded parallelism
+        results = await asyncutil.bounded_parallelism(
+            [runner.run for runner in runners], 
+            max_concurrent_conversations,
+            return_exceptions=False
+        )
         
         # Wrap results with SimulatedConversation
         simulated_conversations = tuple(
@@ -207,5 +214,4 @@ class SimulationSession:
         )
         
         return simulated_conversations
-
-
+    
