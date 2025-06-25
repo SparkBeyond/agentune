@@ -133,7 +133,9 @@ class SimulationSession:
         """
         scenarios = []
 
-        for original_conv in original_conversations:
+        intents = await self.intent_extractor.extract_intents(tuple(conv.conversation for conv in original_conversations))
+
+        for original_conv, intent in zip(original_conversations, intents):
             # Skip empty conversations
             if not original_conv.conversation.messages:
                 continue
@@ -144,9 +146,6 @@ class SimulationSession:
                 content=original_conv.conversation.messages[0].content,
             )
 
-            # Extract intent from conversation
-            intent = await self.intent_extractor.extract_intent(original_conv.conversation)
-            
             if intent is None:
                 continue  # Skip conversations where intent couldn't be extracted
             # Create scenario with simple unique ID
