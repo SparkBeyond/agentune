@@ -191,6 +191,35 @@ async def test_extract_label_behavior(openai_model):
 
 
 @pytest.mark.asyncio
+async def test_evaluate_adversarial_quality_integration(openai_model: ChatOpenAI, test_conversations: tuple[Conversation, Conversation]):
+    """Test the end-to-end evaluation of conversation quality using the adversarial tester."""
+    from conversation_simulator.simulation.analysis import _evaluate_adversarial_quality
+    from conversation_simulator.models.analysis import AdversarialEvaluationResult
+    
+    real_conv, sim_conv = test_conversations
+    
+    # Create multiple test conversations
+    original_conversations = [real_conv, real_conv, real_conv]
+    simulated_conversations = [sim_conv, sim_conv, sim_conv]
+    
+    # Create the tester with a real model
+    tester = ZeroShotAdversarialTester(model=openai_model)
+    
+    # Run the evaluation
+    result = await _evaluate_adversarial_quality(
+        original_conversations=original_conversations,
+        simulated_conversations=simulated_conversations,
+        adversarial_tester=tester
+    )
+    
+    # Verify the result structure
+    assert isinstance(result, AdversarialEvaluationResult)
+    assert result.total_pairs_evaluated == 3
+    # We can't predict exact accuracy, but it should be between 0 and 1 (inclusive)
+    assert 0 <= result.accuracy <= 1.0
+
+
+@pytest.mark.asyncio
 async def test_empty_conversations_in_batch():
     """Test that the adversarial tester correctly handles various conversation combinations in a batch."""
     # Create more distinct real conversations with natural variations and imperfections

@@ -160,9 +160,28 @@ async def _evaluate_adversarial_quality(
     Returns:
         Adversarial evaluation results with accuracy metrics
     """
-    # todo: Implement adversarial evaluation logic
+    if not original_conversations or not simulated_conversations:
+        return AdversarialEvaluationResult(0, 0)
+    
+    min_length = min(len(original_conversations), len(simulated_conversations))
+    if min_length == 0:
+        return AdversarialEvaluationResult(0, 0)
+    
+    results = await adversarial_tester.identify_real_conversations(
+        tuple(original_conversations[:min_length]),
+        tuple(simulated_conversations[:min_length])
+    )
+    
+    # Filter out None values and count valid results
+    valid_results = [r for r in results if r is not None]
+    total_evaluated = len(valid_results)
+    
+    if total_evaluated == 0:
+        return AdversarialEvaluationResult(0, 0)
+        
+    correct = sum(1 for result in valid_results if result)
     
     return AdversarialEvaluationResult(
-        total_pairs_evaluated=-1,
-        correct_identifications=-1,
+        total_pairs_evaluated=total_evaluated,
+        correct_identifications=correct,
     )
