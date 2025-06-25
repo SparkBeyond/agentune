@@ -5,10 +5,16 @@ from real conversations by testing whether a model or human can identify which
 conversation is real when presented with a pair.
 """
 from abc import ABC, abstractmethod
-import asyncio
+from typing import Tuple
+
+from attrs import frozen
 
 from ...models.conversation import Conversation
 
+@frozen
+class AdversarialTest:
+    real_conversation: Conversation
+    simulated_conversation: Conversation
 
 class AdversarialTester(ABC):
     """Base class for adversarial testing of conversation quality.
@@ -20,12 +26,11 @@ class AdversarialTester(ABC):
     random chance at 50%) indicates higher quality simulation.
     """
     
-    @abstractmethod
     async def identify_real_conversation(
         self,
         real_conversation: Conversation,
         simulated_conversation: Conversation
-    ) -> bool:
+    ) -> bool | None:
         """Evaluate a single pair of conversations to determine if the real conversation
         can be correctly identified.
 
@@ -33,30 +38,20 @@ class AdversarialTester(ABC):
             real_conversation: The real conversation to evaluate
             simulated_conversation: The simulated conversation to evaluate
         Returns:
-            bool: True if the real conversation is correctly identified, False otherwise 
+            bool | None: True if the real conversation is correctly identified, False if not,
+                         or None if the conversation was empty or an error occurred.
+                  
+        """
+        return list(await self.identify_real_conversations(
+            (AdversarialTest(real_conversation, simulated_conversation), )
+        ))[0]
+
+    @abstractmethod
+    async def identify_real_conversations(
+        self,
+        instances: Tuple[AdversarialTest, ...]
+    ) -> Tuple[bool | None, ...]:
+        """Evaluate multiple pairs of conversations concurrently. See identify_real_conversation for details.
         """
         ...
 
-    async def identify_real_conversations(
-        self,
-        real_conversations: tuple[Conversation, ...],
-        simulated_conversations: tuple[Conversation, ...],
-    ) -> tuple[bool, ...]:
-        """Evaluate multiple pairs of conversations concurrently.
-        Args:
-            real_conversations: Tuple of real conversations to evaluate
-            simulated_conversations: Tuple of simulated conversations to evaluate
-        Returns:
-            tuple[bool, ...]: Tuple of booleans indicating whether each pair was
-            correctly identified (True for correct identification, False otherwise)
-        """
-        # default implementation that can be overridden
-        if len(real_conversations) != len(simulated_conversations):
-            raise ValueError("Real and simulated conversations must have the same length")
-        results = await asyncio.gather(
-            *[
-                self.identify_real_conversation(real, simulated)
-                for real, simulated in zip(real_conversations, simulated_conversations)
-            ]
-        )
-        return tuple(results)

@@ -7,6 +7,7 @@ from langchain_community.chat_models.fake import FakeListChatModel
 
 from conversation_simulator.models import Conversation, Message
 from conversation_simulator.models.roles import ParticipantRole
+from conversation_simulator.simulation.adversarial.base import AdversarialTest
 from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
 
 
@@ -128,9 +129,10 @@ async def test_identify_real_conversations_batch_integration(openai_model: ChatO
     # Create a list of conversation pairs
     real_convs = [real_conv, sim_conv]  # Test with swapped roles too
     sim_convs = [sim_conv, real_conv]
+    instances = tuple(AdversarialTest(r, s) for r, s in zip(real_convs, sim_convs))
 
     tester = ZeroShotAdversarialTester(model=openai_model, max_concurrency=2)
-    results = await tester.identify_real_conversations(real_convs, sim_convs)
+    results = await tester.identify_real_conversations(instances)
 
     assert isinstance(results, list)
     assert len(results) == 2
@@ -163,10 +165,10 @@ async def test_identify_real_conversation_returns_none_for_empty(openai_model: C
     assert result2 is None
 
     # Test batch with empty conversation
-    results = await tester.identify_real_conversations(
-        [empty_conversation, real_conversation],
-        [real_conversation, empty_conversation]
-    )
+    results = await tester.identify_real_conversations((
+        AdversarialTest(empty_conversation, real_conversation),
+        AdversarialTest(real_conversation, empty_conversation)
+    ))
     assert results == [None, None]
 
 
@@ -270,9 +272,10 @@ async def test_empty_conversations_in_batch():
     # Create batches with various combinations
     real_convs = [real_conv1, real_conv1, real_conv2, empty_conversation]
     sim_convs = [sim_conv1, sim_conv2, sim_conv1, sim_conv2]
+    instances = tuple(AdversarialTest(r, s) for r, s in zip(real_convs, sim_convs))
     
     # Run the batch test
-    batch_results = await tester.identify_real_conversations(real_convs, sim_convs)
+    batch_results = await tester.identify_real_conversations(instances)
     
     # Verify the results
     assert len(batch_results) == 4, f"Expected 4 results, got {len(batch_results)}"
