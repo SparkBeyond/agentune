@@ -44,6 +44,7 @@ class SimulationSessionBuilder:
     session_name: str = "Simulation Session"
     session_description: str = "Automated conversation simulation"
     max_messages: int = 100
+    max_concurrent_conversations: int = 10
     _intent_extractor: IntentExtractor | None = None
     _outcome_detector: OutcomeDetector | None = None
     _adversarial_tester: AdversarialTester | None = None
@@ -105,4 +106,5 @@ class SimulationSessionBuilder:
             session_name=self.session_name,
             session_description=self.session_description,
             max_messages=self.max_messages,
+            max_concurrent_conversations=self.max_concurrent_conversations
         )
