@@ -35,6 +35,7 @@ class OutcomeDistributionComparison:
     """Comparison between original and simulated outcome distributions."""
     
     original_distribution: OutcomeDistribution
+    original_with_predicted_outcomes: OutcomeDistribution
     simulated_distribution: OutcomeDistribution
 
 

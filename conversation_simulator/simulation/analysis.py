@@ -2,8 +2,12 @@
 
 from collections import Counter
 from typing import Iterable
+import asyncio
 
+from .. import Outcomes, Scenario
 from ..models.conversation import Conversation
+from ..outcome_detection.base import OutcomeDetector
+
 from ..models.results import SimulatedConversation, SimulationAnalysisResult
 from ..models.analysis import (
     OutcomeDistribution,
@@ -19,6 +23,9 @@ async def analyze_simulation_results(
     original_conversations: tuple[Conversation, ...],
     simulated_conversations: tuple[SimulatedConversation, ...],
     adversarial_tester: AdversarialTester,
+    outcome_detector: OutcomeDetector,
+    scenarios: tuple[Scenario, ...],
+    outcomes: Outcomes,
 ) -> SimulationAnalysisResult:
     """Analyze simulation results and generate comprehensive comparison.
     
@@ -26,22 +33,44 @@ async def analyze_simulation_results(
         original_conversations: Real conversations used as input
         simulated_conversations: Generated conversations from simulation
         adversarial_tester: Adversarial tester for evaluation
+        outcome_detector: Detector for outcome prediction
+        scenarios: Scenarios used for generating conversations
+        outcomes: Legal outcome labels for the simulation run
         
     Returns:
         Complete analysis result with all comparisons
     """
     # Extract just the conversation objects for analysis
     simulated_convs = [sc.conversation for sc in simulated_conversations]
-    
-    # Perform all analysis
-    outcome_comparison = _analyze_outcome_distributions(
-        list(original_conversations), simulated_convs
-    )
+
     message_comparison = _analyze_message_distributions(
         list(original_conversations), simulated_convs
     )
     adversarial_evaluation = await _evaluate_adversarial_quality(
         list(original_conversations), simulated_convs, adversarial_tester
+    )
+
+    # Generate outcome comparison between the original conversations GT and their predicted outcomes
+    intents = tuple(scenario.intent for scenario in scenarios)
+    original_conversations_with_predicted_outcome_tasks = [
+        outcome_detector.detect_outcome(conv, intent, possible_outcomes=outcomes)
+        for conv, intent in zip(original_conversations, intents)
+    ]
+
+    original_conversations_predicted_outcomes = await asyncio.gather(
+        *original_conversations_with_predicted_outcome_tasks
+    )
+
+    # Only set outcomes for conversations where we got a valid prediction
+    original_conversations_with_predicted_outcomes = [
+        conv.set_outcome(outcome=predicted_outcome)
+        for conv, predicted_outcome in zip(original_conversations, original_conversations_predicted_outcomes)
+        if predicted_outcome is not None
+    ]
+
+    # Perform all analysis
+    outcome_comparison = _analyze_outcome_distributions(
+        list(original_conversations), simulated_convs, original_conversations_with_predicted_outcomes
     )
     
     return SimulationAnalysisResult(
@@ -63,9 +92,13 @@ def _outcome_distribution(conversations: Iterable[Conversation]) -> OutcomeDistr
             no_outcome += 1
 
     total_conversations = counts.total() + no_outcome
+
+    # Convert the Counter to a sorted dictionary to ensure consistent ordering
+    sorted_counts = dict(sorted(counts.items()))
+
     return OutcomeDistribution(
         total_conversations=total_conversations,
-        outcome_counts=dict(counts),
+        outcome_counts=sorted_counts,
         conversations_without_outcome=no_outcome,
     )
 
@@ -73,15 +106,18 @@ def _outcome_distribution(conversations: Iterable[Conversation]) -> OutcomeDistr
 def _analyze_outcome_distributions(
     original_conversations: list[Conversation],
     simulated_conversations: list[Conversation],
+    original_conversations_with_predicted_outcomes: list[Conversation],
 ) -> OutcomeDistributionComparison:
     """Analyze and compare outcome distributions for real vs. generated conversations."""
 
     original_dist = _outcome_distribution(original_conversations)
     simulated_dist = _outcome_distribution(simulated_conversations)
+    original_with_predicted_outcomes_dist = _outcome_distribution(original_conversations_with_predicted_outcomes)
 
     return OutcomeDistributionComparison(
         original_distribution=original_dist,
         simulated_distribution=simulated_dist,
+        original_with_predicted_outcomes=original_with_predicted_outcomes_dist,
     )
 
 

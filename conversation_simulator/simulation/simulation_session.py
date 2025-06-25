@@ -99,6 +99,9 @@ class SimulationSession:
             original_conversations=tuple(conv.conversation for conv in original_conversations),
             simulated_conversations=simulated_conversations,
             adversarial_tester=self.adversarial_tester,
+            outcome_detector=self.outcome_detector,
+            scenarios=scenarios,
+            outcomes=self.outcomes,
         )
         
         return SimulationSessionResult(
