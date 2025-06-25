@@ -1,16 +1,22 @@
 """Abstract base class for outcome detection strategies."""
 
 import abc
+from typing import Tuple
+
+from attrs import frozen
 
 from ..models.conversation import Conversation
 from ..models.intent import Intent
 from ..models.outcome import Outcome, Outcomes
 
+@frozen
+class OutcomeDetectionTest:
+    conversation: Conversation
+    intent: Intent
 
 class OutcomeDetector(abc.ABC):
     """Abstract base class for outcome detection strategies."""
     
-    @abc.abstractmethod
     async def detect_outcome(
         self, 
         conversation: Conversation, 
@@ -27,4 +33,19 @@ class OutcomeDetector(abc.ABC):
         Returns:
             Detected outcome or None if no outcome detected
         """
+        return (await self.detect_outcomes(
+            (OutcomeDetectionTest(conversation, intent), ),
+            possible_outcomes
+        ))[0]
+
+    @abc.abstractmethod
+    async def detect_outcomes(
+        self,
+        instances: Tuple[OutcomeDetectionTest, ...],
+        possible_outcomes: Outcomes
+    ) -> tuple[Outcome | None, ...]:
+        """Detect outcomes for multiple conversations. See detect_outcome for details.
+        """
         ...
+
+        

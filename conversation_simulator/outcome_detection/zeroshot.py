@@ -1,6 +1,6 @@
 """Zero-shot outcome detection implementation."""
 
-from typing import Optional
+from typing import Optional, Tuple, override
 
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.language_models import BaseChatModel
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from ..models.conversation import Conversation
 from ..models.intent import Intent
 from ..models.outcome import Outcome, Outcomes
-from .base import OutcomeDetector
+from .base import OutcomeDetectionTest, OutcomeDetector
 
 
 class OutcomeDetectionResult(BaseModel):
@@ -50,42 +50,30 @@ class ZeroshotOutcomeDetector(OutcomeDetector):
         """
         self.model = model
         self._output_parser = PydanticOutputParser(pydantic_object=OutcomeDetectionResult)
-    
-    async def detect_outcome(
-        self, 
-        conversation: Conversation, 
-        intent: Intent, 
-        possible_outcomes: Outcomes
-    ) -> Optional[Outcome]:
-        """Detect if conversation has reached any of the possible outcomes.
-        
-        Args:
-            conversation: Current conversation state
-            intent: Original intent/goal of the conversation
-            possible_outcomes: Set of outcomes to detect
-            
-        Returns:
-            Detected outcome or None if no outcome detected
-        """
-        # If conversation is empty, no outcome can be detected
-        if not conversation.messages:
-            return None
-            
-        # Set up the detection chain
-        chain = self._create_detection_chain()
-        
-        # Prepare inputs for the chain
-        chain_input = {
-            "system_prompt": self._build_system_prompt(intent, possible_outcomes),
-            "human_prompt": self._build_human_prompt(conversation)
+
+    def _chain_input(self, instance: OutcomeDetectionTest, possible_outcomes: Outcomes) -> dict[str, str]:
+        return {
+            "system_prompt": self._build_system_prompt(instance.intent, possible_outcomes),
+            "human_prompt": self._build_human_prompt(instance.conversation)
         }
+
+    @override
+    async def detect_outcomes(
+        self,
+        instances: Tuple[OutcomeDetectionTest, ...],
+        possible_outcomes: Outcomes
+    ) -> tuple[Outcome | None, ...]:
+        # If conversation is empty, no outcome can be detected and we return None for that index
+        valid_indices = [i for i, instance in enumerate(instances) if instance.conversation.messages]
+        if not valid_indices:
+            return tuple(None for _ in instances)
+
+        chain = self._create_detection_chain()
+        indexed_inputs = [(i, self._chain_input(instances[i], possible_outcomes)) for i in valid_indices]
+        results = await chain.abatch([input for _, input in indexed_inputs])
+        detected_outcome_by_index = {i: self._parse_outcome(result, possible_outcomes) for (i, _), result in zip(indexed_inputs, results) }
         
-        # Execute chain
-        result = await chain.ainvoke(chain_input)
-        
-        # Parse the response to determine if an outcome was detected
-        detected_outcome = self._parse_outcome(result, possible_outcomes)
-        return detected_outcome
+        return tuple(detected_outcome_by_index.get(i, None) for i in range(len(instances)))
         
     def _create_detection_chain(self) -> Runnable:
         """Create the LangChain chain for outcome detection.
