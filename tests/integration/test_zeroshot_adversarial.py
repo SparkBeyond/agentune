@@ -3,10 +3,10 @@ from datetime import datetime
 
 import pytest
 from langchain_openai import ChatOpenAI
-from langchain_core.language_models.fake import FakeListLLM
+from langchain_community.chat_models.fake import FakeListChatModel
 
 from conversation_simulator.models import Conversation, Message
-from conversation_simulator.models.enums import ParticipantRole
+from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
 
 
@@ -221,17 +221,18 @@ async def test_empty_conversations_in_batch():
     
     empty_conversation = Conversation(messages=())
     
-    # Create a FakeListLLM that will return predetermined responses
+    # Create a FakeListChatModel that will return predetermined responses
     # These responses simulate the LLM choosing which conversation is real
-    # Format: {"real_conversation": "A"} or {"real_conversation": "B"}
-    # We'll use a pattern that ensures we test both True and False cases
+    # The responses should be the raw content strings that would be parsed by the output parser
     fake_responses = [
-        '{"real_conversation": "A"}',  # First response - will be True if A is real, False otherwise
-        '{"real_conversation": "B"}',  # Second response - will be True if B is real, False otherwise
-        '{"real_conversation": "A"}',  # Third response - will be True if A is real, False otherwise
+        '{"real_conversation": "A"}',  # First response
+        '{"real_conversation": "B"}',  # Second response
+        '{"real_conversation": "A"}',  # Third response
     ]
     
-    model = FakeListLLM(responses=fake_responses)
+    # Create the fake chat model with our predetermined responses
+    model = FakeListChatModel(responses=fake_responses)
+    
     # Use a fixed random seed for reproducibility
     # Note: The actual order of A/B is random, but will be consistent with the same seed
     tester = ZeroShotAdversarialTester(model=model, random_seed=42)
