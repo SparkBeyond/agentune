@@ -13,7 +13,6 @@ class IntentExtractor(abc.ABC):
     has initiated the conversation and what their intent is.
     """
     
-    @abc.abstractmethod
     async def extract_intent(self, conversation: Conversation) -> Intent | None:
         """Extract intent from a conversation.
         
@@ -22,5 +21,11 @@ class IntentExtractor(abc.ABC):
             
         Returns:
             Extracted intent or None if no intent could be determined
+        """
+        return (await self.extract_intents((conversation, )))[0]
+
+    @abc.abstractmethod
+    async def extract_intents(self, conversations: tuple[Conversation, ...]) -> tuple[Intent | None, ...]:
+        """Extract intents from a conversation. See extract_intent for details.
         """
         ...

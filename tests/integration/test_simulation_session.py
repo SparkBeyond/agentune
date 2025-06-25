@@ -22,7 +22,7 @@ from langchain_openai import ChatOpenAI
 
 from conversation_simulator import SimulationSession
 from conversation_simulator.intent_extraction.dummy import DummyIntentExtractor
-from conversation_simulator.models import Conversation, Intent, Message, Outcome, Outcomes
+from conversation_simulator.models import Conversation, Message, Outcome, Outcomes
 from conversation_simulator.outcome_detection.base import OutcomeDetectionTest, OutcomeDetector
 from conversation_simulator.participants.agent.config import AgentConfig
 from conversation_simulator.participants.agent.zero_shot import ZeroShotAgentFactory

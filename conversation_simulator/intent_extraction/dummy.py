@@ -1,6 +1,7 @@
 """Dummy intent extractor implementation for testing and development."""
 
 from __future__ import annotations
+from typing import override
 
 from .base import IntentExtractor
 from ..models.conversation import Conversation
@@ -15,23 +16,13 @@ class DummyIntentExtractor(IntentExtractor):
     the conversation and treating it as the intent description.
     """
     
-    async def extract_intent(self, conversation: Conversation) -> Intent | None:
-        """Extract intent from the first message in the conversation.
-        
-        Args:
-            conversation: The conversation to analyze
-            
-        Returns:
-            Intent based on first message, or None if conversation is empty
-        """
-        if conversation.is_empty:
-            return None
-        
-        first_message = conversation.messages[0]
-        
-        # Create intent using the first message's content as description
-        # and the sender's role
-        return Intent(
-            role=first_message.sender,
-            description=first_message.content
+    @override
+    async def extract_intents(self, conversations: tuple[Conversation, ...]) -> tuple[Intent | None, ...]:
+        return tuple(
+            Intent(
+                role=conversation.messages[0].sender,
+                description=conversation.messages[0].content
+            ) if conversation.messages else None
+            for conversation in conversations
         )
+
