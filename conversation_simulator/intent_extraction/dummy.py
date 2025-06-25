@@ -17,7 +17,8 @@ class DummyIntentExtractor(IntentExtractor):
     """
     
     @override
-    async def extract_intents(self, conversations: tuple[Conversation, ...]) -> tuple[Intent | None, ...]:
+    async def extract_intents(self, conversations: tuple[Conversation, ...], 
+                              return_exceptions: bool = True) -> tuple[Intent | None | Exception, ...]:
         return tuple(
             Intent(
                 role=conversation.messages[0].sender,

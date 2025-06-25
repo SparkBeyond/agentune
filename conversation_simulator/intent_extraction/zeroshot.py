@@ -74,20 +74,15 @@ class ZeroshotIntentExtractor(IntentExtractor):
         return {"conversation": format_conversation(conversation) }
 
     @override
-    async def extract_intents(self, conversations: tuple[Conversation, ...]) -> tuple[Intent | None, ...]:
+    async def extract_intents(self, conversations: tuple[Conversation, ...],
+                              return_exceptions: bool = True) -> tuple[Intent | None | Exception, ...]:
         # If conversation is empty, no outcome can be detected and we return None for that index
         valid_indices = [i for i, conversation in enumerate(conversations) if conversation.messages]
         if not valid_indices:
             return tuple(None for _ in conversations)
 
         indexed_inputs = [(i, self._chain_input(conversations[i])) for i in valid_indices]
-        results = await self._chain.abatch([input for _, input in indexed_inputs], return_exceptions=True)
-        detected_outcome_by_index = {i: (None if isinstance(result, Exception) else result.to_intent()) for (i, _), result in zip(indexed_inputs, results) }
-
-        # Log any errors and return None for those indices
-        # In a production environment, you might want to log this to a proper logging system
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(f"Failed to extract intent: {result}")
+        results = await self._chain.abatch([input for _, input in indexed_inputs], return_exceptions=return_exceptions)
+        detected_outcome_by_index = {i: result.to_intent() for (i, _), result in zip(indexed_inputs, results) }
         
         return tuple(detected_outcome_by_index.get(i, None) for i in range(len(conversations)))

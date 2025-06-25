@@ -117,7 +117,7 @@ class SimulationSession:
     
     async def _generate_scenarios(
         self,
-        original_conversations: tuple[OriginalConversation, ...],
+        original_conversations: tuple[OriginalConversation, ...]
     ) -> tuple[Scenario, ...]:
         """Generate simulation scenarios from original conversations.
         
@@ -133,7 +133,8 @@ class SimulationSession:
         """
         scenarios = []
 
-        intents = await self.intent_extractor.extract_intents(tuple(conv.conversation for conv in original_conversations))
+        intents = await self.intent_extractor.extract_intents(tuple(conv.conversation for conv in original_conversations),
+                                                              return_exceptions=True)
 
         for original_conv, intent in zip(original_conversations, intents):
             # Skip empty conversations
@@ -146,7 +147,7 @@ class SimulationSession:
                 content=original_conv.conversation.messages[0].content,
             )
 
-            if intent is None:
+            if intent is None or isinstance(intent, Exception):
                 continue  # Skip conversations where intent couldn't be extracted
             # Create scenario with simple unique ID
             scenario_id = f"scenario_{len(scenarios)}"

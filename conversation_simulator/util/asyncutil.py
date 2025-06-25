@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Awaitable, Callable, Iterable, Literal, Tuple, cast, overload
+from typing import Awaitable, Callable, Iterable, Literal, cast, overload
 import queue
 
 type AsyncRunnable[T] = Callable[[], Awaitable[T]]
@@ -39,10 +39,10 @@ async def bounded_parallelism[T](runnables: Iterable[AsyncRunnable[T]], max_conc
         return []
     
     semaphore = asyncio.Semaphore(max_concurrent_tasks)
-    runnable_queue = queue.Queue[Tuple[int, AsyncRunnable[T]]]()
+    runnable_queue = queue.Queue[tuple[int, AsyncRunnable[T]]]()
     for index, runnable in enumerate(runnables):
         runnable_queue.put((index, runnable))
-    results_queue = queue.PriorityQueue[Tuple[int, T | Exception]]()
+    results_queue = queue.PriorityQueue[tuple[int, T | Exception]]()
     abort = asyncio.Event()
 
     async def run_with_semaphore() -> None:

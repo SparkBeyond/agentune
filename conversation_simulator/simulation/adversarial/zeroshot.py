@@ -2,7 +2,7 @@
 
 import logging
 import random
-from typing import Tuple, override
+from typing import override
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import JsonOutputParser
@@ -59,16 +59,17 @@ class ZeroShotAdversarialTester(AdversarialTester):
     @override
     async def identify_real_conversations(
         self,
-        instances: Tuple[AdversarialTest, ...],
-    ) -> list[bool | None]:
+        instances: tuple[AdversarialTest, ...],
+        return_exceptions: bool = True
+    ) -> tuple[bool | None | Exception, ...]:
         if not instances:
-            return []
+            return tuple()
 
         # Prepare inputs and track which indices are valid
         prompt_inputs = []
         valid_indices = []
         real_labels = []
-        results: list[bool | None] = [None] * len(instances)
+        results: list[bool | None | Exception] = [None] * len(instances)
 
         for i, instance in enumerate(instances):
             if not instance.real_conversation.messages or not instance.simulated_conversation.messages:
@@ -82,19 +83,14 @@ class ZeroShotAdversarialTester(AdversarialTester):
             valid_indices.append(i)
 
         if not prompt_inputs:
-            return results
+            return tuple(results)
 
         # Process valid conversations in batch
-        try:
-            identified_labels = await self._chain.abatch(prompt_inputs, max_concurrency=self.max_concurrency)
-            
-            for idx, identified_label, real_label in zip(valid_indices, identified_labels, real_labels):
-                if identified_label is None:
-                    continue
-                results[idx] = identified_label == real_label
+        identified_labels = await self._chain.abatch(prompt_inputs, max_concurrency=self.max_concurrency, return_exceptions=return_exceptions)
+        
+        for idx, identified_label, real_label in zip(valid_indices, identified_labels, real_labels):
+            if identified_label is None:
+                continue
+            results[idx] = identified_label == real_label
 
-        except Exception as e:
-            logger.error("Batch processing failed", exc_info=e)
-            # Leave results as None for failed items
-
-        return results
+        return tuple(results)

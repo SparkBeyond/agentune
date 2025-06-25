@@ -4,7 +4,7 @@ This module contains a simple implementation of an adversarial tester that alway
 to identify the real conversation, making it useful as a baseline or for testing.
 """
 
-from typing import Tuple, override
+from typing import override
 import attrs
 
 from .base import AdversarialTest, AdversarialTester
@@ -20,8 +20,9 @@ class DummyAdversarialTester(AdversarialTester):
     @override
     async def identify_real_conversations(
         self,
-        instances: Tuple[AdversarialTest, ...],
-    ) -> Tuple[bool | None, ...]:
+        instances: tuple[AdversarialTest, ...],
+        return_exceptions: bool = True
+    ) -> tuple[bool | None | Exception, ...]:
         """Always returns False, indicating this tester cannot distinguish between real and simulated conversations
         """
         return (False, ) * len(instances)

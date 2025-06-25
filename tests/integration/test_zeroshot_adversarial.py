@@ -134,7 +134,7 @@ async def test_identify_real_conversations_batch_integration(openai_model: ChatO
     tester = ZeroShotAdversarialTester(model=openai_model, max_concurrency=2)
     results = await tester.identify_real_conversations(instances)
 
-    assert isinstance(results, list)
+    assert isinstance(results, tuple)
     assert len(results) == 2
     # Results can be boolean or None
     assert all(res is None or isinstance(res, bool) for res in results)
@@ -169,7 +169,7 @@ async def test_identify_real_conversation_returns_none_for_empty(openai_model: C
         AdversarialTest(empty_conversation, real_conversation),
         AdversarialTest(real_conversation, empty_conversation)
     ))
-    assert results == [None, None]
+    assert results == (None, None)
 
 
 @pytest.mark.asyncio

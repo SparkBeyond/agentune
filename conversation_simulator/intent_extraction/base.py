@@ -1,6 +1,7 @@
 """Base class for intent extraction from conversations."""
 
 import abc
+from typing import Literal, overload
 
 from ..models.conversation import Conversation
 from ..models.intent import Intent
@@ -20,12 +21,23 @@ class IntentExtractor(abc.ABC):
             conversation: The conversation to analyze
             
         Returns:
-            Extracted intent or None if no intent could be determined
+            Extracted intent or None if no intent could be determined. Underlying errors
+            such as connection errors are propagated. Note that None is a valid outcome,
+            not an error.
         """
-        return (await self.extract_intents((conversation, )))[0]
+        return (await self.extract_intents((conversation, ), return_exceptions=False))[0]
+    
+    @overload
+    async def extract_intents(self, conversations: tuple[Conversation, ...], 
+                              return_exceptions: Literal[False] = False) -> tuple[Intent | None, ...]: ...
+    
+    @overload
+    async def extract_intents(self, conversations: tuple[Conversation, ...], 
+                              return_exceptions: bool = True) -> tuple[Intent | None | Exception, ...]: ...
 
     @abc.abstractmethod
-    async def extract_intents(self, conversations: tuple[Conversation, ...]) -> tuple[Intent | None, ...]:
+    async def extract_intents(self, conversations: tuple[Conversation, ...], 
+                              return_exceptions: bool = True) -> tuple[Intent | None | Exception, ...]:
         """Extract intents from a conversation. See extract_intent for details.
         """
         ...

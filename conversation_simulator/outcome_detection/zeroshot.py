@@ -1,6 +1,6 @@
 """Zero-shot outcome detection implementation."""
 
-from typing import Optional, Tuple, override
+from typing import Optional, override
 
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.language_models import BaseChatModel
@@ -60,9 +60,10 @@ class ZeroshotOutcomeDetector(OutcomeDetector):
     @override
     async def detect_outcomes(
         self,
-        instances: Tuple[OutcomeDetectionTest, ...],
-        possible_outcomes: Outcomes
-    ) -> tuple[Outcome | None, ...]:
+        instances: tuple[OutcomeDetectionTest, ...],
+        possible_outcomes: Outcomes,
+        return_exceptions: bool = True
+    ) -> tuple[Outcome | None | Exception, ...]:
         # If conversation is empty, no outcome can be detected and we return None for that index
         valid_indices = [i for i, instance in enumerate(instances) if instance.conversation.messages]
         if not valid_indices:
@@ -70,8 +71,9 @@ class ZeroshotOutcomeDetector(OutcomeDetector):
 
         chain = self._create_detection_chain()
         indexed_inputs = [(i, self._chain_input(instances[i], possible_outcomes)) for i in valid_indices]
-        results = await chain.abatch([input for _, input in indexed_inputs])
-        detected_outcome_by_index = {i: self._parse_outcome(result, possible_outcomes) for (i, _), result in zip(indexed_inputs, results) }
+        results = await chain.abatch([input for _, input in indexed_inputs], return_exceptions=return_exceptions)
+        detected_outcome_by_index = {i: result if isinstance(result, Exception) else self._parse_outcome(result, possible_outcomes) 
+                                     for (i, _), result in zip(indexed_inputs, results) }
         
         return tuple(detected_outcome_by_index.get(i, None) for i in range(len(instances)))
         

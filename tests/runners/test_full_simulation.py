@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from datetime import datetime, timedelta
-from typing import Tuple, override
+from typing import override
 import attrs
 
 import pytest
@@ -85,9 +85,10 @@ class MockOutcomeDetector(OutcomeDetector):
     @override
     async def detect_outcomes(
         self,
-        instances: Tuple[OutcomeDetectionTest, ...],
-        possible_outcomes: Outcomes
-    ) -> tuple[Outcome | None, ...]:
+        instances: tuple[OutcomeDetectionTest, ...],
+        possible_outcomes: Outcomes,
+        return_exceptions: bool = True
+    ) -> tuple[Outcome | None | Exception, ...]:
         """Return outcome if conditions are met."""
         return tuple(
             self.outcome if len(instance.conversation.messages) >= self.detect_after_messages else None

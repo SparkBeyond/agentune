@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Tuple, override
+from typing import override
 
 import pytest
 from cattrs.preconf.orjson import make_converter
@@ -40,9 +40,10 @@ class SimpleOutcomeDetector(OutcomeDetector):
     @override
     async def detect_outcomes(
         self,
-        instances: Tuple[OutcomeDetectionTest, ...],
-        possible_outcomes: Outcomes
-    ) -> tuple[Outcome | None, ...]:
+        instances: tuple[OutcomeDetectionTest, ...],
+        possible_outcomes: Outcomes,
+        return_exceptions: bool = True
+    ) -> tuple[Outcome | None | Exception, ...]:
         """Mock outcome detection - return first available outcome."""
         if possible_outcomes.outcomes:
             return tuple(possible_outcomes.outcomes[0] for _ in instances)
