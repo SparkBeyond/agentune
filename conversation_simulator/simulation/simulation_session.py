@@ -89,7 +89,8 @@ class SimulationSession:
         scenarios = await self._generate_scenarios(original_conversations)
         
         # Step 2: Run simulations for each scenario
-        simulated_conversations = await self._run_simulations(scenarios, max_concurrent_conversations)
+        simulated_conversations_with_exceptions = await self._run_simulations(scenarios, max_concurrent_conversations)
+        simulated_conversations = tuple(conv for conv in simulated_conversations_with_exceptions if isinstance(conv, SimulatedConversation))
          
         # Step 3: Analyze results
         session_end = datetime.now()
@@ -111,7 +112,7 @@ class SimulationSession:
             completed_at=session_end,
             original_conversations=original_conversations,
             scenarios=scenarios,
-            simulated_conversations=simulated_conversations,
+            simulated_conversations_with_exceptions=simulated_conversations_with_exceptions,
             analysis_result=analysis_result,
         )
     
@@ -166,7 +167,7 @@ class SimulationSession:
         self,
         scenarios: tuple[Scenario, ...],
         max_concurrent_conversations: int
-    ) -> tuple[SimulatedConversation, ...]:
+    ) -> tuple[SimulatedConversation | Exception, ...]:
         """Run conversation simulations for all scenarios.
         
         Each simulated conversation gets a unique ID and maintains a mapping
@@ -202,11 +203,12 @@ class SimulationSession:
         results = await asyncutil.bounded_parallelism(
             [runner.run for runner in runners], 
             max_concurrent_conversations,
-            return_exceptions=False
+            return_exceptions=True
         )
         
         # Wrap results with SimulatedConversation
         simulated_conversations = tuple(
+            result if isinstance(result, Exception) else
             SimulatedConversation(
                 id=f"simulated_{i}",
                 scenario_id=scenario.id,

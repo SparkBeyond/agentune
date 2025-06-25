@@ -66,7 +66,12 @@ class SimulationSessionResult:
     # Core data
     original_conversations: tuple[OriginalConversation, ...]
     scenarios: tuple[Scenario, ...]
-    simulated_conversations: tuple[SimulatedConversation, ...]
+    simulated_conversations_with_exceptions: tuple[SimulatedConversation | Exception, ...]
+
+    @property
+    def simulated_conversations(self) -> tuple[SimulatedConversation, ...]:
+        """Simulated conversations, excluding exceptions."""
+        return tuple(conv for conv in self.simulated_conversations_with_exceptions if isinstance(conv, SimulatedConversation))
     
     # Analysis results
     analysis_result: SimulationAnalysisResult
