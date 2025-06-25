@@ -115,7 +115,7 @@ class SimulationSession:
             completed_at=session_end,
             original_conversations=original_conversations,
             scenarios=scenarios,
-            simulated_conversations_with_exceptions=simulated_conversations_with_exceptions,
+            simulated_conversations=simulated_conversations,
             analysis_result=analysis_result,
         )
     
