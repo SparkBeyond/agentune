@@ -13,11 +13,7 @@ async def bounded_parallelism[T](runnables: Iterable[AsyncRunnable[T]], max_conc
 
 @overload
 async def bounded_parallelism[T](runnables: Iterable[AsyncRunnable[T]], max_concurrent_tasks: int,
-                                  return_exceptions: Literal[True] = True) -> list[T | Exception]: ...
-
-@overload
-async def bounded_parallelism[T](runnables: Iterable[AsyncRunnable[T]], max_concurrent_tasks: int,
-                                  return_exceptions: bool = False) -> list[T | Exception]: ...
+                                  return_exceptions: bool = True) -> list[T | Exception]: ...
 
 async def bounded_parallelism[T](runnables: Iterable[AsyncRunnable[T]], max_concurrent_tasks: int,
                                   return_exceptions: bool = False) -> list[T | Exception] | list[T]:
