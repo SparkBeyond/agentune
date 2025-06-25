@@ -53,7 +53,7 @@ class ZeroshotIntentExtractor(IntentExtractor):
     the primary intent of the conversation initiator (customer or agent).
     """
     
-    def __init__(self, llm: BaseChatModel):
+    def __init__(self, llm: BaseChatModel, max_concurrency: int = 50):
         """Initialize the zero-shot intent extractor.
         
         Args:
@@ -61,6 +61,7 @@ class ZeroshotIntentExtractor(IntentExtractor):
         """
         self.llm = llm
         self.parser = PydanticOutputParser(pydantic_object=IntentExtractionResult)
+        self.max_concurrency = max_concurrency
         
         # Create the prompt template with format instructions
         prompt_template = create_intent_extraction_prompt(
@@ -82,7 +83,8 @@ class ZeroshotIntentExtractor(IntentExtractor):
             return tuple(None for _ in conversations)
 
         indexed_inputs = [(i, self._chain_input(conversations[i])) for i in valid_indices]
-        results = await self._chain.abatch([input for _, input in indexed_inputs], return_exceptions=return_exceptions)
+        results = await self._chain.abatch([input for _, input in indexed_inputs], return_exceptions=return_exceptions,
+                                           max_concurrency=self.max_concurrency)
         detected_outcome_by_index = {i: result.to_intent() for (i, _), result in zip(indexed_inputs, results) }
         
         return tuple(detected_outcome_by_index.get(i, None) for i in range(len(conversations)))

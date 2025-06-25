@@ -42,7 +42,7 @@ class ZeroshotOutcomeDetector(OutcomeDetector):
         model: LangChain BaseChatModel instance
     """
     
-    def __init__(self, model: BaseChatModel):
+    def __init__(self, model: BaseChatModel, max_concurrency: int = 50):
         """Initialize the detector.
         
         Args:
@@ -50,6 +50,7 @@ class ZeroshotOutcomeDetector(OutcomeDetector):
         """
         self.model = model
         self._output_parser = PydanticOutputParser(pydantic_object=OutcomeDetectionResult)
+        self.max_concurrency = max_concurrency
 
     def _chain_input(self, instance: OutcomeDetectionTest, possible_outcomes: Outcomes) -> dict[str, str]:
         return {
@@ -71,7 +72,8 @@ class ZeroshotOutcomeDetector(OutcomeDetector):
 
         chain = self._create_detection_chain()
         indexed_inputs = [(i, self._chain_input(instances[i], possible_outcomes)) for i in valid_indices]
-        results = await chain.abatch([input for _, input in indexed_inputs], return_exceptions=return_exceptions)
+        results = await chain.abatch([input for _, input in indexed_inputs], return_exceptions=return_exceptions,
+                                     max_concurrency=self.max_concurrency)
         detected_outcome_by_index = {i: result if isinstance(result, Exception) else self._parse_outcome(result, possible_outcomes) 
                                      for (i, _), result in zip(indexed_inputs, results) }
         
