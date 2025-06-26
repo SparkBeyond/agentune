@@ -96,7 +96,7 @@ class SimulationSession:
         
         # Run comprehensive analysis
         analysis_result = await analyze_simulation_results(
-            original_conversations=tuple(conv.conversation for conv in original_conversations),
+            original_conversations=tuple(conv for conv in original_conversations),
             simulated_conversations=simulated_conversations,
             adversarial_tester=self.adversarial_tester,
             outcome_detector=self.outcome_detector,

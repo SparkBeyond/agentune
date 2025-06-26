@@ -8,7 +8,7 @@ from .. import Outcomes, Scenario
 from ..models.conversation import Conversation
 from ..outcome_detection.base import OutcomeDetector
 
-from ..models.results import SimulatedConversation, SimulationAnalysisResult
+from ..models.results import SimulatedConversation, OriginalConversation, SimulationAnalysisResult
 from ..models.analysis import (
     OutcomeDistribution,
     OutcomeDistributionComparison,
@@ -20,7 +20,7 @@ from .adversarial import AdversarialTester
 
 
 async def analyze_simulation_results(
-    original_conversations: tuple[Conversation, ...],
+    original_conversations: tuple[OriginalConversation, ...],
     simulated_conversations: tuple[SimulatedConversation, ...],
     adversarial_tester: AdversarialTester,
     outcome_detector: OutcomeDetector,
@@ -41,21 +41,35 @@ async def analyze_simulation_results(
         Complete analysis result with all comparisons
     """
     # Extract just the conversation objects for analysis
+    original_convs = [oc.conversation for oc in original_conversations]  # These are the original conversations, without ids
     simulated_convs = [sc.conversation for sc in simulated_conversations]
 
     message_comparison = _analyze_message_distributions(
-        list(original_conversations), simulated_convs
+        original_convs, simulated_convs
     )
     adversarial_evaluation = await _evaluate_adversarial_quality(
-        list(original_conversations), simulated_convs, adversarial_tester
+        original_convs, simulated_convs, adversarial_tester
     )
 
+    # Create a mapping from original_conversation_id to intent from scenarios
+    conversation_id_to_intent = {
+        scenario.original_conversation_id: scenario.intent
+        for scenario in scenarios
+        if scenario.original_conversation_id is not None
+    }
+
     # Generate outcome comparison between the original conversations GT and their predicted outcomes
-    intents = tuple(scenario.intent for scenario in scenarios)
-    original_conversations_with_predicted_outcome_tasks = [
-        outcome_detector.detect_outcome(conv, intent, possible_outcomes=outcomes)
-        for conv, intent in zip(original_conversations, intents)
-    ]
+    original_conversations_with_predicted_outcome_tasks = []
+    conversations_for_outcome_prediction = []
+
+    for conv in original_conversations:
+        if conv.id in conversation_id_to_intent:
+            intent = conversation_id_to_intent[conv.id]
+            original_conversations_with_predicted_outcome_tasks.append(
+                outcome_detector.detect_outcome(conv.conversation, intent, possible_outcomes=outcomes)
+            )
+            conversations_for_outcome_prediction.append(conv.conversation)
+
 
     original_conversations_predicted_outcomes = await asyncio.gather(
         *original_conversations_with_predicted_outcome_tasks
@@ -64,13 +78,13 @@ async def analyze_simulation_results(
     # Only set outcomes for conversations where we got a valid prediction
     original_conversations_with_predicted_outcomes = [
         conv.set_outcome(outcome=predicted_outcome)
-        for conv, predicted_outcome in zip(original_conversations, original_conversations_predicted_outcomes)
+        for conv, predicted_outcome in zip(conversations_for_outcome_prediction, original_conversations_predicted_outcomes)
         if predicted_outcome is not None
     ]
 
     # Perform all analysis
     outcome_comparison = _analyze_outcome_distributions(
-        list(original_conversations), simulated_convs, original_conversations_with_predicted_outcomes
+        original_convs, simulated_convs, original_conversations_with_predicted_outcomes
     )
     
     return SimulationAnalysisResult(
