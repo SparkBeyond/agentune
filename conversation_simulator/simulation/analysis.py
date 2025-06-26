@@ -150,7 +150,10 @@ async def _evaluate_adversarial_quality(
     simulated_conversations: list[Conversation],
     adversarial_tester: AdversarialTester,
 ) -> AdversarialEvaluationResult:
-    """Evaluate simulation quality using adversarial testing.
+    """Evaluate simulation quality using adversarial testing across all combinations.
+    
+    This function tests every original conversation against every simulated 
+    conversation to provide a more robust statistical measure of quality.
     
     Args:
         original_conversations: Real conversations
@@ -163,22 +166,31 @@ async def _evaluate_adversarial_quality(
     if not original_conversations or not simulated_conversations:
         return AdversarialEvaluationResult(0, 0)
     
-    min_length = min(len(original_conversations), len(simulated_conversations))
-    if min_length == 0:
+    # Create batches for all "cross" combinations (Cartesian product)
+    real_batch = []
+    simulated_batch = []
+    for original_conversation in original_conversations:
+        for simulated_conversation in simulated_conversations:
+            real_batch.append(original_conversation)
+            simulated_batch.append(simulated_conversation)
+
+    if not real_batch:
         return AdversarialEvaluationResult(0, 0)
-    
+
+    # Identify which conversation in each pair is the real one
     results = await adversarial_tester.identify_real_conversations(
-        tuple(original_conversations[:min_length]),
-        tuple(simulated_conversations[:min_length])
+        tuple(real_batch),
+        tuple(simulated_batch)
     )
     
-    # Filter out None values and count valid results
+    # Filter out None values to get the count of validly processed pairs
     valid_results = [r for r in results if r is not None]
     total_evaluated = len(valid_results)
     
     if total_evaluated == 0:
         return AdversarialEvaluationResult(0, 0)
         
+    # In every pair (real, simulated), a correct identification is `True`.
     correct = sum(1 for result in valid_results if result)
     
     return AdversarialEvaluationResult(
