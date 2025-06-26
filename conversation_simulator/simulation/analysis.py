@@ -55,7 +55,6 @@ async def analyze_simulation_results(
     conversation_id_to_intent = {
         scenario.original_conversation_id: scenario.intent
         for scenario in scenarios
-        if scenario.original_conversation_id is not None
     }
 
     # Generate outcome comparison between the original conversations GT and their predicted outcomes
