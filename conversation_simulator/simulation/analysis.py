@@ -1,6 +1,7 @@
 """Analysis functionality for simulation results."""
 
 from collections import Counter
+import random
 from typing import Iterable
 
 from ..models.conversation import Conversation
@@ -145,52 +146,97 @@ def _analyze_message_distributions(
     )
 
 
+def _sample_conversation_pairs(
+    original_conversations: list[Conversation],
+    simulated_conversations: list[Conversation],
+    max_pairs: int = 20,
+) -> tuple[list[Conversation], list[Conversation]]:
+    """Prepare batches of real and simulated conversations for evaluation.
+
+    If `max_pairs` is specified, it randomly samples pairs. Otherwise, it
+    creates pairs from the full Cartesian product.
+
+    Args:
+        original_conversations: A list of real conversations.
+        simulated_conversations: A list of simulated conversations.
+        max_pairs: The maximum number of pairs to randomly sample.
+
+    Returns:
+        A tuple containing two lists: the real conversation batch and the
+        simulated conversation batch.
+    """
+    real_batch = []
+    simulated_batch = []
+    
+    num_originals = len(original_conversations)
+    num_simulated = len(simulated_conversations)
+    total_possible_pairs = num_originals * num_simulated
+
+    use_all_pairs = max_pairs >= total_possible_pairs
+
+    if use_all_pairs:
+        for o_conv in original_conversations:
+            for s_conv in simulated_conversations:
+                real_batch.append(o_conv)
+                simulated_batch.append(s_conv)
+    else:
+        # Randomly sample unique indices from the flattened space of all pairs
+        sampled_indices = random.sample(range(total_possible_pairs), k=max_pairs)
+        
+        for index in sampled_indices:
+            # Convert the flat index back to a 2D index (original, simulated)
+            original_idx, sim_idx = divmod(index, num_simulated)
+            real_batch.append(original_conversations[original_idx])
+            simulated_batch.append(simulated_conversations[sim_idx])
+
+    return real_batch, simulated_batch
+
+
 async def _evaluate_adversarial_quality(
     original_conversations: list[Conversation],
     simulated_conversations: list[Conversation],
     adversarial_tester: AdversarialTester,
+    max_pairs: int = 20,
 ) -> AdversarialEvaluationResult:
     """Evaluate simulation quality using adversarial testing across all combinations.
     
-    This function tests every original conversation against every simulated 
-    conversation to provide a more robust statistical measure of quality.
+    This function orchestrates the adversarial evaluation by preparing conversation
+    pairs (either all or a random sample) and using a tester to identify
+    the real ones.
     
     Args:
         original_conversations: Real conversations
         simulated_conversations: Generated conversations  
         adversarial_tester: Tester to distinguish real vs simulated
+        max_pairs: The maximum number of pairs to randomly sample
         
     Returns:
         Adversarial evaluation results with accuracy metrics
     """
     if not original_conversations or not simulated_conversations:
         return AdversarialEvaluationResult(0, 0)
-    
-    # Create batches for all "cross" combinations (Cartesian product)
-    real_batch = []
-    simulated_batch = []
-    for original_conversation in original_conversations:
-        for simulated_conversation in simulated_conversations:
-            real_batch.append(original_conversation)
-            simulated_batch.append(simulated_conversation)
+
+    # Delegate pair selection logic to the helper function
+    real_batch, simulated_batch = _sample_conversation_pairs(
+        original_conversations,
+        simulated_conversations,
+        max_pairs,
+    )
 
     if not real_batch:
         return AdversarialEvaluationResult(0, 0)
 
-    # Identify which conversation in each pair is the real one
     results = await adversarial_tester.identify_real_conversations(
         tuple(real_batch),
         tuple(simulated_batch)
     )
     
-    # Filter out None values to get the count of validly processed pairs
     valid_results = [r for r in results if r is not None]
     total_evaluated = len(valid_results)
     
     if total_evaluated == 0:
         return AdversarialEvaluationResult(0, 0)
         
-    # In every pair (real, simulated), a correct identification is `True`.
     correct = sum(1 for result in valid_results if result)
     
     return AdversarialEvaluationResult(

@@ -214,7 +214,8 @@ async def test_evaluate_adversarial_quality_integration(openai_model: ChatOpenAI
     
     # Verify the result structure
     assert isinstance(result, AdversarialEvaluationResult)
-    assert result.total_pairs_evaluated == 3
+    # We should evaluate all combinations (3 originals * 3 simulated = 9 pairs)
+    assert result.total_pairs_evaluated == 9, f"Expected 9 pairs (3x3 combinations), got {result.total_pairs_evaluated}"
     # We can't predict exact accuracy, but it should be between 0 and 1 (inclusive)
     assert 0 <= result.accuracy <= 1.0
 
