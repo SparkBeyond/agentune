@@ -119,7 +119,10 @@ class RagCustomer(Customer):
         formatted_current_conversation = index_by_prefix._format_conversation_history(conversation.messages)
 
         # Add the goal line to the conversation if there's an intent
-        goal_line = f"- Your goal in this conversation is: {self.intent_description}" if self.intent_description else ""
+        if self.intent_description:
+            goal_line = f"This conversation was initiated by the customer with the following intent:\n{self.intent_description}"
+        else:
+            goal_line = ""
         
         # 4. Generation
         chain = self._create_llm_chain(model=self.model)

@@ -121,11 +121,18 @@ class Rag2Agent(Agent):
         formatted_examples = self._format_examples(few_shot_examples)
         formatted_current_conversation = index_by_prefix._format_conversation_history(conversation.messages)
 
+        # Add the goal line to the conversation if there's an intent
+        if self.intent_description:
+            goal_line = f"This conversation was initiated by agent with the following intent:\n{self.intent_description}"
+        else:
+            goal_line = ""
+
         # 3. Generation
         chain = self._create_llm_chain(model=self.model)
         response: AgentResponse = await chain.ainvoke({
             "examples": formatted_examples,
             "current_conversation": formatted_current_conversation,
+            "goal_line": goal_line,
             "format_instructions": self._output_parser.get_format_instructions()
         })
 

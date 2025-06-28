@@ -13,10 +13,14 @@ AGENT_HUMAN_TEMPLATE = """Below are examples of similar conversation states and 
 
 {examples}
 
+---
+
+{goal_line}
+
 Current conversation:
 {current_conversation}
 
-Based on the examples, answer the following questions:
+Based on the examples, and the current conversation, answer the following questions:
 1. Would a real agent respond next?
 2. If so, what would the response be?
 3. If not, why not?
