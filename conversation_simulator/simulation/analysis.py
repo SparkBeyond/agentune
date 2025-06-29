@@ -9,7 +9,7 @@ from conversation_simulator.simulation.adversarial.base import AdversarialTest
 
 from .. import Outcomes, Scenario
 from ..models.conversation import Conversation
-from ..outcome_detection.base import OutcomeDetector
+from ..outcome_detection.base import OutcomeDetectionTest, OutcomeDetector
 
 from ..models.results import SimulatedConversation, OriginalConversation, SimulationAnalysisResult
 from ..models.analysis import (
@@ -65,27 +65,18 @@ async def analyze_simulation_results(
     }
 
     # Generate outcome comparison between the original conversations GT and their predicted outcomes
-    original_conversations_with_predicted_outcome_tasks = []
-    conversations_for_outcome_prediction = []
-
-    for conv in original_conversations:
-        if conv.id in conversation_id_to_intent:
-            intent = conversation_id_to_intent[conv.id]
-            original_conversations_with_predicted_outcome_tasks.append(
-                outcome_detector.detect_outcome(conv.conversation, intent, possible_outcomes=outcomes)
-            )
-            conversations_for_outcome_prediction.append(conv.conversation)
-
-
-    original_conversations_predicted_outcomes = await asyncio.gather(
-        *original_conversations_with_predicted_outcome_tasks
+    conversations_for_outcome_prediction = [original_conv for original_conv in original_conversations if original_conv.id in conversation_id_to_intent]
+    original_conversations_predicted_outcomes = await outcome_detector.detect_outcomes(
+        tuple(OutcomeDetectionTest(original_conv.conversation, conversation_id_to_intent[original_conv.id]) for original_conv in conversations_for_outcome_prediction),
+        possible_outcomes=outcomes,
+        return_exceptions=return_exceptions
     )
 
     # Only set outcomes for conversations where we got a valid prediction
     original_conversations_with_predicted_outcomes = [
-        conv.set_outcome(outcome=predicted_outcome)
-        for conv, predicted_outcome in zip(conversations_for_outcome_prediction, original_conversations_predicted_outcomes)
-        if predicted_outcome is not None
+        original_conversation.conversation.set_outcome(outcome=predicted_outcome)
+        for original_conversation, predicted_outcome in zip(conversations_for_outcome_prediction, original_conversations_predicted_outcomes)
+        if predicted_outcome is not None and not isinstance(predicted_outcome, Exception)
     ]
 
     # Perform all analysis
