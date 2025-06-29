@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import random
+import math
 from datetime import timedelta
-from typing import Sequence, Optional
+from typing import Optional
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import PydanticOutputParser
@@ -14,7 +15,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 from pydantic import BaseModel, Field
 
-from ....models import Conversation, Message, ParticipantRole
+from ....models import Conversation, Message
 from ....rag import index_by_prefix
 from ..base import Customer, CustomerFactory
 from .prompt import CUSTOMER_PROMPT
@@ -82,29 +83,34 @@ class RagCustomer(Customer):
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next customer message using RAG LLM approach."""
-        if not conversation.messages or conversation.messages[-1].sender != ParticipantRole.AGENT:
-            return None
+        # if not conversation.messages or conversation.messages[-1].sender != ParticipantRole.AGENT:
+        #     return None
 
         # 1. Retrieval
-        few_shot_examples: list[tuple[Document, float]] = await self._get_few_shot_examples(
-            conversation.messages,
-            k=20,
-            vector_store=self.customer_vector_store
+        few_shot_examples: list[tuple[Document, float]] = await index_by_prefix.get_few_shot_examples(
+            conversation_history=conversation.messages,
+            vector_store=self.customer_vector_store,
+            k=20
         )
+        logger.debug(f"Role: {self.role}, Retrieved {len(few_shot_examples)} few-shot examples")
 
         # 2. Calculate probability of returning a message for the target role
         probability = await index_by_prefix.probability_of_next_message_for(
             role=self.role,
             similar_docs=few_shot_examples
         )
+        logger.debug(f"Role: {self.role}, Probability of next message: {probability}")
 
-        if self._random.random() > probability:
+        if self._random.random() > math.pow(probability, 0.5):
+            logger.debug(f"Role: {self.role}, Randomly decided not to respond: {probability}")
             return None
         
-        estimated_delay = await index_by_prefix.estimate_next_message_timedelta(
+        delays_before_next_message_for_role = await index_by_prefix.calculate_next_message_timedeltas(
             role=self.role,
             similar_docs=few_shot_examples
         )
+        estimated_delay = delays_before_next_message_for_role[0] if delays_before_next_message_for_role else None
+        logger.debug(f"Role: {self.role}, Estimated delay: {estimated_delay}")
 
         if estimated_delay is None:
             logger.error("Estimated delay is None, even though probability is above threshold!")
@@ -113,8 +119,10 @@ class RagCustomer(Customer):
         estimated_timestamp = conversation.messages[-1].timestamp + timedelta(seconds=estimated_delay)
 
         # 3. Augmentation
+        # Select few-shot examples randomly, to avoid bias
+        few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
+
         # Format few-shot examples and history for the prompt template
-        few_shot_examples = few_shot_examples[:5]  # Limit to top 5 examples
         formatted_examples = self._format_examples(few_shot_examples)
         formatted_current_conversation = index_by_prefix._format_conversation_history(conversation.messages)
 
@@ -134,12 +142,15 @@ class RagCustomer(Customer):
         })
 
         if not response.should_respond:
+            logger.debug(f"Role: {self.role}, LLM decided not to respond: {response.reasoning}")
             return None
 
         if response.response is None:
             logger.error("Customer response is None, even though should_respond is True!")
             return None
-            
+
+        logger.debug(f"Role: {self.role}, LLM decided to respond: {response.reasoning}. Response: {response.response}")
+        
         return Message(
             sender=self.role,
             content=response.response,  # Now guaranteed to be not None
@@ -156,14 +167,6 @@ class RagCustomer(Customer):
         ]
 
         return "\n\n".join(conversations)
-
-    @staticmethod
-    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 20) -> list[tuple[Document, float]]:
-        return await index_by_prefix.get_few_shot_examples(
-            conversation_history=conversation_history,
-            vector_store=vector_store,
-            k=k,
-        )
 
 
 class RagCustomerFactory(CustomerFactory):

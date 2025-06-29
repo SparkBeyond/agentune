@@ -1,7 +1,7 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import List, Sequence, Tuple, Optional
+from typing import List, Sequence, Tuple
 
 from langchain_core.documents import Document
 
@@ -39,9 +39,10 @@ def conversations_to_langchain_documents(
                 "current_message_index": i,
                 "has_next_message": bool(next_message),
                 "current_message_role": current_message.sender.value,
+                "current_message_timestamp": current_message.timestamp.isoformat(),
                 "full_conversation": full_conversation
             }
-
+            
             if next_message:
                 metadata["next_message_role"] = next_message.sender.value
                 metadata["next_message_content"] = next_message.content
@@ -64,7 +65,7 @@ async def get_few_shot_examples(
 
     retrieved_docs: List[Tuple[Document, float]] = await vector_store.asimilarity_search_with_score(
         query=query, k=k,
-        filter={"role": current_message_role.value}
+        filter={"current_message_role": current_message_role.value}
     )
 
     # Sort retrieved docs by score
@@ -111,30 +112,23 @@ async def probability_of_next_message_for(role: ParticipantRole, similar_docs: L
            doc.metadata.get("next_message_role") == role.value
     )
     
-    return weighted_matches / total_weight
+    return float(weighted_matches / total_weight)
 
 
-async def estimate_next_message_timedelta(role: ParticipantRole, similar_docs: List[Tuple[Document, float]]) -> Optional[float]:
-    """Estimates the likely timedelta in seconds between current last message and next message for a given role (of the next message).
+async def calculate_next_message_timedeltas(role: ParticipantRole, similar_docs: List[Tuple[Document, float]]) -> list[float]:
+    """Calculate the timedelta in seconds between current last message and next message for a given role (of the next message).
     
-    This function uses a weighted approach where each document's contribution is
-    weighted by its similarity score, giving more influence to documents that are
-    more similar to the query.
+    Returns a list of timedeltas for each document, for documents where the next message's role matches the target role.
+    Order is the same as in the input list.
     
     Args:
         role: The participant role of the next message to calculate time delta for.
         similar_docs: List of (document, similarity_score) tuples.
         
     Returns:
-        Estimated time delta in seconds, or None if no valid data is available.
+        List of timedeltas in seconds, or empty list if no valid docs are available.
     """
     relevant_docs = [(doc, score) for doc, score in similar_docs if doc.metadata.get("next_message_role") == role.value]
-    if not relevant_docs:
-        return None
-    
-    total_weight = sum(score for _, score in relevant_docs)
-    if total_weight == 0:
-        return None
     
     def timedelta_to_next_message(doc: Document) -> float:
         time_delta: timedelta = (
@@ -143,10 +137,5 @@ async def estimate_next_message_timedelta(role: ParticipantRole, similar_docs: L
         )
         return time_delta.total_seconds()
     
-    # Sum the weights of documents where the next message's role matches our target
-    weighted_timedeltas = sum(
-        score * timedelta_to_next_message(doc) for doc, score in relevant_docs
-    )
-    
-    return weighted_timedeltas / total_weight
+    return [timedelta_to_next_message(doc) for doc, _ in relevant_docs]
     
