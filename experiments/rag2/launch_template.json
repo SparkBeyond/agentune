@@ -1,0 +1,40 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug RAG2 Simulation",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/experiments/rag2/run_simulation.py",
+            "args": ["--simulations", "2", "--debug"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Debug RAG2 - With Logging",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/experiments/rag2/run_simulation.py",
+            "args": ["--simulations", "2", "--log-level", "DEBUG"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Build RAG2 Vector Store",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/experiments/rag2/build_vector_stores.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ]
+}
