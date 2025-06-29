@@ -5,6 +5,8 @@ import random
 from typing import Iterable
 import asyncio
 
+from conversation_simulator.simulation.adversarial.base import AdversarialTest
+
 from .. import Outcomes, Scenario
 from ..models.conversation import Conversation
 from ..outcome_detection.base import OutcomeDetector
@@ -27,6 +29,7 @@ async def analyze_simulation_results(
     outcome_detector: OutcomeDetector,
     scenarios: tuple[Scenario, ...],
     outcomes: Outcomes,
+    return_exceptions: bool = True,
 ) -> SimulationAnalysisResult:
     """Analyze simulation results and generate comprehensive comparison.
     
@@ -37,6 +40,9 @@ async def analyze_simulation_results(
         outcome_detector: Detector for outcome prediction
         scenarios: Scenarios used for generating conversations
         outcomes: Legal outcome labels for the simulation run
+        return_exceptions: If False, raises an error if any per-conversation task raises an error.
+                           If True, discards such conversations from the result. 
+                           (This method's result type does not allow it to actually return the exceptions.)
         
     Returns:
         Complete analysis result with all comparisons
@@ -49,7 +55,7 @@ async def analyze_simulation_results(
         original_convs, simulated_convs
     )
     adversarial_evaluation = await _evaluate_adversarial_quality(
-        original_convs, simulated_convs, adversarial_tester
+        original_convs, simulated_convs, adversarial_tester, return_exceptions=return_exceptions
     )
 
     # Create a mapping from original_conversation_id to intent from scenarios
@@ -246,6 +252,7 @@ async def _evaluate_adversarial_quality(
     simulated_conversations: list[Conversation],
     adversarial_tester: AdversarialTester,
     max_pairs: int = 200,
+    return_exceptions: bool = True,
 ) -> AdversarialEvaluationResult:
     """Evaluate simulation quality using adversarial testing across a random sample of conversation pairs.
     
@@ -271,16 +278,17 @@ async def _evaluate_adversarial_quality(
         simulated_conversations,
         max_pairs,
     )
+    adversarial_tests = tuple(AdversarialTest(real_conv, simulated_conv) for real_conv, simulated_conv in zip(real_batch, simulated_batch))
 
     if not real_batch:
         return AdversarialEvaluationResult(0, 0)
 
     results = await adversarial_tester.identify_real_conversations(
-        tuple(real_batch),
-        tuple(simulated_batch)
+        adversarial_tests,
+        return_exceptions=return_exceptions
     )
     
-    valid_results = [r for r in results if r is not None]
+    valid_results = [r for r in results if r is not None and not isinstance(r, Exception)]
     total_evaluated = len(valid_results)
     
     if total_evaluated == 0:
