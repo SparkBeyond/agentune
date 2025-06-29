@@ -3,6 +3,7 @@
 from __future__ import annotations
 from datetime import datetime
 import attrs
+from frozendict import frozendict
 
 from .conversation import Conversation
 from .scenario import Scenario
@@ -67,6 +68,8 @@ class SimulationSessionResult:
     original_conversations: tuple[OriginalConversation, ...]
     scenarios: tuple[Scenario, ...]
     simulated_conversations: tuple[SimulatedConversation, ...]
+    # Distinct exception messages that caused simulations to fail, with failure counts 
+    failed_simulation_errors: frozendict[str, int]
     
     # Analysis results
     analysis_result: SimulationAnalysisResult
