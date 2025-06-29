@@ -149,7 +149,7 @@ def _analyze_message_distributions(
 def _sample_conversation_pairs(
     original_conversations: list[Conversation],
     simulated_conversations: list[Conversation],
-    max_pairs: int = 20,
+    max_pairs: int,
 ) -> tuple[list[Conversation], list[Conversation]]:
     """Prepare batches of real and simulated conversations for evaluation.
 
@@ -196,9 +196,9 @@ async def _evaluate_adversarial_quality(
     original_conversations: list[Conversation],
     simulated_conversations: list[Conversation],
     adversarial_tester: AdversarialTester,
-    max_pairs: int = 20,
+    max_pairs: int = 200,
 ) -> AdversarialEvaluationResult:
-    """Evaluate simulation quality using adversarial testing across all combinations.
+    """Evaluate simulation quality using adversarial testing across a random sample of conversation pairs.
     
     This function orchestrates the adversarial evaluation by preparing conversation
     pairs (either all or a random sample) and using a tester to identify
