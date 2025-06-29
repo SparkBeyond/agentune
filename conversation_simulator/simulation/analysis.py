@@ -3,7 +3,6 @@
 from collections import Counter
 import random
 from typing import Iterable
-import asyncio
 
 from conversation_simulator.simulation.adversarial.base import AdversarialTest
 
