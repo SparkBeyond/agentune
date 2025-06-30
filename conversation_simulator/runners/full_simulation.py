@@ -65,7 +65,6 @@ class FullSimulationRunner(Runner):
         max_messages: int = 100,
         max_messages_after_outcome: int = 5,  # Allow goodbye messages after outcome
         base_timestamp: datetime | None = None,  # If None, use current time when run() starts
-        progress_handler: ProgressHandler | None = None,
     ) -> None:
         """Initialize the full simulation runner.
         
@@ -79,7 +78,6 @@ class FullSimulationRunner(Runner):
             max_messages: Maximum number of messages in conversation
             max_messages_after_outcome: Max additional messages after outcome detected (0 = stop immediately)
             base_timestamp: Base timestamp for conversation (current time if None)
-            progress_handler: Optional handler for progress events
         """
         self.customer = customer
         self.agent = agent
@@ -90,7 +88,6 @@ class FullSimulationRunner(Runner):
         self.max_messages = max_messages
         self.max_messages_after_outcome = max_messages_after_outcome
         self.base_timestamp = base_timestamp
-        self.progress_handler = progress_handler
         
         # Private state - managed internally
         self._conversation: Conversation
@@ -116,10 +113,6 @@ class FullSimulationRunner(Runner):
         initial_msg = self.initial_message.to_message(current_time)
         self._conversation = self._conversation.add_message(initial_msg)
         
-        # Notify progress handler of initial message
-        if self.progress_handler:
-            self.progress_handler.on_message_added(self._conversation, initial_msg)
-        
         # Main conversation loop using concurrent timestamp-based selection
         while len(self._conversation.messages) < self.max_messages and not self._is_complete:
             # Ask both participants to generate their next message simultaneously
@@ -133,12 +126,12 @@ class FullSimulationRunner(Runner):
                 )
             except Exception:
                 # If either participant had an error, end the conversation
-                self._end_conversation("participant_error")
+                self._is_complete = True
                 break
             
             # Check if both participants are finished
             if customer_message is None and agent_message is None:
-                self._end_conversation("both_participants_finished")
+                self._is_complete = True
                 break
             
             # Select message based on timestamp
@@ -159,10 +152,6 @@ class FullSimulationRunner(Runner):
             if selected_message:
                 self._conversation = self._conversation.add_message(selected_message)
                 
-                # Notify progress handler
-                if self.progress_handler:
-                    self.progress_handler.on_message_added(self._conversation, selected_message)
-                
                 # Check for outcome detection (only if not already detected)
                 if not self._outcome_detected:
                     detected_outcome = await self.outcome_detector.detect_outcome(
@@ -173,24 +162,22 @@ class FullSimulationRunner(Runner):
                     if detected_outcome:
                         self._conversation = self._conversation.set_outcome(detected_outcome)
                         self._outcome_detected = True
-                        if self.progress_handler:
-                            self.progress_handler.on_outcome_detected(self._conversation, detected_outcome)
                         
                         # If max_messages_after_outcome is 0, end immediately
                         if self.max_messages_after_outcome == 0:
-                            self._end_conversation("outcome_detected")
+                            self._is_complete = True
                             break
                 
                 # Track messages after outcome detection
                 else :
                     self._messages_after_outcome += 1
                     if self._messages_after_outcome >= self.max_messages_after_outcome:
-                        self._end_conversation("outcome_detected_max_followup")
+                        self._is_complete = True
                         break
         
         # Check if we reached max messages
         if len(self._conversation.messages) >= self.max_messages and not self._is_complete:
-            self._end_conversation("max_messages")
+            self._is_complete = True
         
         # Calculate duration and return result
         duration = (datetime.now() - self._start_time).total_seconds()
@@ -203,16 +190,6 @@ class FullSimulationRunner(Runner):
     def conversation(self) -> Conversation:
         """Get current conversation state (read-only access)."""
         return self._conversation
-    
-    def _end_conversation(self, reason: str) -> None:
-        """Mark the conversation as complete and notify progress handler.
-        
-        Args:
-            reason: Reason for ending the conversation
-        """
-        self._is_complete = True
-        if self.progress_handler:
-            self.progress_handler.on_conversation_ended(self._conversation, reason)
 
     @property
     def is_complete(self) -> bool:

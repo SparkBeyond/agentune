@@ -95,29 +95,6 @@ class MockOutcomeDetector(OutcomeDetector):
             for instance in instances
         )
 
-
-class MockProgressHandler(ProgressHandler):
-    """Mock progress handler for testing that records all events."""
-    
-    def __init__(self) -> None:
-        """Initialize mock progress handler."""
-        self.messages_added: list[tuple[Conversation, Message]] = []
-        self.outcomes_detected: list[tuple[Conversation, Outcome]] = []
-        self.conversations_ended: list[tuple[Conversation, str]] = []
-    
-    def on_message_added(self, conversation: Conversation, new_message: Message) -> None:
-        """Record message addition."""
-        self.messages_added.append((conversation, new_message))
-    
-    def on_outcome_detected(self, conversation: Conversation, outcome: Outcome) -> None:
-        """Record outcome detection."""
-        self.outcomes_detected.append((conversation, outcome))
-    
-    def on_conversation_ended(self, conversation: Conversation, reason: str) -> None:
-        """Record conversation ending."""
-        self.conversations_ended.append((conversation, reason))
-
-
 @pytest.fixture
 def base_timestamp() -> datetime:
     """Base timestamp for test messages."""
@@ -194,7 +171,6 @@ class TestFullSimulationRunner:
         
         customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
         agent = MockParticipant(ParticipantRole.AGENT, agent_messages)
-        progress_handler = MockProgressHandler()
         
         # Create runner
         outcome_detector = MockOutcomeDetector(10000)  # Never detects outcome
@@ -207,7 +183,6 @@ class TestFullSimulationRunner:
             outcome_detector=outcome_detector,
             max_messages=10,
             base_timestamp=base_timestamp,
-            progress_handler=progress_handler
         )
         
         # Run simulation
@@ -229,10 +204,6 @@ class TestFullSimulationRunner:
         # Verify conversation ended due to both participants finishing
         assert runner.is_complete
         
-        # Verify progress handler was called correctly
-        assert len(progress_handler.messages_added) == total_expected_messages
-        assert len(progress_handler.conversations_ended) == 1
-    
     @pytest.mark.asyncio
     async def test_max_messages_limit(
         self,
@@ -260,7 +231,6 @@ class TestFullSimulationRunner:
         
         customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
         agent = MockParticipant(ParticipantRole.AGENT, agent_messages)
-        progress_handler = MockProgressHandler()
         
         # Create runner with low max_messages
         outcome_detector = MockOutcomeDetector(10000)  # Never detects outcome
@@ -273,7 +243,6 @@ class TestFullSimulationRunner:
             outcome_detector=outcome_detector,
             max_messages=3,  # Low limit
             base_timestamp=base_timestamp,
-            progress_handler=progress_handler
         )
         
         # Run simulation
@@ -282,7 +251,6 @@ class TestFullSimulationRunner:
         # Verify conversation stopped at max_messages
         assert len(result.conversation.messages) == 3
         assert runner.is_complete
-        assert progress_handler.conversations_ended[-1][1] == "max_messages"
     
     @pytest.mark.asyncio
     async def test_outcome_detection_with_followup_messages(
@@ -326,7 +294,6 @@ class TestFullSimulationRunner:
 
         customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
         agent = MockParticipant(ParticipantRole.AGENT, agent_messages)
-        progress_handler = MockProgressHandler()
         
         # Test with 2 follow-up messages allowed
         outcome_detector = MockOutcomeDetector(detect_after_messages=3)  # Detect after initial + 2 messages
@@ -339,7 +306,6 @@ class TestFullSimulationRunner:
             outcome_detector=outcome_detector,
             max_messages_after_outcome=2,
             base_timestamp=base_timestamp,
-            progress_handler=progress_handler
         )
         
         # Run simulation
@@ -350,11 +316,6 @@ class TestFullSimulationRunner:
         assert result.conversation.outcome.name == "resolved"
         assert len(result.conversation.messages) == 5  # initial + 2 + 2 follow-up
         assert runner.is_complete
-        assert progress_handler.conversations_ended[-1][1] == "outcome_detected_max_followup"
-        
-        # Verify progress handler recorded outcome detection
-        assert len(progress_handler.outcomes_detected) == 1
-        assert progress_handler.outcomes_detected[0][1].name == "resolved"
     
     @pytest.mark.asyncio
     async def test_immediate_termination_on_outcome(
@@ -389,7 +350,6 @@ class TestFullSimulationRunner:
 
         customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
         agent = MockParticipant(ParticipantRole.AGENT, agent_messages)
-        progress_handler = MockProgressHandler()
         
         # Test with immediate termination
         outcome_detector = MockOutcomeDetector(detect_after_messages=2, outcome=Outcome(name="quick_resolution", description="Quick resolution achieved"))  # Detect after initial + 1 message
@@ -402,7 +362,6 @@ class TestFullSimulationRunner:
             outcome_detector=outcome_detector,
             max_messages_after_outcome=0,  # Immediate termination
             base_timestamp=base_timestamp,
-            progress_handler=progress_handler
         )
         
         # Run simulation
@@ -413,4 +372,3 @@ class TestFullSimulationRunner:
         assert result.conversation.outcome.name == "quick_resolution"
         assert len(result.conversation.messages) == 2  # initial + 1 message that triggered outcome
         assert runner.is_complete
-        assert progress_handler.conversations_ended[-1][1] == "outcome_detected"

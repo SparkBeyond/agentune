@@ -21,8 +21,7 @@ from conversation_simulator.runners.full_simulation import FullSimulationRunner
 from tests.runners.test_full_simulation import (
     MockParticipant, 
     MessageWithTimestamp, 
-    MockOutcomeDetector, 
-    MockProgressHandler
+    MockOutcomeDetector 
 )
 
 logger = logging.getLogger(__name__)
@@ -235,7 +234,6 @@ class TestRagAgentIntegration:
             sender=ParticipantRole.CUSTOMER
         )
         outcome_detector = MockOutcomeDetector(10000)  # Never detects
-        progress_handler = MockProgressHandler()
 
         runner = FullSimulationRunner(
             customer=customer,
@@ -244,7 +242,6 @@ class TestRagAgentIntegration:
             intent=sample_intent,
             outcomes=sample_outcomes,
             outcome_detector=outcome_detector,
-            progress_handler=progress_handler,
         )
 
         # 4. Run simulation
