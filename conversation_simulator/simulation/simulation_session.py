@@ -1,10 +1,12 @@
 """Full simulation flow implementation."""
 
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
 from typing import Awaitable, Callable
 import logging
 
-from conversation_simulator.simulation.progress import ProgressCallbacks
+
+from conversation_simulator.simulation.progress import LoggingProgressCallback, ProgressCallback, ProgressCallbacks
 
 from ..models.conversation import Conversation
 from ..models.outcome import Outcomes
@@ -47,7 +49,8 @@ class SimulationSession:
         max_messages: int = 100,
         max_concurrent_conversations: int = 10,
         return_exceptions: bool = True,
-        progress_callbacks: ProgressCallbacks = ProgressCallbacks()
+        progress_callback: ProgressCallback = ProgressCallback(),
+        progress_log_interval: timedelta = timedelta(seconds=5)
     ) -> None:
         """Initialize the simulation session.
         
@@ -70,6 +73,9 @@ class SimulationSession:
                                total conversation count).
                                If False, any exception will be raised from this method and no information 
                                will be returned about other conversations.                              
+            progress_callback: Callback for progress updates
+            progress_log_interval: Interval at which to log progress. If no progress has been made,
+                                   nothing will be logged. (This is in addition to the custom progress callback.)
         """
         self.outcomes = outcomes
         self.agent_factory = agent_factory
@@ -82,8 +88,9 @@ class SimulationSession:
         self.max_messages = max_messages
         self.max_concurrent_conversations = max_concurrent_conversations
         self.return_exceptions = return_exceptions
-        self.progress_callbacks = progress_callbacks
-    
+        self.progress_callback = progress_callback
+        self.progress_log_interval = progress_log_interval
+
     async def run_simulation(
         self,
         real_conversations: list[Conversation]
@@ -106,12 +113,10 @@ class SimulationSession:
         
         # Step 1: Extract intents from conversations and generate scenarios
         scenarios = await self._generate_scenarios(original_conversations)
-        self.progress_callbacks.on_generated_scenarios(scenarios)
         
         # Step 2: Run simulations for each scenario
         simulated_conversations_with_exceptions = await self._run_simulations(scenarios, self.max_concurrent_conversations)
         simulated_conversations = tuple(conv for conv in simulated_conversations_with_exceptions if isinstance(conv, SimulatedConversation))
-        self.progress_callbacks.on_all_scenarios_complete()
         
         # Step 3: Analyze results
         session_end = datetime.now()
@@ -206,6 +211,9 @@ class SimulationSession:
         Returns:
             Tuple of simulated conversations with proper ID mapping
         """
+
+        logging_progress_callback = LoggingProgressCallback(self.progress_log_interval)
+        all_callbacks = ProgressCallbacks((self.progress_callback, logging_progress_callback))
         
         def create_runner_run(scenario: Scenario) ->  Callable[[], Awaitable[ConversationResult]]:
             # Create participants - FullSimulationRunner will install intent as needed
@@ -223,26 +231,36 @@ class SimulationSession:
             )
 
             async def run() -> ConversationResult:
-                self.progress_callbacks.on_scenario_start(scenario)
+                all_callbacks.on_scenario_start(scenario)
                 try:
                     result = await runner.run()
-                    self.progress_callbacks.on_scenario_complete(scenario, result)
+                    all_callbacks.on_scenario_complete(scenario, result)
                     return result
                 except Exception as e:
-                    self.progress_callbacks.on_scenario_failed(scenario, e)
+                    all_callbacks.on_scenario_failed(scenario, e)
                     _logger.error(f'Error running simulation for scenario {scenario.id}', exc_info=e)
                     raise e
             return run
         
         # Create all runners
         runners = [create_runner_run(scenario) for scenario in scenarios]
-        
-        # Run all simulations with bounded parallelism
-        results = await asyncutil.bounded_parallelism(
-            runners, 
-            max_concurrent_conversations,
-            return_exceptions=self.return_exceptions
-        )
+
+        # Cancel the logging progress callback task when done or if abort early with an exception
+        # (i.e. return_exceptions=False)
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(logging_progress_callback.log_progress())
+
+            all_callbacks.on_generated_scenarios(scenarios)
+            
+            # Run all simulations with bounded parallelism
+            results = await tg.create_task(asyncutil.bounded_parallelism(
+                runners, 
+                max_concurrent_conversations,
+                return_exceptions=self.return_exceptions
+            ))
+
+            all_callbacks.on_all_scenarios_complete()
+
         
         # Wrap results with SimulatedConversation
         simulated_conversations = tuple(

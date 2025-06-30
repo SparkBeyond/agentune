@@ -5,6 +5,7 @@ SimulationSession instances with proper defaults and optional components.
 """
 
 from typing import Self
+from datetime import timedelta
 
 import attrs
 from langchain_core.language_models import BaseChatModel
@@ -18,7 +19,7 @@ from conversation_simulator.participants.agent.base import AgentFactory
 from conversation_simulator.participants.customer.base import CustomerFactory
 from conversation_simulator.simulation.adversarial.base import AdversarialTester
 from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
-from conversation_simulator.simulation.progress import ProgressCallbacks
+from conversation_simulator.simulation.progress import ProgressCallback
 from conversation_simulator.simulation.simulation_session import SimulationSession
 
 
@@ -50,7 +51,8 @@ class SimulationSessionBuilder:
     _intent_extractor: IntentExtractor | None = None
     _outcome_detector: OutcomeDetector | None = None
     _adversarial_tester: AdversarialTester | None = None
-    progress_callbacks: ProgressCallbacks = attrs.field(factory=ProgressCallbacks)
+    progress_callback: ProgressCallback = attrs.field(factory=ProgressCallback)
+    progress_log_interval: timedelta = timedelta(seconds=5)
     
     def with_intent_extractor(self, intent_extractor: IntentExtractor) -> Self:
         """Sets a custom intent extractor for the simulation session.
@@ -111,5 +113,6 @@ class SimulationSessionBuilder:
             max_messages=self.max_messages,
             max_concurrent_conversations=self.max_concurrent_conversations,
             return_exceptions=self.return_exceptions,
-            progress_callbacks=self.progress_callbacks,
+            progress_callback=self.progress_callback,
+            progress_log_interval=self.progress_log_interval,
         )
