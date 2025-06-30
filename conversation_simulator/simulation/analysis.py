@@ -3,6 +3,7 @@
 from collections import Counter
 import random
 from typing import Iterable
+import logging
 
 from conversation_simulator.simulation.adversarial.base import AdversarialTest
 
@@ -19,6 +20,8 @@ from ..models.analysis import (
     AdversarialEvaluationResult,
 )
 from .adversarial import AdversarialTester
+
+_logger = logging.getLogger(__name__)
 
 
 async def analyze_simulation_results(
@@ -70,6 +73,10 @@ async def analyze_simulation_results(
         possible_outcomes=outcomes,
         return_exceptions=return_exceptions
     )
+
+    for predicted_outcome in original_conversations_predicted_outcomes:
+        if isinstance(predicted_outcome, Exception):
+            _logger.error(f'Error trying to predict outcome', exc_info=predicted_outcome)
 
     # Only set outcomes for conversations where we got a valid prediction
     original_conversations_with_predicted_outcomes = [
@@ -277,6 +284,10 @@ async def _evaluate_adversarial_quality(
         adversarial_tests,
         return_exceptions=return_exceptions
     )
+
+    for result in results:
+        if isinstance(result, Exception):
+            _logger.error(f'Error trying to identify real conversation', exc_info=result)
     
     valid_results = [r for r in results if r is not None and not isinstance(r, Exception)]
     total_evaluated = len(valid_results)

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Awaitable, Callable
+import logging
 
 from conversation_simulator.simulation.progress import ProgressCallbacks
 
@@ -23,6 +24,8 @@ from ..outcome_detection.base import OutcomeDetector
 from .analysis import analyze_simulation_results
 from .adversarial import AdversarialTester
 from ..util import asyncutil
+
+_logger = logging.getLogger(__name__)
 
 class SimulationSession:
     """Orchestrates the full simulation flow from real conversations to analysis.
@@ -167,8 +170,12 @@ class SimulationSession:
                 content=original_conv.conversation.messages[0].content,
             )
 
-            if intent is None or isinstance(intent, Exception):
+            if isinstance(intent, Exception):
+                _logger.error(f"Error trying to extract intent for conversation {original_conv.id}", exc_info=intent)
+                continue
+            if intent is None:
                 continue  # Skip conversations where intent couldn't be extracted
+
             # Create scenario with simple unique ID
             scenario_id = f"scenario_{len(scenarios)}"
             
@@ -223,6 +230,7 @@ class SimulationSession:
                     return result
                 except Exception as e:
                     self.progress_callbacks.on_scenario_failed(scenario, e)
+                    _logger.error(f'Error running simulation for scenario {scenario.id}', exc_info=e)
                     raise e
             return run
         
