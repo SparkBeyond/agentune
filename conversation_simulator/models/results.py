@@ -3,7 +3,6 @@
 from __future__ import annotations
 from datetime import datetime
 import attrs
-from frozendict import frozendict
 
 from .conversation import Conversation
 from .scenario import Scenario
