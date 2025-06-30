@@ -68,8 +68,6 @@ class SimulationSessionResult:
     original_conversations: tuple[OriginalConversation, ...]
     scenarios: tuple[Scenario, ...]
     simulated_conversations: tuple[SimulatedConversation, ...]
-    # Distinct exception messages that caused simulations to fail, with failure counts 
-    failed_simulation_errors: frozendict[str, int]
     
     # Analysis results
     analysis_result: SimulationAnalysisResult

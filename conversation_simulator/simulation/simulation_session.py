@@ -1,8 +1,6 @@
 """Full simulation flow implementation."""
 
-from collections import Counter
 from datetime import datetime
-from frozendict import frozendict
 
 from ..models.conversation import Conversation
 from ..models.outcome import Outcomes
@@ -103,8 +101,7 @@ class SimulationSession:
         # Step 2: Run simulations for each scenario
         simulated_conversations_with_exceptions = await self._run_simulations(scenarios, self.max_concurrent_conversations)
         simulated_conversations = tuple(conv for conv in simulated_conversations_with_exceptions if isinstance(conv, SimulatedConversation))
-        failed_simulation_errors = frozendict(Counter(repr(e) for e in simulated_conversations_with_exceptions if isinstance(e, Exception)))
-         
+        
         # Step 3: Analyze results
         session_end = datetime.now()
         
@@ -127,7 +124,6 @@ class SimulationSession:
             original_conversations=original_conversations,
             scenarios=scenarios,
             simulated_conversations=simulated_conversations,
-            failed_simulation_errors=failed_simulation_errors,
             analysis_result=analysis_result,
         )
     

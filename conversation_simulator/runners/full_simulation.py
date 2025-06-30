@@ -47,7 +47,6 @@ class ProgressHandler(abc.ABC):
         """
         ...
 
-
 class FullSimulationRunner(Runner):
     """Runs conversations with both simulated customer and agent.
     
