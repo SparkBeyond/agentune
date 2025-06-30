@@ -41,7 +41,7 @@ async def analyze_simulation_results(
         outcomes: Legal outcome labels for the simulation run
         return_exceptions: If False, raises an error if any per-conversation task raises an error.
                            If True, discards such conversations from the result. 
-                           (This method's result type does not allow it to actually return the exceptions.)
+                           (This method's return type does not allow it to actually return the exceptions.)
         
     Returns:
         Complete analysis result with all comparisons

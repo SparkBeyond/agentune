@@ -41,6 +41,7 @@ class SimulationSession:
         session_description: str = "Automated conversation simulation",
         max_messages: int = 100,
         max_concurrent_conversations: int = 10,
+        return_exceptions: bool = True
     ) -> None:
         """Initialize the simulation session.
         
@@ -58,6 +59,11 @@ class SimulationSession:
                                           Conversations will be processed in the order of the input list;
                                           however, we will simulate all conversations (with that many concurrent tasks)
                                           before analyzing all results (with, again, that many concurrent tasks).
+            return_exceptions: If True, per-conversation exceptions will be logged and reported to the progress callback; 
+                               the returned result will not include those conversations (not even in the 
+                               total conversation count).
+                               If False, any exception will be raised from this method and no information 
+                               will be returned about other conversations.                              
         """
         self.outcomes = outcomes
         self.agent_factory = agent_factory
@@ -69,6 +75,7 @@ class SimulationSession:
         self.session_description = session_description
         self.max_messages = max_messages
         self.max_concurrent_conversations = max_concurrent_conversations
+        self.return_exceptions = return_exceptions
     
     async def run_simulation(
         self,
@@ -109,6 +116,7 @@ class SimulationSession:
             outcome_detector=self.outcome_detector,
             scenarios=scenarios,
             outcomes=self.outcomes,
+            return_exceptions=self.return_exceptions,
         )
         
         return SimulationSessionResult(
@@ -142,7 +150,7 @@ class SimulationSession:
         scenarios = []
 
         intents = await self.intent_extractor.extract_intents(tuple(conv.conversation for conv in original_conversations),
-                                                              return_exceptions=True)
+                                                              return_exceptions=self.return_exceptions)
 
         for original_conv, intent in zip(original_conversations, intents):
             # Skip empty conversations
@@ -210,7 +218,7 @@ class SimulationSession:
         results = await asyncutil.bounded_parallelism(
             [runner.run for runner in runners], 
             max_concurrent_conversations,
-            return_exceptions=True
+            return_exceptions=self.return_exceptions
         )
         
         # Wrap results with SimulatedConversation
