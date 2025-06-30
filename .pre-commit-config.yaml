@@ -11,4 +11,4 @@ repos:
     hooks:
       - id: mypy
         args: [--config-file=pyproject.toml]
-        additional_dependencies: ["pytest", "attrs", "types-attrs"]
+        additional_dependencies: ["pytest", "attrs", "types-attrs", "streamlit", "pandas", "plotly"]

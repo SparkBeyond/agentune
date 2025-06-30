@@ -34,6 +34,11 @@ ruff = "^0.11.11"
 pre-commit = "^3.5.0"
 types-attrs = "^19.1.0"
 
+[tool.poetry.group.streamlit.dependencies]
+streamlit = "^1.46.0"
+pandas = "^2.3.0"
+plotly = "^6.1.2"
+
 
 [build-system]
 requires = ["poetry-core"]
