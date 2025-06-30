@@ -36,11 +36,31 @@ Return your answer in the following JSON format without any additional explanati
   "real_conversation": "A" or "B"
 }}"""
 
-HUMAN_PROMPT_TEMPLATE = """Conversation A:
-{conversation_a}
+HUMAN_PROMPT_TEMPLATE = """Conversation A:\n{conversation_a}\n\nConversation B:\n{conversation_b}"""
 
-Conversation B:
-{conversation_b}"""
+
+def create_system_prompt(
+    example_conversations: tuple[Conversation, ...] | None = None,
+) -> str:
+    """Creates a system prompt that includes example conversations.
+
+    Args:
+        example_conversations: Optional list of example conversations to include.
+
+    Returns:
+        The system prompt with examples incorporated.
+    """
+    if not example_conversations:
+        return SYSTEM_PROMPT
+
+    # Create a prompt with examples
+    examples_formatted = "\n\nHere are some examples of real conversations:\n\n"
+    for i, example in enumerate(example_conversations, 1):
+        formatted_conversation = format_conversation(example)
+        examples_formatted += f"Example {i}:\n{formatted_conversation}\n\n"
+
+    # Return the system prompt with examples
+    return SYSTEM_PROMPT + examples_formatted.rstrip()
 
 
 def create_comparison_prompt_inputs(

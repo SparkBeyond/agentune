@@ -142,7 +142,7 @@ async def run_rag_simulation(
     chat_model_name: str,
     outcomes: Outcomes,
     reference_conversations: List[Conversation],
-    number_of_simulations: int = 20
+    number_of_simulations: int = 20,
 ) -> SimulationSessionResult:
     """Run RAG-based simulation with specified parameters.
     
@@ -154,7 +154,7 @@ async def run_rag_simulation(
         outcomes: Possible conversation outcomes
         reference_conversations: List of reference conversations for RAG
         number_of_simulations: Number of conversations to simulate (default: 20)
-        
+
     Returns:
         SimulationSessionResult containing the simulation outcomes
     """
@@ -276,7 +276,7 @@ async def main() -> None:
             chat_model_name="gpt-4o-mini",
             outcomes=outcomes,
             reference_conversations=reference_conversations,
-            number_of_simulations=20  # Limit to 20 for this example
+            number_of_simulations=20,  # Limit to 20 for this example
         )
         
         # Display results (using print for pretty user output)

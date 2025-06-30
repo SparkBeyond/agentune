@@ -43,9 +43,9 @@ async def analyze_simulation_results(
         scenarios: Scenarios used for generating conversations
         outcomes: Legal outcome labels for the simulation run
         return_exceptions: If False, raises an error if any per-conversation task raises an error.
-                           If True, discards such conversations from the result. 
+                           If True, discards such conversations from the result.
                            (This method's return type does not allow it to actually return the exceptions.)
-        
+
     Returns:
         Complete analysis result with all comparisons
     """
@@ -55,9 +55,6 @@ async def analyze_simulation_results(
 
     message_comparison = _analyze_message_distributions(
         original_convs, simulated_convs
-    )
-    adversarial_evaluation = await _evaluate_adversarial_quality(
-        original_convs, simulated_convs, adversarial_tester, return_exceptions=return_exceptions
     )
 
     # Create a mapping from original_conversation_id to intent from scenarios
@@ -89,7 +86,11 @@ async def analyze_simulation_results(
     outcome_comparison = _analyze_outcome_distributions(
         original_convs, simulated_convs, original_conversations_with_predicted_outcomes
     )
-    
+
+    adversarial_evaluation = await _evaluate_adversarial_quality(
+        original_convs, simulated_convs, adversarial_tester, return_exceptions=return_exceptions,
+    )
+
     return SimulationAnalysisResult(
         outcome_comparison=outcome_comparison,
         message_distribution_comparison=message_comparison,
@@ -161,25 +162,25 @@ def _analyze_message_distributions(
                 std_dev_messages=0.0,
                 message_count_distribution={},
             )
-        
+
         message_counts = [len(conv.messages) for conv in conversations]
         message_counts.sort()
-        
+
         # Basic statistics
         min_msgs = min(message_counts)
         max_msgs = max(message_counts)
         mean_msgs = sum(message_counts) / len(message_counts)
         median_msgs = float(message_counts[len(message_counts) // 2])
-        
+
         # Standard deviation
         variance = sum((x - mean_msgs) ** 2 for x in message_counts) / len(message_counts)
         std_dev = variance ** 0.5
-        
+
         # Distribution
         distribution: dict[int, int] = {}
         for count in message_counts:
             distribution[count] = distribution.get(count, 0) + 1
-        
+
         return MessageDistributionStats(
             min_messages=min_msgs,
             max_messages=max_msgs,
@@ -188,10 +189,10 @@ def _analyze_message_distributions(
             std_dev_messages=std_dev,
             message_count_distribution=distribution,
         )
-    
+
     original_stats = _compute_stats(original_conversations)
     simulated_stats = _compute_stats(simulated_conversations)
-    
+
     return MessageDistributionComparison(
         original_stats=original_stats,
         simulated_stats=simulated_stats,
@@ -219,7 +220,7 @@ def _sample_conversation_pairs(
     """
     real_batch = []
     simulated_batch = []
-    
+
     num_originals = len(original_conversations)
     num_simulated = len(simulated_conversations)
     total_possible_pairs = num_originals * num_simulated
@@ -234,7 +235,7 @@ def _sample_conversation_pairs(
     else:
         # Randomly sample unique indices from the flattened space of all pairs
         sampled_indices = random.sample(range(total_possible_pairs), k=max_pairs)
-        
+
         for index in sampled_indices:
             # Convert the flat index back to a 2D index (original, simulated)
             original_idx, sim_idx = divmod(index, num_simulated)
@@ -262,12 +263,19 @@ async def _evaluate_adversarial_quality(
         simulated_conversations: Generated conversations  
         adversarial_tester: Tester to distinguish real vs simulated
         max_pairs: The maximum number of pairs to randomly sample
-        
+
     Returns:
         Adversarial evaluation results with accuracy metrics
     """
     if not original_conversations or not simulated_conversations:
         return AdversarialEvaluationResult(0, 0)
+
+    if not adversarial_tester.get_examples():
+        example_conversations = random.sample(original_conversations, k=3)
+        adversarial_tester = adversarial_tester._with_examples(example_conversations)
+        original_conversations = [conv for conv in original_conversations if conv not in example_conversations]
+    else:
+        original_conversations = [conv for conv in original_conversations if conv not in adversarial_tester.get_examples()]
 
     # Delegate pair selection logic to the helper function
     real_batch, simulated_batch = _sample_conversation_pairs(
@@ -288,15 +296,15 @@ async def _evaluate_adversarial_quality(
     for result in results:
         if isinstance(result, Exception):
             _logger.error('Error trying to identify real conversation', exc_info=result)
-    
+
     valid_results = [r for r in results if r is not None and not isinstance(r, Exception)]
     total_evaluated = len(valid_results)
-    
+
     if total_evaluated == 0:
         return AdversarialEvaluationResult(0, 0)
-        
+
     correct = sum(1 for result in valid_results if result)
-    
+
     return AdversarialEvaluationResult(
         total_pairs_evaluated=total_evaluated,
         correct_identifications=correct,

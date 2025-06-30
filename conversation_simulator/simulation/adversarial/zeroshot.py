@@ -4,6 +4,7 @@ import logging
 import random
 from typing import override
 
+import attrs
 from attrs import field, frozen
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import JsonOutputParser
@@ -12,11 +13,12 @@ from langchain_core.prompts import (ChatPromptTemplate, HumanMessagePromptTempla
 from langchain_core.runnables import Runnable
 from langchain_core.runnables import RunnableLambda
 
+from ...models.conversation import Conversation
 from .base import AdversarialTest, AdversarialTester
 from .prompts import (
     HUMAN_PROMPT_TEMPLATE,
-    SYSTEM_PROMPT,
     create_comparison_prompt_inputs,
+    create_system_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,30 +26,38 @@ logger = logging.getLogger(__name__)
 @frozen
 class ZeroShotAdversarialTester(AdversarialTester):
     """Zero-shot adversarial tester using a language model and a structured parser.
-    
+
     Attributes:
         model: The language model to use for evaluation.
         max_concurrency: The maximum number of concurrent requests to the model.
         random_seed: Optional seed for reproducible random number generation.
+        example_conversations: Optional list of example conversations to include.
     """
 
     model: BaseChatModel
+    example_conversations: tuple[Conversation, ...]
     max_concurrency: int = 50
     random_seed: int = 0
 
     _random: random.Random = field(init=False)
+
     @_random.default
     def _random_default(self) -> random.Random:
         return random.Random(self.random_seed)
-    
+
     _chain: Runnable = field(init=False)
+
     @_chain.default
     def _create_adversarial_chain(self) -> Runnable:
         """Creates the LangChain runnable for adversarial evaluation."""
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(SYSTEM_PROMPT),
-            HumanMessagePromptTemplate.from_template(HUMAN_PROMPT_TEMPLATE),
-        ])
+        system_prompt_text = create_system_prompt(self.example_conversations)
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                SystemMessagePromptTemplate.from_template(system_prompt_text),
+                HumanMessagePromptTemplate.from_template(HUMAN_PROMPT_TEMPLATE),
+            ]
+        )
 
         label_extractor = RunnableLambda(self._extract_label)
         return prompt | self.model | JsonOutputParser() | label_extractor
@@ -60,6 +70,37 @@ class ZeroShotAdversarialTester(AdversarialTester):
             logger.warning(f"LLM returned invalid value: {identified_label}")
             return None
         return identified_label
+
+    def _with_examples(self, example_conversations: tuple[Conversation, ...]) -> "ZeroShotAdversarialTester":
+        """Updates the tester with example conversations.
+
+        This method only stores the example conversations without updating the chain.
+
+        Args:
+            example_conversations: List of example conversations to incorporate into the prompt
+        """
+        return attrs.evolve(self, example_conversations=example_conversations)
+
+    def get_examples(self) -> tuple[Conversation, ...]:
+        return self.example_conversations
+
+    async def identify_real_conversation(
+        self, real_conversation: Conversation, simulated_conversation: Conversation,
+    ) -> bool | None:
+        """Identify which conversation is real.
+
+        Args:
+            real_conversation: A real conversation.
+            simulated_conversation: A simulated conversation.
+
+        Returns:
+            bool: True if the real conversation was identified, False if the simulated
+                conversation was identified, None if either conversation is empty or invalid.
+        """
+        results = await self.identify_real_conversations(
+            (real_conversation,), (simulated_conversation,)
+        )
+        return results[0] if results else None
 
     @override
     async def identify_real_conversations(

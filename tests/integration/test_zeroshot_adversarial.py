@@ -9,6 +9,8 @@ from conversation_simulator.models import Conversation, Message
 from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.simulation.adversarial.base import AdversarialTest
 from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
+from conversation_simulator.simulation.analysis import _evaluate_adversarial_quality
+from conversation_simulator.models.analysis import AdversarialEvaluationResult
 
 
 def create_dch2_conversation() -> Conversation:
@@ -195,18 +197,27 @@ async def test_extract_label_behavior(openai_model):
 @pytest.mark.asyncio
 async def test_evaluate_adversarial_quality_integration(openai_model: ChatOpenAI, test_conversations: tuple[Conversation, Conversation]):
     """Test the end-to-end evaluation of conversation quality using the adversarial tester."""
-    from conversation_simulator.simulation.analysis import _evaluate_adversarial_quality
-    from conversation_simulator.models.analysis import AdversarialEvaluationResult
+    real_conv1, sim_conv = test_conversations
+
+    # Create a second and third distinct real conversation
+    real_conv2 = Conversation(messages=(
+        Message(sender=ParticipantRole.CUSTOMER, content="This is a second real conversation about a different topic.", timestamp=datetime(2024, 1, 2, 10, 0)),
+        Message(sender=ParticipantRole.AGENT, content="Understood. I can help with that.", timestamp=datetime(2024, 1, 2, 10, 1)),
+    ))
+    real_conv3 = Conversation(messages=(
+        Message(sender=ParticipantRole.CUSTOMER, content="And a third one, just to be sure.", timestamp=datetime(2024, 1, 3, 10, 0)),
+        Message(sender=ParticipantRole.AGENT, content="Thank you for providing these examples.", timestamp=datetime(2024, 1, 3, 10, 1)),
+    ))
     
-    real_conv, sim_conv = test_conversations
-    
-    # Create multiple test conversations
-    original_conversations = [real_conv, real_conv, real_conv]
+    # Create multiple test conversations, with one designated as the example
+    original_conversations = [real_conv1, real_conv2, real_conv3]
     simulated_conversations = [sim_conv, sim_conv, sim_conv]
-    
-    # Create the tester with a real model
-    tester = ZeroShotAdversarialTester(model=openai_model)
-    
+    example_conversations = (real_conv1,)
+
+    # Create the tester, providing one example.
+    # The evaluation function will filter this one out, leaving 2 for evaluation.
+    tester = ZeroShotAdversarialTester(model=openai_model, example_conversations=example_conversations)
+
     # Run the evaluation
     result = await _evaluate_adversarial_quality(
         original_conversations=original_conversations,
@@ -216,8 +227,8 @@ async def test_evaluate_adversarial_quality_integration(openai_model: ChatOpenAI
     
     # Verify the result structure
     assert isinstance(result, AdversarialEvaluationResult)
-    # We should evaluate all combinations (3 originals * 3 simulated = 9 pairs)
-    assert result.total_pairs_evaluated == 9, f"Expected 9 pairs (3x3 combinations), got {result.total_pairs_evaluated}"
+    # After filtering 1 example, 2 real are left. 2 real * 3 simulated = 6 pairs.
+    assert result.total_pairs_evaluated == 6, f"Expected 6 pairs (2x3 combinations), got {result.total_pairs_evaluated}"
     # We can't predict exact accuracy, but it should be between 0 and 1 (inclusive)
     assert 0 <= result.accuracy <= 1.0
 
@@ -273,7 +284,7 @@ async def test_empty_conversations_in_batch():
     real_convs = [real_conv1, real_conv1, real_conv2, empty_conversation]
     sim_convs = [sim_conv1, sim_conv2, sim_conv1, sim_conv2]
     instances = tuple(AdversarialTest(r, s) for r, s in zip(real_convs, sim_convs))
-    
+
     # Run the batch test
     batch_results = await tester.identify_real_conversations(instances)
     

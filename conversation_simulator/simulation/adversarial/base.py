@@ -5,6 +5,7 @@ from real conversations by testing whether a model or human can identify which
 conversation is real when presented with a pair.
 """
 from abc import ABC, abstractmethod
+import asyncio
 from typing import cast
 
 from attrs import frozen
@@ -25,7 +26,7 @@ class AdversarialTester(ABC):
     are easily distinguishable from real ones, while lower accuracy (closer to
     random chance at 50%) indicates higher quality simulation.
     """
-    
+    @abstractmethod
     async def identify_real_conversation(
         self,
         real_conversation: Conversation,
@@ -48,7 +49,7 @@ class AdversarialTester(ABC):
             return_exceptions=False
         ))[0]
         return cast(bool | None, result)
-    
+
     @abstractmethod
     async def identify_real_conversations(
         self,
@@ -59,3 +60,19 @@ class AdversarialTester(ABC):
         """
         ...
 
+
+    @abstractmethod
+    def _with_examples(self, example_conversations: list[Conversation]) -> "AdversarialTester":
+        """Updates the tester with example conversations.
+
+        This method is optional and may be a no-op for some implementations.
+
+        Args:
+            example_conversations: List of example conversations to incorporate into the prompt
+        """
+        ...
+
+    @abstractmethod
+    def get_examples(self) -> list[Conversation]:
+        """Returns the list of example conversations used for adversarial testing."""
+        ...
