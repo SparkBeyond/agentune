@@ -1,11 +1,15 @@
 """Full simulation flow implementation."""
 
 from datetime import datetime
+from typing import Awaitable, Callable
+
+from conversation_simulator.simulation.progress import ProgressCallbacks
 
 from ..models.conversation import Conversation
 from ..models.outcome import Outcomes
 from ..models.scenario import Scenario
 from ..models.results import (
+    ConversationResult,
     SimulationSessionResult,
     OriginalConversation,
     SimulatedConversation,
@@ -39,7 +43,8 @@ class SimulationSession:
         session_description: str = "Automated conversation simulation",
         max_messages: int = 100,
         max_concurrent_conversations: int = 10,
-        return_exceptions: bool = True
+        return_exceptions: bool = True,
+        progress_callbacks: ProgressCallbacks = ProgressCallbacks()
     ) -> None:
         """Initialize the simulation session.
         
@@ -74,6 +79,7 @@ class SimulationSession:
         self.max_messages = max_messages
         self.max_concurrent_conversations = max_concurrent_conversations
         self.return_exceptions = return_exceptions
+        self.progress_callbacks = progress_callbacks
     
     async def run_simulation(
         self,
@@ -97,10 +103,12 @@ class SimulationSession:
         
         # Step 1: Extract intents from conversations and generate scenarios
         scenarios = await self._generate_scenarios(original_conversations)
+        self.progress_callbacks.on_generated_scenarios(scenarios)
         
         # Step 2: Run simulations for each scenario
         simulated_conversations_with_exceptions = await self._run_simulations(scenarios, self.max_concurrent_conversations)
         simulated_conversations = tuple(conv for conv in simulated_conversations_with_exceptions if isinstance(conv, SimulatedConversation))
+        self.progress_callbacks.on_all_scenarios_complete()
         
         # Step 3: Analyze results
         session_end = datetime.now()
@@ -192,12 +200,12 @@ class SimulationSession:
             Tuple of simulated conversations with proper ID mapping
         """
         
-        def create_runner(scenario: Scenario) -> FullSimulationRunner:
+        def create_runner_run(scenario: Scenario) ->  Callable[[], Awaitable[ConversationResult]]:
             # Create participants - FullSimulationRunner will install intent as needed
             customer = self.customer_factory.create_participant()
             agent = self.agent_factory.create_participant()
             
-            return FullSimulationRunner(
+            runner = FullSimulationRunner(
                 customer=customer,
                 agent=agent,
                 initial_message=scenario.initial_message,
@@ -206,13 +214,24 @@ class SimulationSession:
                 outcome_detector=self.outcome_detector,
                 max_messages=self.max_messages,
             )
+
+            async def run() -> ConversationResult:
+                self.progress_callbacks.on_scenario_start(scenario)
+                try:
+                    result = await runner.run()
+                    self.progress_callbacks.on_scenario_complete(scenario, result)
+                    return result
+                except Exception as e:
+                    self.progress_callbacks.on_scenario_failed(scenario, e)
+                    raise e
+            return run
         
         # Create all runners
-        runners = [create_runner(scenario) for scenario in scenarios]
+        runners = [create_runner_run(scenario) for scenario in scenarios]
         
         # Run all simulations with bounded parallelism
         results = await asyncutil.bounded_parallelism(
-            [runner.run for runner in runners], 
+            runners, 
             max_concurrent_conversations,
             return_exceptions=self.return_exceptions
         )
