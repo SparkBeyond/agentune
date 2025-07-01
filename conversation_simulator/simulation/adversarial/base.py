@@ -5,7 +5,7 @@ from real conversations by testing whether a model or human can identify which
 conversation is real when presented with a pair.
 """
 from abc import ABC, abstractmethod
-from typing import Literal, cast, overload
+from typing import cast
 
 from attrs import frozen
 

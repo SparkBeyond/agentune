@@ -1,7 +1,7 @@
 """Abstract base class for outcome detection strategies."""
 
 import abc
-from typing import Literal, cast, overload
+from typing import cast
 
 from attrs import frozen
 

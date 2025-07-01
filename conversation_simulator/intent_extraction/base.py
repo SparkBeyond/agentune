@@ -1,7 +1,7 @@
 """Base class for intent extraction from conversations."""
 
 import abc
-from typing import Literal, cast, overload
+from typing import cast
 
 from ..models.conversation import Conversation
 from ..models.intent import Intent
