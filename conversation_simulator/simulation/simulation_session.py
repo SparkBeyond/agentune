@@ -112,16 +112,22 @@ class SimulationSession:
         )
         
         # Step 1: Extract intents from conversations and generate scenarios
+        _logger.info(f'Starting intent extraction on {len(original_conversations)} conversations')
         scenarios = await self._generate_scenarios(original_conversations)
+        _logger.info(f'Finished extracting original intents; generated {len(scenarios)} scenarios')
         
         # Step 2: Run simulations for each scenario
+        _logger.info(f'Starting conversation simulations ({self.max_concurrent_conversations=})')
         simulated_conversations_with_exceptions = await self._run_simulations(scenarios, self.max_concurrent_conversations)
         simulated_conversations = tuple(conv for conv in simulated_conversations_with_exceptions if isinstance(conv, SimulatedConversation))
+        _logger.info(f'Finished simulating conversations; simulated {len(simulated_conversations)} conversations, '
+                     f'with {len(simulated_conversations_with_exceptions) - len(simulated_conversations)} failures')
         
         # Step 3: Analyze results
         session_end = datetime.now()
         
         # Run comprehensive analysis
+        _logger.info(f'Starting analysis of simulation results')
         analysis_result = await analyze_simulation_results(
             original_conversations=tuple(conv for conv in original_conversations),
             simulated_conversations=simulated_conversations,
@@ -131,7 +137,8 @@ class SimulationSession:
             outcomes=self.outcomes,
             return_exceptions=self.return_exceptions,
         )
-        
+        _logger.info(f'Finished analyzing results')
+
         return SimulationSessionResult(
             session_name=self.session_name,
             session_description=self.session_description,
