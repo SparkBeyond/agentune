@@ -1,6 +1,6 @@
 """Tests for conversation simulator models."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from conversation_simulator.models import (
     Message,
@@ -134,8 +134,8 @@ class TestConversationResult:
         
         result = ConversationResult(
             conversation=conversation,
-            duration_seconds=120.5
+            duration=timedelta(seconds=120.5)
         )
         
         assert result.conversation == conversation
-        assert result.duration_seconds == 120.5
+        assert result.duration == timedelta(seconds=120.5)

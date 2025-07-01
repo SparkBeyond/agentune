@@ -24,11 +24,9 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from cattrs.preconf.orjson import make_converter
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
@@ -42,15 +40,10 @@ from conversation_simulator.participants.agent.rag import RagAgentFactory
 from conversation_simulator.participants.customer.rag import RagCustomerFactory
 from conversation_simulator.rag import conversations_to_langchain_documents
 from conversation_simulator.simulation.session_builder import SimulationSessionBuilder
+from conversation_simulator.util.structure import converter
 
 # Get module logger
 logger = logging.getLogger(__name__)
-
-# Configure cattrs for JSON serialization with datetime handling
-converter = make_converter()
-# Configure datetime to be serialized as ISO strings for JSON compatibility
-converter.register_unstructure_hook(datetime, lambda dt: dt.isoformat())
-
 
 def load_sample_conversations() -> List[Conversation]:
     """Load sample conversations from the test data file using cattrs.

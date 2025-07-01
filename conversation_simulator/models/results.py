@@ -1,7 +1,7 @@
 """Result models for simulation outcomes."""
 
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timedelta
 import attrs
 
 from .conversation import Conversation
@@ -14,7 +14,7 @@ class ConversationResult:
     """Result of simulating a single conversation."""
     
     conversation: Conversation
-    duration_seconds: float = 0.0
+    duration: timedelta = timedelta(seconds=0)
     
     @property
     def message_count(self) -> int:
@@ -31,7 +31,7 @@ class ConversationResult:
         outcome_str = f" - {self.outcome_name}" if self.outcome_name else ""
         return (
             f"ConversationResult: {self.message_count} messages, "
-            f"{self.duration_seconds:.2f}s{outcome_str}"
+            f"{self.duration.total_seconds():.2f}s{outcome_str}"
         )
 
 

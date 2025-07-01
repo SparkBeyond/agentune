@@ -16,7 +16,6 @@ import json
 from pathlib import Path
 
 import pytest
-from cattrs.preconf.orjson import make_converter
 from langchain_openai import ChatOpenAI
 
 from conversation_simulator import SimulationSession
@@ -27,10 +26,7 @@ from conversation_simulator.participants.agent.config import AgentConfig
 from conversation_simulator.participants.agent.zero_shot import ZeroShotAgentFactory
 from conversation_simulator.participants.customer.zero_shot import ZeroShotCustomerFactory
 from conversation_simulator.simulation.adversarial import ZeroShotAdversarialTester
-
-
-# Configure cattrs for JSON serialization with datetime handling
-converter = make_converter()
+from conversation_simulator.util.structure import converter
 
 
 class SimpleOutcomeDetector(OutcomeDetector):

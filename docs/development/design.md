@@ -149,7 +149,7 @@ Result object returned by conversation runners.
 class ConversationResult:
     """Result of simulating a single conversation."""
     conversation: Conversation
-    duration_seconds: float = 0.0
+    duration: timedelta = timedelta(seconds=0)
 ```
 
 ### 8. Outcome Detection
@@ -265,7 +265,7 @@ runner = FullSimulationRunner(
 )
 result = await runner.run()
 
-print(f"Conversation completed in {result.duration_seconds:.2f}s")
+print(f"Conversation completed in {result.duration.total_seconds():.2f}s")
 print(f"Messages exchanged: {len(result.conversation.messages)}")
 if result.conversation.outcome:
     print(f"Outcome: {result.conversation.outcome.name} - {result.conversation.outcome.description}")

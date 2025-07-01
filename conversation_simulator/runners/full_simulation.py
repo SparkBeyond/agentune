@@ -194,10 +194,10 @@ class FullSimulationRunner(Runner):
             self._end_conversation("max_messages")
         
         # Calculate duration and return result
-        duration = (datetime.now() - self._start_time).total_seconds()
+        duration = (datetime.now() - self._start_time)
         return ConversationResult(
             conversation=self._conversation,
-            duration_seconds=duration
+            duration=duration
         )
     
     @property
