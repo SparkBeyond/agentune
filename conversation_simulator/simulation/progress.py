@@ -71,15 +71,15 @@ class LoggingProgressCallback(ProgressCallback):
     done: bool = field(init=False, default=False)
     total: int | None = field(init=False, default=None)
     completed: int = field(init=False, default=0)
-    last_logged_count: int | None = field(init=False, default=None)
+    _last_logged_count: int | None = field(init=False, default=None)
     
     async def log_progress(self) -> None:
         '''Runs until the task is cancelled, or all scenarios are complete.'''
         while not self.done:
             await asyncio.sleep(self.log_interval.total_seconds())
-            if self.total is not None and self.last_logged_count != self.completed:
+            if self.total is not None and self._last_logged_count != self.completed:
                 _logger.info(f"Progress: {self.completed}/{self.total} scenarios completed")
-                self.last_logged_count = self.completed
+                self._last_logged_count = self.completed
     
     @override
     def on_generated_scenarios(self, scenarios: Sequence[Scenario]) -> None: 
