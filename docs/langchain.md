@@ -75,4 +75,4 @@ rate_limiter = InMemoryRateLimiter(
     max_bucket_size=15 # Max concurrent requests at any one point in time
 )
 llm=ChatOpenAI(..., rate_limiter=rate_limiter)
-``
+```
