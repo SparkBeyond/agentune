@@ -14,7 +14,7 @@ from conversation_simulator.models.outcome import Outcome, Outcomes
 from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.outcome_detection.base import OutcomeDetectionTest, OutcomeDetector
 from conversation_simulator.participants.base import Participant
-from conversation_simulator.runners.full_simulation import FullSimulationRunner, ProgressHandler
+from conversation_simulator.runners.full_simulation import FullSimulationRunner
 
 @attrs.frozen
 class MessageWithTimestamp:

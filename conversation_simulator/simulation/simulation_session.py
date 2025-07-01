@@ -127,7 +127,7 @@ class SimulationSession:
         session_end = datetime.now()
         
         # Run comprehensive analysis
-        _logger.info(f'Starting analysis of simulation results')
+        _logger.info('Starting analysis of simulation results')
         analysis_result = await analyze_simulation_results(
             original_conversations=tuple(conv for conv in original_conversations),
             simulated_conversations=simulated_conversations,
@@ -137,7 +137,7 @@ class SimulationSession:
             outcomes=self.outcomes,
             return_exceptions=self.return_exceptions,
         )
-        _logger.info(f'Finished analyzing results')
+        _logger.info('Finished analyzing results')
 
         return SimulationSessionResult(
             session_name=self.session_name,
