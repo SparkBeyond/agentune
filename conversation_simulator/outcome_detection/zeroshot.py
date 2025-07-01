@@ -2,6 +2,7 @@
 
 from typing import Optional, override
 
+from attrs import field, frozen
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
@@ -29,6 +30,7 @@ class OutcomeDetectionResult(BaseModel):
     )
 
 
+@frozen
 class ZeroshotOutcomeDetector(OutcomeDetector):
     """Zeroshot outcome detection implementation using a language model.
     
@@ -41,17 +43,30 @@ class ZeroshotOutcomeDetector(OutcomeDetector):
     Attributes:
         model: LangChain BaseChatModel instance
     """
-    
-    def __init__(self, model: BaseChatModel, max_concurrency: int = 50):
-        """Initialize the detector.
-        
-        Args:
-            model: LangChain BaseChatModel instance to use for detection
-        """
-        self.model = model
-        self._output_parser = PydanticOutputParser(pydantic_object=OutcomeDetectionResult)
-        self.max_concurrency = max_concurrency
 
+    model: BaseChatModel = field()
+    max_concurrency: int = field(default=50)
+    _output_parser = field(init=False, default=PydanticOutputParser(pydantic_object=OutcomeDetectionResult))
+    
+    _chain: Runnable = field(init=False)
+    @_chain.default
+    def _create_detection_chain(self) -> Runnable:
+        """Create the LangChain chain for outcome detection.
+        
+        Returns:
+            A LangChain chain that processes the input prompts through the model and parser
+        """
+        # Create prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("{system_prompt}"),
+            HumanMessagePromptTemplate.from_template("{human_prompt}")
+        ])
+        
+        # Build the chain: prompt | model | output_parser
+        chain = prompt | self.model | self._output_parser
+        
+        return chain
+    
     def _chain_input(self, instance: OutcomeDetectionTest, possible_outcomes: Outcomes) -> dict[str, str]:
         return {
             "system_prompt": self._build_system_prompt(instance.intent, possible_outcomes),
@@ -70,31 +85,14 @@ class ZeroshotOutcomeDetector(OutcomeDetector):
         if not valid_indices:
             return tuple(None for _ in instances)
 
-        chain = self._create_detection_chain()
         indexed_inputs = [(i, self._chain_input(instances[i], possible_outcomes)) for i in valid_indices]
-        results = await chain.abatch([input for _, input in indexed_inputs], return_exceptions=return_exceptions,
+        results = await self._chain.abatch([input for _, input in indexed_inputs], return_exceptions=return_exceptions,
                                      max_concurrency=self.max_concurrency)
         detected_outcome_by_index = {i: result if isinstance(result, Exception) else self._parse_outcome(result, possible_outcomes) 
                                      for (i, _), result in zip(indexed_inputs, results) }
         
         return tuple(detected_outcome_by_index.get(i, None) for i in range(len(instances)))
-        
-    def _create_detection_chain(self) -> Runnable:
-        """Create the LangChain chain for outcome detection.
-        
-        Returns:
-            A LangChain chain that processes the input prompts through the model and parser
-        """
-        # Create prompt template
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template("{system_prompt}"),
-            HumanMessagePromptTemplate.from_template("{human_prompt}")
-        ])
-        
-        # Build the chain: prompt | model | output_parser
-        chain = prompt | self.model | self._output_parser
-        
-        return chain
+
     
     def _build_system_prompt(self, intent: Intent, possible_outcomes: Outcomes) -> str:
         """Build the system prompt for outcome detection.

@@ -4,6 +4,8 @@ import abc
 import asyncio
 from datetime import datetime
 
+from attrs import define, field
+
 from .base import Runner
 from ..models.conversation import Conversation
 from ..models.intent import Intent
@@ -47,57 +49,42 @@ class ProgressHandler(abc.ABC):
         """
         ...
 
+@define
 class FullSimulationRunner(Runner):
     """Runs conversations with both simulated customer and agent.
     
     Single-use runner that manages conversation state internally.
     Provides progress tracking capabilities for conversations.
+
+    Args:
+        customer: Customer participant
+        agent: Agent participant
+        initial_message: Initial message to start conversation
+        intent: Intent for the conversation
+        outcomes: Possible outcomes to detect
+        outcome_detector: Strategy for detecting conversation outcomes
+        max_messages: Maximum number of messages in conversation
+        max_messages_after_outcome: Max additional messages after outcome detected (0 = stop immediately)
+        base_timestamp: Base timestamp for conversation (current time if None)
     """
     
-    def __init__(
-        self,
-        customer: Participant,
-        agent: Participant,
-        initial_message: MessageDraft,
-        intent: Intent,
-        outcomes: Outcomes,
-        outcome_detector: OutcomeDetector,
-        max_messages: int = 100,
-        max_messages_after_outcome: int = 5,  # Allow goodbye messages after outcome
-        base_timestamp: datetime | None = None,  # If None, use current time when run() starts
-    ) -> None:
-        """Initialize the full simulation runner.
-        
-        Args:
-            customer: Customer participant
-            agent: Agent participant
-            initial_message: Initial message to start conversation
-            intent: Intent for the conversation
-            outcomes: Possible outcomes to detect
-            outcome_detector: Strategy for detecting conversation outcomes
-            max_messages: Maximum number of messages in conversation
-            max_messages_after_outcome: Max additional messages after outcome detected (0 = stop immediately)
-            base_timestamp: Base timestamp for conversation (current time if None)
-        """
-        self.customer = customer
-        self.agent = agent
-        self.initial_message = initial_message
-        self.intent = intent
-        self.outcomes = outcomes
-        self.outcome_detector = outcome_detector
-        self.max_messages = max_messages
-        self.max_messages_after_outcome = max_messages_after_outcome
-        self.base_timestamp = base_timestamp
-        
-        # Private state - managed internally
-        self._conversation: Conversation
-        self._is_complete: bool = False
-        self._start_time: datetime | None = None
-        self._outcome_detected: bool = False
-        self._messages_after_outcome: int = 0
-        
-        # Initialize with empty conversation - initial message will be added in run()
-        self._conversation = Conversation(messages=())
+    customer: Participant
+    agent: Participant
+    initial_message: MessageDraft
+    intent: Intent
+    outcomes: Outcomes
+    outcome_detector: OutcomeDetector
+    max_messages: int = 100
+    max_messages_after_outcome: int = 5  # Allow goodbye messages after outcome
+    base_timestamp: datetime | None = None  # If None, use current time when run() starts
+
+    # Private state - managed internally
+    # Initialize with empty conversation - initial message will be added in run()
+    _conversation: Conversation = field(init=False, factory=lambda: Conversation(messages=()))
+    _is_complete: bool = field(init=False, default=False)
+    _start_time: datetime | None = field(init=False, default=None)
+    _outcome_detected: bool = field(init=False, default=False)
+    _messages_after_outcome: int = field(init=False, default=0)
     
     async def run(self) -> ConversationResult:
         """Execute the full simulation conversation.

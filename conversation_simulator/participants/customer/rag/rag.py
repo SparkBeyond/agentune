@@ -7,6 +7,8 @@ import random
 from datetime import datetime, timedelta
 from typing import List, Sequence
 
+from attrs import frozen
+import attrs
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
@@ -21,18 +23,13 @@ from .prompt import CUSTOMER_PROMPT
 
 logger = logging.getLogger(__name__)
 
+@frozen
 class RagCustomer(Customer):
     """RAG LLM-based customer participant."""
 
-    def __init__(
-        self,
-        customer_vector_store: VectorStore,
-        model: BaseChatModel
-    ):
-        super().__init__()
-        self.customer_vector_store = customer_vector_store
-        self.model = model
-        self.intent_description: str | None = None
+    customer_vector_store: VectorStore
+    model: BaseChatModel
+    intent_description: str | None = None
 
     def _create_llm_chain(self, model: BaseChatModel) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the customer."""
@@ -45,12 +42,7 @@ class RagCustomer(Customer):
 
     def with_intent(self, intent_description: str) -> RagCustomer:
         """Return a new RagCustomer instance with the specified intent."""
-        new_customer = RagCustomer(
-            customer_vector_store=self.customer_vector_store,
-            model=self.model
-        )
-        new_customer.intent_description = intent_description
-        return new_customer
+        return attrs.evolve(self, intent_description=intent_description)
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next customer message using RAG LLM approach."""
@@ -158,23 +150,17 @@ class RagCustomer(Customer):
             target_role=ParticipantRole.CUSTOMER
         )
 
-
+@frozen
 class RagCustomerFactory(CustomerFactory):
-    """Factory for creating RAG-based customer participants."""
+    """Factory for creating RAG-based customer participants.
     
-    def __init__(
-        self, 
-        model: BaseChatModel, 
-        customer_vector_store: VectorStore
-    ) -> None:
-        """Initialize the factory.
-        
-        Args:
-            model: LangChain chat model for customer responses
-            customer_vector_store: Vector store containing customer message examples
-        """
-        self.model = model
-        self.customer_vector_store = customer_vector_store
+    Args:
+        model: LangChain chat model for customer responses
+        customer_vector_store: Vector store containing customer message examples
+    """
+    
+    model: BaseChatModel
+    customer_vector_store: VectorStore
     
     def create_participant(self) -> RagCustomer:
         """Create a RAG customer participant.

@@ -26,21 +26,19 @@ class MessageWithTimestamp:
         """String representation of the message."""
         return f"{self.timestamp}: {self.content}"
 
-
+@attrs.frozen
 class MockParticipant(Participant):
     """Mock participant for testing that returns predefined messages.
     
-    Limitation: Messages should be unique in content and timestamp."""
+    Limitation: Messages should be unique in content and timestamp.
     
-    def __init__(self, role: ParticipantRole, messages: tuple[MessageWithTimestamp, ...]) -> None:
-        """Initialize mock participant.
-        
-        Args:
-            role: The role of this participant
-            messages: List of messages to return in sequence (None = finished)
-        """
-        self.role = role
-        self.messages = messages
+    Attributes:
+        role: The role of this participant
+        messages: List of messages to return in sequence (None = finished)
+    """
+    
+    role: ParticipantRole
+    messages: tuple[MessageWithTimestamp, ...]
 
     def with_intent(self, intent_description: str) -> MockParticipant:
         return self # Intent is not used in this mock, so we ignore it
@@ -69,18 +67,17 @@ class MockParticipant(Participant):
         return None
 
 
+@attrs.frozen
 class MockOutcomeDetector(OutcomeDetector):
-    """Mock outcome detector for testing."""
+    """Mock outcome detector for testing.
+    
+    Attributes:
+        detect_after_messages: Number of messages after which to detect outcome (None = never)
+        outcome: Outcome to return when detected
+    """
 
-    def __init__(self, detect_after_messages: int, outcome: Outcome = Outcome(name="resolved", description="Issue was resolved")) -> None:
-        """Initialize mock detector.
-        
-        Args:
-            detect_after_messages: Number of messages after which to detect outcome (None = never)
-            outcome: Outcome to return when detected
-        """
-        self.detect_after_messages = detect_after_messages
-        self.outcome = outcome
+    detect_after_messages: int
+    outcome: Outcome = Outcome(name="resolved", description="Issue was resolved")
 
     @override
     async def detect_outcomes(

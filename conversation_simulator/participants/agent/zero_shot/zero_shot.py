@@ -90,20 +90,18 @@ class ZeroShotAgent(Agent):
                 timestamp=response_timestamp
             )
 
-
+@attrs.frozen
 class ZeroShotAgentFactory(AgentFactory):
-    """Factory for creating zero-shot agent participants."""
+    """Factory for creating zero-shot agent participants.
     
-    def __init__(self, model: BaseChatModel, agent_config: AgentConfig) -> None:
-        """Initialize the factory.
+    Args:
+        model: LangChain chat model for agent responses
+        agent_config: Configuration for the agent's role and company context
+    """
+
+    model: BaseChatModel
+    agent_config: AgentConfig
         
-        Args:
-            model: LangChain chat model for agent responses
-            agent_config: Configuration for the agent's role and company context
-        """
-        self.model = model
-        self.agent_config = agent_config
-    
     def create_participant(self) -> ZeroShotAgent:
         """Create a zero-shot agent participant.
         

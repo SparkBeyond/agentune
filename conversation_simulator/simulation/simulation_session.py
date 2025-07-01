@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from typing import Awaitable, Callable
 import logging
 
+from attrs import field, frozen
+
 
 from conversation_simulator.simulation.progress import LoggingProgressCallback, ProgressCallback, ProgressCallbacks
 
@@ -29,67 +31,50 @@ from ..util import asyncutil
 
 _logger = logging.getLogger(__name__)
 
+@frozen
 class SimulationSession:
     """Orchestrates the full simulation flow from real conversations to analysis.
     
     This class coordinates intent extraction, scenario generation, participant
     creation, conversation simulation, and result analysis.
+
+    Attributes:
+        outcomes: Legal outcome labels for this simulation run
+        agent_factory: Factory for creating agent participants
+        customer_factory: Factory for creating customer participants
+        intent_extractor: Strategy for extracting intents from conversations
+        outcome_detector: Strategy for detecting conversation outcomes
+        adversarial_tester: Strategy for adversarial testing
+        session_name: Human-readable name for this session
+        session_description: Description of this simulation session
+        max_messages: Maximum number of messages per conversation in simulation
+        max_concurrent_conversations: Maximum number of conversations to run concurrently.
+                                        Conversations will be processed in the order of the input list;
+                                        however, we will simulate all conversations (with that many concurrent tasks)
+                                        before analyzing all results (with, again, that many concurrent tasks).
+        return_exceptions: If True, per-conversation exceptions will be logged and reported to the progress callback; 
+                            the returned result will not include those conversations (not even in the 
+                            total conversation count).
+                            If False, any exception will be raised from this method and no information 
+                            will be returned about other conversations.                              
+        progress_callback: Callback for progress updates
+        progress_log_interval: Interval at which to log progress. If no progress has been made,
+                                nothing will be logged. (This is in addition to the custom progress callback.)
     """
     
-    def __init__(
-        self,
-        outcomes: Outcomes,
-        agent_factory: AgentFactory,
-        customer_factory: CustomerFactory,
-        intent_extractor: IntentExtractor,
-        outcome_detector: OutcomeDetector,
-        adversarial_tester: AdversarialTester,
-        session_name: str = "Simulation Session",
-        session_description: str = "Automated conversation simulation",
-        max_messages: int = 100,
-        max_concurrent_conversations: int = 10,
-        return_exceptions: bool = True,
-        progress_callback: ProgressCallback = ProgressCallback(),
-        progress_log_interval: timedelta = timedelta(seconds=5)
-    ) -> None:
-        """Initialize the simulation session.
-        
-        Args:
-            outcomes: Legal outcome labels for this simulation run
-            agent_factory: Factory for creating agent participants
-            customer_factory: Factory for creating customer participants
-            intent_extractor: Strategy for extracting intents from conversations
-            outcome_detector: Strategy for detecting conversation outcomes
-            adversarial_tester: Strategy for adversarial testing
-            session_name: Human-readable name for this session
-            session_description: Description of this simulation session
-            max_messages: Maximum number of messages per conversation in simulation
-            max_concurrent_conversations: Maximum number of conversations to run concurrently.
-                                          Conversations will be processed in the order of the input list;
-                                          however, we will simulate all conversations (with that many concurrent tasks)
-                                          before analyzing all results (with, again, that many concurrent tasks).
-            return_exceptions: If True, per-conversation exceptions will be logged and reported to the progress callback; 
-                               the returned result will not include those conversations (not even in the 
-                               total conversation count).
-                               If False, any exception will be raised from this method and no information 
-                               will be returned about other conversations.                              
-            progress_callback: Callback for progress updates
-            progress_log_interval: Interval at which to log progress. If no progress has been made,
-                                   nothing will be logged. (This is in addition to the custom progress callback.)
-        """
-        self.outcomes = outcomes
-        self.agent_factory = agent_factory
-        self.customer_factory = customer_factory
-        self.intent_extractor = intent_extractor
-        self.outcome_detector = outcome_detector
-        self.adversarial_tester = adversarial_tester
-        self.session_name = session_name
-        self.session_description = session_description
-        self.max_messages = max_messages
-        self.max_concurrent_conversations = max_concurrent_conversations
-        self.return_exceptions = return_exceptions
-        self.progress_callback = progress_callback
-        self.progress_log_interval = progress_log_interval
+    outcomes: Outcomes
+    agent_factory: AgentFactory
+    customer_factory: CustomerFactory
+    intent_extractor: IntentExtractor
+    outcome_detector: OutcomeDetector
+    adversarial_tester: AdversarialTester
+    session_name: str = "Simulation Session"
+    session_description: str = "Automated conversation simulation"
+    max_messages: int = 100
+    max_concurrent_conversations: int = 10
+    return_exceptions: bool = True
+    progress_callback: ProgressCallback = field(factory=ProgressCallback)
+    progress_log_interval: timedelta = timedelta(seconds=5)
 
     async def run_simulation(
         self,

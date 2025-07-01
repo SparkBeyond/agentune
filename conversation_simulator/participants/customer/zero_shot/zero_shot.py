@@ -88,17 +88,11 @@ class ZeroShotCustomer(Customer):
                 timestamp=response_timestamp
             )
 
-
+@attrs.frozen
 class ZeroShotCustomerFactory(CustomerFactory):
     """Factory for creating zero-shot customer participants."""
     
-    def __init__(self, model: BaseChatModel) -> None:
-        """Initialize the factory.
-        
-        Args:
-            model: LangChain chat model for customer responses
-        """
-        self.model = model
+    model: BaseChatModel
     
     def create_participant(self) -> ZeroShotCustomer:
         """Create a zero-shot customer participant.

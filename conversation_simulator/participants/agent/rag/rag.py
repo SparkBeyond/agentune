@@ -7,6 +7,8 @@ import random
 from datetime import datetime, timedelta
 from typing import List, Sequence
 
+from attrs import field, frozen
+import attrs
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
@@ -23,6 +25,7 @@ from .prompt import AGENT_PROMPT
 logger = logging.getLogger(__name__)
 
 
+@frozen
 class RagAgent(Agent):
     """RAG LLM-based agent participant.
     
@@ -30,40 +33,25 @@ class RagAgent(Agent):
     to generate agent responses.
     """
 
-    def __init__(
-        self,
-        agent_vector_store: VectorStore,
-        model: BaseChatModel
-    ):
-        """Initializes the RAG agent.
-
-        Args:
-            agent_vector_store: Vector store containing agent messages.
-            model: The LLM model name to use.
-        """
-        super().__init__()
-        self.agent_vector_store = agent_vector_store
-        self.model = model
-        self.intent_description: str | None = None # Store intent
-        self.llm_chain = self._create_llm_chain(model=model)
+    agent_vector_store: VectorStore
+    model: BaseChatModel
+    intent_description: str | None = None # Store intent
+        
+    llm_chain: Runnable = field(init=False)
     
-    def _create_llm_chain(self, model: BaseChatModel) -> Runnable:
+    @llm_chain.default
+    def _create_llm_chain(self) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the agent."""
         # Use the imported AGENT_PROMPT from prompt.py
         # If there's an intent description, we can modify the system message
         prompt = AGENT_PROMPT
         
         # Return the runnable chain with the imported prompt
-        return prompt | model | StrOutputParser()
+        return prompt | self.model | StrOutputParser()
 
     def with_intent(self, intent_description: str) -> RagAgent:
         """Return a new RagAgent instance with the specified intent."""
-        new_agent = RagAgent(
-            agent_vector_store=self.agent_vector_store,
-            model=self.model
-        )
-        new_agent.intent_description = intent_description
-        return new_agent
+        return attrs.evolve(self, intent_description=intent_description)
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next agent message using RAG LLM approach."""
@@ -83,8 +71,7 @@ class RagAgent(Agent):
         chat_history: List[BaseMessage] = conversation.to_langchain_messages()
 
         # 3. Generation
-        chain = self._create_llm_chain(model=self.model)
-        response_content = await chain.ainvoke({
+        response_content = await self.llm_chain.ainvoke({
             "examples": "\n\n".join([str(msg.content) for msg in formatted_examples]),
             "current_conversation": "\n".join([str(msg.content) for msg in chat_history]),
         })
@@ -164,25 +151,13 @@ class RagAgent(Agent):
         )
 
 
+@frozen
 class RagAgentFactory(AgentFactory):
     """Factory for creating RAG-based agent participants."""
     
-    def __init__(
-        self, 
-        model: BaseChatModel, 
-        agent_vector_store: VectorStore,
-        agent_config: AgentConfig | None = None
-    ) -> None:
-        """Initialize the factory.
-        
-        Args:
-            model: LangChain chat model for agent responses
-            agent_vector_store: Vector store containing agent message examples
-            agent_config: Optional configuration for the agent's role and company context
-        """
-        self.model = model
-        self.agent_vector_store = agent_vector_store
-        self.agent_config = agent_config
+    model: BaseChatModel
+    agent_vector_store: VectorStore
+    agent_config: AgentConfig | None = None
     
     def create_participant(self) -> RagAgent:
         """Create a RAG agent participant.

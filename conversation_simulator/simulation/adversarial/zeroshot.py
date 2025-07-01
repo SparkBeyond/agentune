@@ -4,6 +4,7 @@ import logging
 import random
 from typing import override
 
+from attrs import field, frozen
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import (ChatPromptTemplate, HumanMessagePromptTemplate,
@@ -20,32 +21,27 @@ from .prompts import (
 
 logger = logging.getLogger(__name__)
 
-
+@frozen
 class ZeroShotAdversarialTester(AdversarialTester):
-    """Zero-shot adversarial tester using a language model and a structured parser."""
+    """Zero-shot adversarial tester using a language model and a structured parser.
+    
+    Attributes:
+        model: The language model to use for evaluation.
+        max_concurrency: The maximum number of concurrent requests to the model.
+        random_seed: Optional seed for reproducible random number generation.
+    """
 
-    def __init__(self, model: BaseChatModel, max_concurrency: int = 50, random_seed: int = 0):
-        """Initializes the adversarial tester.
+    model: BaseChatModel
+    max_concurrency: int = 50
+    random_seed: int = 0
 
-        Args:
-            model: The language model to use for evaluation.
-            max_concurrency: The maximum number of concurrent requests to the model.
-            random_seed: Optional seed for reproducible random number generation.
-        """
-        self.model = model
-        self.max_concurrency = max_concurrency
-        self._random = random.Random(random_seed)
-        self._chain = self._create_adversarial_chain()
-
-    @staticmethod
-    def _extract_label(output: dict) -> str | None:
-        """Extracts the identified conversation label from the model output."""
-        identified_label = output.get("real_conversation")
-        if not isinstance(identified_label, str) or identified_label not in ("A", "B"):
-            logger.warning(f"LLM returned invalid value: {identified_label}")
-            return None
-        return identified_label
-
+    _random: random.Random = field(init=False)
+    @_random.default
+    def _random_default(self) -> random.Random:
+        return random.Random(self.random_seed)
+    
+    _chain: Runnable = field(init=False)
+    @_chain.default
     def _create_adversarial_chain(self) -> Runnable:
         """Creates the LangChain runnable for adversarial evaluation."""
         prompt = ChatPromptTemplate.from_messages([
@@ -55,6 +51,15 @@ class ZeroShotAdversarialTester(AdversarialTester):
 
         label_extractor = RunnableLambda(self._extract_label)
         return prompt | self.model | JsonOutputParser() | label_extractor
+
+    @staticmethod
+    def _extract_label(output: dict) -> str | None:
+        """Extracts the identified conversation label from the model output."""
+        identified_label = output.get("real_conversation")
+        if not isinstance(identified_label, str) or identified_label not in ("A", "B"):
+            logger.warning(f"LLM returned invalid value: {identified_label}")
+            return None
+        return identified_label
 
     @override
     async def identify_real_conversations(

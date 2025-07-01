@@ -1,8 +1,10 @@
 """Zero-shot intent extraction implementation using a language model."""
 
 import logging
+from attrs import field, frozen
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 from typing import Optional, override
 
@@ -45,31 +47,25 @@ class IntentExtractionResult(BaseModel):
         return Intent(role=self.role, description=self.description)
 
 
-
+@frozen
 class ZeroshotIntentExtractor(IntentExtractor):
     """Zero-shot intent extraction using a language model.
     
     This extractor uses a language model to analyze conversation history and extract
     the primary intent of the conversation initiator (customer or agent).
     """
+
+    llm: BaseChatModel = field()
+    max_concurrency: int = field(default=50)
+    parser = field(init=False, default=PydanticOutputParser(pydantic_object=IntentExtractionResult))
     
-    def __init__(self, llm: BaseChatModel, max_concurrency: int = 50):
-        """Initialize the zero-shot intent extractor.
-        
-        Args:
-            llm: Language model to use for intent extraction
-        """
-        self.llm = llm
-        self.parser = PydanticOutputParser(pydantic_object=IntentExtractionResult)
-        self.max_concurrency = max_concurrency
-        
-        # Create the prompt template with format instructions
+    _chain: Runnable = field(init=False)
+    @_chain.default
+    def _chain_default(self) -> Runnable:
         prompt_template = create_intent_extraction_prompt(
             format_instructions=self.parser.get_format_instructions()
         )
-        
-        # Create the processing chain
-        self._chain = prompt_template | self.llm | self.parser
+        return prompt_template | self.llm | self.parser
 
     def _chain_input(self, conversation: Conversation) -> dict[str, str]:
         return {"conversation": format_conversation(conversation) }
