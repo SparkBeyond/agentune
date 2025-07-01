@@ -1,7 +1,6 @@
 """Full simulation runner implementation."""
 
 import abc
-import asyncio
 from datetime import datetime
 
 from attrs import define, field
@@ -12,6 +11,7 @@ from ..models.intent import Intent
 from ..models.message import Message, MessageDraft
 from ..models.outcome import Outcome, Outcomes
 from ..models.results import ConversationResult
+from ..models.roles import ParticipantRole
 from ..outcome_detection.base import OutcomeDetector
 from ..participants.base import Participant
 
@@ -87,7 +87,11 @@ class FullSimulationRunner(Runner):
     _messages_after_outcome: int = field(init=False, default=0)
     
     async def run(self) -> ConversationResult:
-        """Execute the full simulation conversation.
+        """Execute the full simulation conversation using a turn-based approach.
+        
+        The conversation alternates turns between participants. Each participant can
+        answer or pass (return None). The conversation ends when both participants
+        decide not to answer consecutively.
         
         Returns:
             ConversationResult with conversation history and metadata
@@ -100,67 +104,67 @@ class FullSimulationRunner(Runner):
         initial_msg = self.initial_message.to_message(current_time)
         self._conversation = self._conversation.add_message(initial_msg)
         
-        # Main conversation loop using concurrent timestamp-based selection
+        # Record the role of the initial message to start alternating turns
+        current_participant_role = self._alternate_turns(initial_msg.sender)
+        
+        # Track when a participant passes (returns None) to detect conversation end
+        last_was_pass = False
+        
+        # Main conversation loop - strict alternating turns
         while len(self._conversation.messages) < self.max_messages and not self._is_complete:
-            # Ask both participants to generate their next message simultaneously
-            customer_task = self.customer.get_next_message(self._conversation)
-            agent_task = self.agent.get_next_message(self._conversation)
+            current_participant = self._participant_by_role(current_participant_role)
             
-            # Wait for both participants to respond
+            # Ask the current participant for their next message
             try:
-                customer_message, agent_message = await asyncio.gather(
-                    customer_task, agent_task, return_exceptions=False
-                )
+                message = await current_participant.get_next_message(self._conversation)
             except Exception:
-                # If either participant had an error, end the conversation
+                # If the participant had an error, end the conversation
                 self._is_complete = True
                 break
             
-            # Check if both participants are finished
-            if customer_message is None and agent_message is None:
-                self._is_complete = True
-                break
-            
-            # Select message based on timestamp
-            selected_message = None
-            if customer_message is None:
-                selected_message = agent_message
-            elif agent_message is None:
-                selected_message = customer_message
-            else:
-                # Both participants have messages - select the one with earlier timestamp
-                # Discard the other since the first would have influenced the second in real life
-                if customer_message.timestamp <= agent_message.timestamp:
-                    selected_message = customer_message
-                else:
-                    selected_message = agent_message
-            
-            # Add the selected message to conversation
-            if selected_message:
-                self._conversation = self._conversation.add_message(selected_message)
+            # Check if the current participant passed (returned None)
+            if message is None:
+                # If the previous turn was also a pass, end the conversation
+                if last_was_pass:
+                    self._is_complete = True
+                    break
                 
-                # Check for outcome detection (only if not already detected)
-                if not self._outcome_detected:
-                    detected_outcome = await self.outcome_detector.detect_outcome(
-                        self._conversation,
-                        self.intent,
-                        self.outcomes
-                    )
-                    if detected_outcome:
-                        self._conversation = self._conversation.set_outcome(detected_outcome)
-                        self._outcome_detected = True
-                        
-                        # If max_messages_after_outcome is 0, end immediately
-                        if self.max_messages_after_outcome == 0:
-                            self._is_complete = True
-                            break
-                
-                # Track messages after outcome detection
-                else :
-                    self._messages_after_outcome += 1
-                    if self._messages_after_outcome >= self.max_messages_after_outcome:
+                # Mark that this turn was a pass and continue to next participant
+                last_was_pass = True
+                current_participant_role = self._alternate_turns(current_participant_role)
+                continue
+            
+            # The participant responded with a message, reset the pass tracker
+            last_was_pass = False
+            
+            # Add the message to conversation
+            self._conversation = self._conversation.add_message(message)
+            
+            # Update the current participant role for next turn alternation
+            current_participant_role = self._alternate_turns(current_participant_role)
+            
+            # Check for outcome detection (only if not already detected)
+            if not self._outcome_detected:
+                detected_outcome = await self.outcome_detector.detect_outcome(
+                    self._conversation,
+                    self.intent,
+                    self.outcomes
+                )
+                if detected_outcome:
+                    self._conversation = self._conversation.set_outcome(detected_outcome)
+                    self._outcome_detected = True
+                    
+                    # If max_messages_after_outcome is 0, end immediately
+                    if self.max_messages_after_outcome == 0:
                         self._is_complete = True
                         break
+            
+            # Track messages after outcome detection
+            elif self._outcome_detected:
+                self._messages_after_outcome += 1
+                if self._messages_after_outcome >= self.max_messages_after_outcome:
+                    self._is_complete = True
+                    break
         
         # Check if we reached max messages
         if len(self._conversation.messages) >= self.max_messages and not self._is_complete:
@@ -182,3 +186,16 @@ class FullSimulationRunner(Runner):
     def is_complete(self) -> bool:
         """Check if the simulation has completed."""
         return self._is_complete
+
+    @staticmethod
+    def _alternate_turns(current_participant: ParticipantRole) -> ParticipantRole:
+        """Alternate between roles."""
+        return ParticipantRole.CUSTOMER if current_participant == ParticipantRole.AGENT else ParticipantRole.AGENT
+
+    def _participant_by_role(self, role: ParticipantRole) -> Participant:
+        if role == ParticipantRole.CUSTOMER:
+            return self.customer
+        elif role == ParticipantRole.AGENT:
+            return self.agent
+        else:
+            raise ValueError(f"Unknown role: {role}")

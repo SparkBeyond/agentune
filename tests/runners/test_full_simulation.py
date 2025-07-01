@@ -16,6 +16,7 @@ from conversation_simulator.outcome_detection.base import OutcomeDetectionTest, 
 from conversation_simulator.participants.base import Participant
 from conversation_simulator.runners.full_simulation import FullSimulationRunner
 
+
 @attrs.frozen
 class MessageWithTimestamp:
     """Message with an associated timestamp."""
@@ -26,51 +27,40 @@ class MessageWithTimestamp:
         """String representation of the message."""
         return f"{self.timestamp}: {self.content}"
 
+
 @attrs.frozen
-class MockParticipant(Participant):
-    """Mock participant for testing that returns predefined messages.
-    
-    Limitation: Messages should be unique in content and timestamp.
-    
+class MockTurnBasedParticipant(Participant):
+    """Mock participant for turn-based testing that returns or skips messages in sequence.
+
     Attributes:
         role: The role of this participant
         messages: List of messages to return in sequence (None = finished)
     """
-    
+
     role: ParticipantRole
-    messages: tuple[MessageWithTimestamp, ...]
+    messages: tuple[MessageWithTimestamp | None, ...]
+    message_index = 0
 
-    def with_intent(self, intent_description: str) -> MockParticipant:
-        return self # Intent is not used in this mock, so we ignore it
-
-    def _to_message(self, message: MessageWithTimestamp) -> Message:
-        return Message(
-            content=message.content,
-            timestamp=message.timestamp,
-            sender=self.role
-        )
+    def with_intent(self, intent_description: str) -> MockTurnBasedParticipant:
+        return self  # Intent is not used in this mock
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:
-        """Return the next predefined message or None if finished."""
-        # Filter conversation messages by our role
-        our_messages_content = [msg.content for msg in conversation.messages if msg.sender == self.role]
-    
-        # iterate over initial_message_from_us and self.messages
-        # validate 
-        for i, message in enumerate(self.messages):
-            if message.content in our_messages_content:
-                continue
-            # If we reach here, this message has not been added yet
-            return self._to_message(message)
-        # If we reach here, all messages have been added
+        """Return the next message in sequence or None if no more messages or explicitly pass."""
+        if self.message_index >= len(self.messages):
+            return None
 
-        return None
+        message = self.messages[self.message_index]
+        self.message_index += 1
+
+        # If message is None, this represents a deliberate pass
+        if message is None:
+            return None
 
 
 @attrs.frozen
 class MockOutcomeDetector(OutcomeDetector):
     """Mock outcome detector for testing.
-    
+
     Attributes:
         detect_after_messages: Number of messages after which to detect outcome (None = never)
         outcome: Outcome to return when detected
@@ -166,8 +156,8 @@ class TestFullSimulationRunner:
             ),
         )
         
-        customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
-        agent = MockParticipant(ParticipantRole.AGENT, agent_messages)
+        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
+        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
         
         # Create runner
         outcome_detector = MockOutcomeDetector(10000)  # Never detects outcome
@@ -226,8 +216,8 @@ class TestFullSimulationRunner:
             for i in range(10)
         )
         
-        customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
-        agent = MockParticipant(ParticipantRole.AGENT, agent_messages)
+        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
+        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
         
         # Create runner with low max_messages
         outcome_detector = MockOutcomeDetector(10000)  # Never detects outcome
@@ -289,8 +279,8 @@ class TestFullSimulationRunner:
             ),
         )
 
-        customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
-        agent = MockParticipant(ParticipantRole.AGENT, agent_messages)
+        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
+        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
         
         # Test with 2 follow-up messages allowed
         outcome_detector = MockOutcomeDetector(detect_after_messages=3)  # Detect after initial + 2 messages
@@ -314,6 +304,171 @@ class TestFullSimulationRunner:
         assert len(result.conversation.messages) == 5  # initial + 2 + 2 follow-up
         assert runner.is_complete
     
+    @pytest.mark.asyncio
+    async def test_turn_based_flow(
+        self,
+        base_timestamp: datetime,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        initial_message: MessageDraft
+    ) -> None:
+        """Test turn-based conversation flow behavior.
+
+        Specifically validates:
+        1. Strict alternating turns between participants
+        2. Conversation continuing when one participant passes
+        3. Conversation ending when both participants pass consecutively
+        """
+        # First message from customer (initial), then agent turn, then customer passes,
+        # then agent's final message, then both pass to end conversation
+        customer_messages = (
+            MessageWithTimestamp(
+                content="I need help",
+                timestamp=base_timestamp + timedelta(seconds=10)
+            ),
+            None,  # Customer passes their turn
+        )
+        agent_messages = (
+            MessageWithTimestamp(
+                content="How can I help?",
+                timestamp=base_timestamp + timedelta(seconds=20)
+            ),
+            MessageWithTimestamp(
+                content="Please provide more details",
+                timestamp=base_timestamp + timedelta(seconds=30)
+            ),
+            None,  # Agent passes their turn
+        )
+
+        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
+        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
+
+        runner = FullSimulationRunner(
+            customer=customer,
+            agent=agent,
+            initial_message=initial_message,
+            intent=sample_intent,
+            outcomes=sample_outcomes,
+            outcome_detector=MockOutcomeDetector(detect_after_messages=100),  # Never detect outcome
+            base_timestamp=base_timestamp,
+        )
+
+        # Run simulation
+        result = await runner.run()
+
+        # Verify turn-based behavior
+        messages = result.conversation.messages
+
+        # Should have 4 messages: initial + 1 customer + 2 agent
+        assert len(messages) == 4
+
+        # Check strict alternating pattern (initial→agent→customer→agent)
+        assert messages[0].sender == ParticipantRole.CUSTOMER  # initial
+        assert messages[1].sender == ParticipantRole.AGENT     # agent turn
+        assert messages[2].sender == ParticipantRole.CUSTOMER  # customer turn
+        assert messages[3].sender == ParticipantRole.AGENT     # agent turn
+
+        # Verify message content (confirms turns happened in right order)
+        assert messages[1].content == "How can I help?"
+        assert messages[2].content == "I need help"
+        assert messages[3].content == "Please provide more details"
+
+        # Verify conversation ended due to consecutive passes
+        assert runner.is_complete
+        # Outcome should be None since we set detect_after_messages to 100
+        assert result.conversation.outcome is None
+
+    @pytest.mark.asyncio
+    async def test_participant_pass_then_speak_again(
+        self,
+        base_timestamp: datetime,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        initial_message: MessageDraft
+    ) -> None:
+        """Test that a participant can pass their turn and then speak on a later turn.
+
+        This illustrates a scenario where:
+        1. Customer sends initial message
+        2. Agent responds with a greeting
+        3. Customer passes their turn (doesn't respond)
+        4. Agent sends a reminder message
+        5. Customer responds after initially passing
+        6. Agent sends a final message
+        7. Both participants pass to end the conversation
+        """
+        # Setup customer message pattern: pass on first turn, then respond, then pass again
+        customer_messages = (
+            # First turn: pass (explicitly return None)
+            None,
+            # Second turn: respond after agent's reminder
+            MessageWithTimestamp(
+                content="Sorry for the delay, I'm here now",
+                timestamp=base_timestamp + timedelta(seconds=20),
+            ),
+        )
+
+        # Setup agent message pattern: greeting, reminder, acknowledgement, then pass
+        agent_messages = (
+            # First response is a greeting
+            MessageWithTimestamp(
+                content="Hello, how can I assist you today?",
+                timestamp=base_timestamp + timedelta(seconds=5),
+            ),
+            # Second response is a reminder after customer passes
+            MessageWithTimestamp(
+                content="Are you still there? I'm waiting to help.",
+                timestamp=base_timestamp + timedelta(seconds=15),
+            ),
+            # Third response acknowledges customer's return
+            MessageWithTimestamp(
+                content="Thanks for returning! How can I help?",
+                timestamp=base_timestamp + timedelta(seconds=25),
+            ),
+        )
+
+        # Create participants using the MockTurnBasedParticipant class which supports explicit passing
+        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
+        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
+
+        # Create outcome detector that never detects an outcome
+        outcome_detector = MockOutcomeDetector(100)  # Only detects after 100 messages
+
+        # Create runner
+        runner = FullSimulationRunner(
+            customer=customer,
+            agent=agent,
+            initial_message=initial_message,
+            intent=sample_intent,
+            outcomes=sample_outcomes,
+            outcome_detector=outcome_detector,
+            base_timestamp=base_timestamp,
+        )
+
+        # Run simulation
+        result = await runner.run()
+
+        # Get messages for easier assertions
+        messages = result.conversation.messages
+
+        # Verify message sequence with customer passing and then speaking again
+        assert len(messages) == 5  # initial + 4 more messages
+        assert messages[0].sender == ParticipantRole.CUSTOMER  # initial message
+        assert messages[1].sender == ParticipantRole.AGENT     # greeting
+        assert messages[2].sender == ParticipantRole.AGENT     # reminder (customer passed)
+        assert messages[3].sender == ParticipantRole.CUSTOMER  # customer returns
+        assert messages[4].sender == ParticipantRole.AGENT     # agent acknowledgement
+
+        # Verify message content
+        assert messages[1].content == "Hello, how can I assist you today?"
+        assert messages[2].content == "Are you still there? I'm waiting to help."
+        assert messages[3].content == "Sorry for the delay, I'm here now"
+        assert messages[4].content == "Thanks for returning! How can I help?"
+
+        # Verify conversation ended due to consecutive passes
+        assert runner.is_complete
+        assert result.conversation.outcome is None
+
     @pytest.mark.asyncio
     async def test_immediate_termination_on_outcome(
         self,
@@ -345,8 +500,8 @@ class TestFullSimulationRunner:
             ),
         )
 
-        customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
-        agent = MockParticipant(ParticipantRole.AGENT, agent_messages)
+        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
+        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
         
         # Test with immediate termination
         outcome_detector = MockOutcomeDetector(detect_after_messages=2, outcome=Outcome(name="quick_resolution", description="Quick resolution achieved"))  # Detect after initial + 1 message
