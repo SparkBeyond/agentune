@@ -5,7 +5,7 @@ from real conversations by testing whether a model or human can identify which
 conversation is real when presented with a pair.
 """
 from abc import ABC, abstractmethod
-from typing import Literal, overload
+from typing import Literal, cast, overload
 
 from attrs import frozen
 
@@ -43,25 +43,12 @@ class AdversarialTester(ABC):
                          such as connection errors are propagated. Note that None is a valid outcome,
                          not an error.
         """
-        return (await self.identify_real_conversations(
+        result = (await self.identify_real_conversations(
             (AdversarialTest(real_conversation, simulated_conversation), ),
             return_exceptions=False
         ))[0]
+        return cast(bool | None, result)
     
-    @overload
-    async def identify_real_conversations(
-        self,
-        instances: tuple[AdversarialTest, ...],
-        return_exceptions: Literal[False] = False
-    ) -> tuple[bool | None, ...]: ...
-
-    @overload
-    async def identify_real_conversations(
-        self,
-        instances: tuple[AdversarialTest, ...],
-        return_exceptions: bool = True
-    ) -> tuple[bool | None | Exception, ...]: ...
-
     @abstractmethod
     async def identify_real_conversations(
         self,

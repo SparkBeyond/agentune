@@ -1,7 +1,7 @@
 """Abstract base class for outcome detection strategies."""
 
 import abc
-from typing import Literal, overload
+from typing import Literal, cast, overload
 
 from attrs import frozen
 
@@ -35,28 +35,13 @@ class OutcomeDetector(abc.ABC):
             such as connection errors are propagated. Note that None is a valid outcome,
             not an error.
         """
-        return (await self.detect_outcomes(
+        result = (await self.detect_outcomes(
             (OutcomeDetectionTest(conversation, intent), ),
             possible_outcomes,
             return_exceptions=False
         ))[0]
+        return cast(Outcome | None, result)
 
-    @overload
-    async def detect_outcomes(
-        self,
-        instances: tuple[OutcomeDetectionTest, ...],
-        possible_outcomes: Outcomes,
-        return_exceptions: Literal[False] = False
-    ) -> tuple[Outcome | None, ...]: ...
-
-    @overload
-    async def detect_outcomes(
-        self,
-        instances: tuple[OutcomeDetectionTest, ...],
-        possible_outcomes: Outcomes,
-        return_exceptions: bool = True
-    ) -> tuple[Outcome | None | Exception, ...]: ...
-    
     @abc.abstractmethod
     async def detect_outcomes(
         self,
