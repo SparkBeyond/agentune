@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-import random
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections.abc import Sequence
 
 from attrs import field, frozen
@@ -79,13 +78,8 @@ class RagAgent(Agent):
         if not response_content.strip():
             return None
 
-        if conversation.messages:
-            last_timestamp = conversation.messages[-1].timestamp
-            delay_seconds = random.randint(1, 5)  # Agents respond quickly
-            response_timestamp = last_timestamp + timedelta(seconds=delay_seconds)
-        else:
-            # This case should ideally not be hit if conversations always have a start
-            response_timestamp = datetime.now()
+        # Use current timestamp for all messages
+        response_timestamp = datetime.now()
 
         return Message(
             sender=self.role,

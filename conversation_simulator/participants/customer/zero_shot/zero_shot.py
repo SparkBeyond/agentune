@@ -1,7 +1,6 @@
 """Zero-shot customer participant implementation."""
 
-import random
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import attrs
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -68,20 +67,13 @@ class ZeroShotCustomer(Customer):
             "conversation_history": conversation_history
         })
         
-        # If message is empty, end conversation
+        # If message is empty, do not respond
         if not customer_response.strip():
             return None
         else:
-            # Generate fake timestamp: 5-30 seconds after last message
-            # (customers typically take longer to respond than agents)
-            if conversation.messages:
-                last_timestamp = conversation.messages[-1].timestamp
-                delay_seconds = random.randint(5, 30)
-                response_timestamp = last_timestamp + timedelta(seconds=delay_seconds)
-            else:
-                # If no messages yet, use current time
-                response_timestamp = datetime.now()
-                
+            # Use current timestamp for all messages
+            response_timestamp = datetime.now()
+            
             return Message(
                 sender=self.role,
                 content=customer_response.strip(),

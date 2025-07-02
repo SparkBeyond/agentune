@@ -235,7 +235,7 @@ class FullSimulationRunner(Runner):
 ```
 
 **Key characteristics:**
-- Turn-based sequential message generation - participants strictly alternate turns
+- Turn-based sequential message generation - simulation runner strictly alternate between customer and agent
 - Each participant can either respond with a message or pass (return None)
 - Conversation ends when both participants pass consecutively
 - Deterministic message ordering based on strict turn order
