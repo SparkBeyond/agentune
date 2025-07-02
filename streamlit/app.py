@@ -83,12 +83,16 @@ def extract_conversation_data(results: Dict) -> Tuple[pd.DataFrame, pd.DataFrame
 
 def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.DataFrame, results: Dict):
     """Create comprehensive statistics dashboard."""
-    
+    # Define consistent colors for Original vs Simulated across all charts
+    type_color_map = {
+        'Original': '#2E86C1',    # Blue
+        'Simulated': '#E74C3C'    # Red
+    }
+
     st.header("📊 Simulation Statistics")
     
-    # Calculate consecutive message statistics
-    original_with_stats = calculate_consecutive_stats_for_dataframe(original_df)
-    simulated_with_stats = calculate_consecutive_stats_for_dataframe(simulated_df)
+    # Extract analysis results
+    analysis_result = results.get('analysis_result', {})
     
     # Session overview
     col1, col2, col3, col4 = st.columns(4)
@@ -119,62 +123,51 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
     # Outcome distribution comparison
     st.subheader("🎯 Outcome Distribution Comparison")
     
-    # Create consistent color mapping for outcomes
-    all_outcomes = set() 
-    if not original_df.empty:
-        all_outcomes.update(original_df['outcome'].unique())
-    if not simulated_df.empty:
-        all_outcomes.update(simulated_df['outcome'].unique())
+    # Use pre-calculated outcome distributions from analysis_result
+    outcome_comparison = analysis_result.get('outcome_comparison', {})
+    original_dist = outcome_comparison.get('original_distribution', {})
+    simulated_dist = outcome_comparison.get('simulated_distribution', {})
     
-    # Create a consistent color palette for all outcomes
+    # Create consistent color mapping for outcomes
+    all_outcomes = set(['No Outcome'])  # Ensure 'No Outcome' is always included
+    if original_dist.get('outcome_counts'):
+        all_outcomes.update(original_dist['outcome_counts'].keys())
+    if simulated_dist.get('outcome_counts'):
+        all_outcomes.update(simulated_dist['outcome_counts'].keys())
     colors = px.colors.qualitative.Set2
     outcome_colors = {outcome: colors[i % len(colors)] for i, outcome in enumerate(sorted(all_outcomes))}
-    
-    # Define consistent colors for Original vs Simulated across all charts
-    type_color_map = {
-        'Original': '#2E86C1',    # Blue
-        'Simulated': '#E74C3C'    # Red
-    }
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if not original_df.empty:
-            orig_outcomes = original_df.groupby('outcome').size().reset_index(name='count')
-            orig_colors = [outcome_colors[outcome] for outcome in orig_outcomes['outcome']]
-            
-            fig_orig = px.pie(
-                orig_outcomes,
-                values='count',
-                names='outcome',
-                title="Original Conversations Outcomes",
-                color_discrete_sequence=orig_colors
-            )
-            st.plotly_chart(fig_orig, use_container_width=True)
-    
+        _outcome_pie_chart(original_dist, outcome_colors, "Original Conversations Outcomes")
+
     with col2:
-        if not simulated_df.empty:
-            sim_outcomes = simulated_df.groupby('outcome').size().reset_index(name='count')
-            sim_colors = [outcome_colors[outcome] for outcome in sim_outcomes['outcome']]
-            
-            fig_sim = px.pie(
-                sim_outcomes,
-                values='count',
-                names='outcome',
-                title="Simulated Conversations Outcomes",
-                color_discrete_sequence=sim_colors
-            )
-            st.plotly_chart(fig_sim, use_container_width=True)
+        _outcome_pie_chart(simulated_dist, outcome_colors, "Simulated Conversations Outcomes")
     
     # Message length distribution
     st.subheader("📏 Message Length Distribution")
     
-    combined_df = pd.concat([
-        original_df[['num_messages', 'type']],
-        simulated_df[['num_messages', 'type']]
-    ], ignore_index=True)
+    # Use pre-calculated message distribution statistics from analysis_result
+    message_comparison = analysis_result.get('message_distribution_comparison', {})
+    original_stats = message_comparison.get('original_stats', {})
+    simulated_stats = message_comparison.get('simulated_stats', {})
     
-    if not combined_df.empty:
+    # Create data for histogram using pre-calculated distributions
+    histogram_data = []
+    
+    if original_stats.get('message_count_distribution'):
+        for msg_count, frequency in original_stats['message_count_distribution'].items():
+            for _ in range(frequency):
+                histogram_data.append({'num_messages': int(msg_count), 'type': 'Original'})
+    
+    if simulated_stats.get('message_count_distribution'):
+        for msg_count, frequency in simulated_stats['message_count_distribution'].items():
+            for _ in range(frequency):
+                histogram_data.append({'num_messages': int(msg_count), 'type': 'Simulated'})
+    
+    if histogram_data:
+        combined_df = pd.DataFrame(histogram_data)
         fig_hist = px.histogram(
             combined_df,
             x='num_messages',
@@ -191,148 +184,90 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
     # Summary statistics table
     st.subheader("📈 Summary Statistics")
     
+    # Use pre-calculated statistics
     stats_data = []
-    for df, label in [(original_df, 'Original'), (simulated_df, 'Simulated')]:
-        if not df.empty:
-            stats_data.append({
-                'Type': label,
-                'Count': len(df),
-                'Avg Messages': f"{df['num_messages'].mean():.1f}",
-                'Min Messages': df['num_messages'].min(),
-                'Max Messages': df['num_messages'].max(),
-                'Most Common Outcome': df['outcome'].mode().iloc[0] if not df['outcome'].mode().empty else 'N/A'
-            })
+    
+    if original_stats:
+        stats_data.append({
+            'Type': 'Original',
+            'Count': original_dist.get('total_conversations', 0),
+            'Avg Messages': f"{original_stats.get('mean_messages', 0):.1f}",
+            'Min Messages': original_stats.get('min_messages', 0),
+            'Max Messages': original_stats.get('max_messages', 0),
+            'Std Dev Messages': f"{original_stats.get('std_dev_messages', 0):.1f}",
+            'Most Common Outcome': max(original_dist.get('outcome_counts', {}), key=original_dist.get('outcome_counts', {}).get, default='N/A')
+        })
+    
+    if simulated_stats:
+        stats_data.append({
+            'Type': 'Simulated',
+            'Count': simulated_dist.get('total_conversations', 0),
+            'Avg Messages': f"{simulated_stats.get('mean_messages', 0):.1f}",
+            'Min Messages': simulated_stats.get('min_messages', 0),
+            'Max Messages': simulated_stats.get('max_messages', 0),
+            'Std Dev Messages': f"{simulated_stats.get('std_dev_messages', 0):.1f}",
+            'Most Common Outcome': max(simulated_dist.get('outcome_counts', {}), key=simulated_dist.get('outcome_counts', {}).get, default='N/A')
+        })
     
     if stats_data:
         stats_df = pd.DataFrame(stats_data)
         st.dataframe(stats_df, use_container_width=True)
     
-    # Consecutive Messages Analysis
-    st.subheader("🔄 Consecutive Messages Analysis")
+    # Adversarial Evaluation
+    st.subheader("🎭 Adversarial Evaluation")
     
-    # Calculate consecutive message statistics
-    original_with_stats = calculate_consecutive_stats_for_dataframe(original_df)
-    simulated_with_stats = calculate_consecutive_stats_for_dataframe(simulated_df)
+    # Use pre-calculated adversarial evaluation from analysis_result
+    adversarial_eval = analysis_result.get('adversarial_evaluation', {})
     
-    if not original_with_stats.empty or not simulated_with_stats.empty:
-        # Consecutive message metrics overview
-        st.markdown("##### Overview of Consecutive Message Patterns")
+    if adversarial_eval and adversarial_eval.get('total_pairs_evaluated', 0) > 0:
+        col1, col2, col3 = st.columns(3)
         
-        col1, col2, col3, col4 = st.columns(4)
-        
-        # Calculate aggregate statistics
-        orig_stats = {}
-        sim_stats = {}
-        
-        if not original_with_stats.empty:
-            orig_stats = {
-                'total_sequences': original_with_stats['total_consecutive_sequences'].sum(),
-                'avg_customer_consecutive': original_with_stats['avg_consecutive_customer'].mean(),
-                'avg_agent_consecutive': original_with_stats['avg_consecutive_agent'].mean(),
-                'max_customer_consecutive': original_with_stats['max_consecutive_customer'].max(),
-                'max_agent_consecutive': original_with_stats['max_consecutive_agent'].max()
-            }
-        
-        if not simulated_with_stats.empty:
-            sim_stats = {
-                'total_sequences': simulated_with_stats['total_consecutive_sequences'].sum(),
-                'avg_customer_consecutive': simulated_with_stats['avg_consecutive_customer'].mean(),
-                'avg_agent_consecutive': simulated_with_stats['avg_consecutive_agent'].mean(),
-                'max_customer_consecutive': simulated_with_stats['max_consecutive_customer'].max(),
-                'max_agent_consecutive': simulated_with_stats['max_consecutive_agent'].max()
-            }
+        total_pairs = adversarial_eval.get('total_pairs_evaluated', 0)
+        correct_identifications = adversarial_eval.get('correct_identifications', 0)
+        accuracy = (correct_identifications / total_pairs * 100) if total_pairs > 0 else 0
         
         with col1:
             st.metric(
-                "Total Consecutive Sequences",
-                f"Sim: {sim_stats.get('total_sequences', 0)}" if sim_stats else "N/A",
-                delta=f"Orig: {orig_stats.get('total_sequences', 0)}" if orig_stats else None
+                "Total Pairs Evaluated",
+                total_pairs
             )
         
         with col2:
             st.metric(
-                "Avg Customer Consecutive",
-                f"{sim_stats.get('avg_customer_consecutive', 0):.1f}" if sim_stats else "N/A",
-                delta=f"{sim_stats.get('avg_customer_consecutive', 0) - orig_stats.get('avg_customer_consecutive', 0):.1f}" if (sim_stats and orig_stats) else None
+                "Correct Identifications",
+                correct_identifications,
+                delta=f"{accuracy:.1f}% accuracy"
             )
         
         with col3:
+            # Determine quality assessment
+            if accuracy >= 80:
+                quality = "🔴 Easy to distinguish"
+                quality_desc = "High accuracy suggests simulated conversations are easily distinguishable from originals"
+            elif accuracy >= 60:
+                quality = "🟡 Moderately distinguishable"
+                quality_desc = "Medium accuracy suggests some differences between simulated and original conversations"
+            else:
+                quality = "🟢 Hard to distinguish"
+                quality_desc = "Low accuracy suggests simulated conversations are very similar to originals"
+            
             st.metric(
-                "Avg Agent Consecutive",
-                f"{sim_stats.get('avg_agent_consecutive', 0):.1f}" if sim_stats else "N/A",
-                delta=f"{sim_stats.get('avg_agent_consecutive', 0) - orig_stats.get('avg_agent_consecutive', 0):.1f}" if (sim_stats and orig_stats) else None
+                "Quality Assessment",
+                quality
             )
-        
-        with col4:
-            st.metric(
-                "Max Consecutive (Any)",
-                f"Sim: {max(sim_stats.get('max_customer_consecutive', 0), sim_stats.get('max_agent_consecutive', 0))}" if sim_stats else "N/A",
-                delta=f"Orig: {max(orig_stats.get('max_customer_consecutive', 0), orig_stats.get('max_agent_consecutive', 0))}" if orig_stats else None
-            )
-        
-        # Consecutive message distribution charts
-        st.markdown("##### Distribution of Consecutive Message Lengths")
-        
-        # Prepare data for plotting
-        consecutive_data = []
-        
-        for df, conv_type in [(original_with_stats, 'Original'), (simulated_with_stats, 'Simulated')]:
-            if not df.empty:
-                for _, row in df.iterrows():
-                    conversation_data = row['conversation_data']
-                    stats = analyze_consecutive_messages(conversation_data)
-                    
-                    for seq in stats['consecutive_sequences_details']:
-                        consecutive_data.append({
-                            'Type': conv_type,
-                            'Sender': seq['sender'].title(),
-                            'Consecutive_Count': seq['count'],
-                            'Conversation_ID': row['id']
-                        })
-        
-        if consecutive_data:
-            consecutive_df = pd.DataFrame(consecutive_data)
-            
-            # Create histogram of consecutive message lengths
-            fig_consecutive = px.histogram(
-                consecutive_df,
-                x='Consecutive_Count',
-                color='Type',
-                facet_col='Sender',
-                title="Distribution of Consecutive Message Lengths by Sender and Type",
-                labels={'Consecutive_Count': 'Consecutive Messages', 'count': 'Frequency'},
-                nbins=int(min(20, consecutive_df['Consecutive_Count'].max())),
-                color_discrete_map=type_color_map
-            )
-            fig_consecutive.update_layout(bargap=0.1)
-            st.plotly_chart(fig_consecutive, use_container_width=True)
-            
-            # Summary table for consecutive messages
-            st.markdown("##### Consecutive Messages Summary Table")
-            
-            summary_data = []
-            for conv_type in ['Original', 'Simulated']:
-                type_data = consecutive_df[consecutive_df['Type'] == conv_type]
-                if not type_data.empty:
-                    for sender in ['Customer', 'Agent']:
-                        sender_data = type_data[type_data['Sender'] == sender]
-                        if not sender_data.empty:
-                            summary_data.append({
-                                'Type': conv_type,
-                                'Sender': sender,
-                                'Total Sequences': len(sender_data),
-                                'Avg Length': f"{sender_data['Consecutive_Count'].mean():.1f}",
-                                'Max Length': sender_data['Consecutive_Count'].max(),
-                                'Min Length': sender_data['Consecutive_Count'].min()
-                            })
-            
-            if summary_data:
-                summary_df = pd.DataFrame(summary_data)
-                st.dataframe(summary_df, use_container_width=True)
-        else:
-            st.info("No consecutive message sequences found in the conversations.")
+            st.info(quality_desc)
     else:
-        st.info("No conversation data available for consecutive message analysis.")
+        st.info("No adversarial evaluation data available or evaluation was not performed.")
+
+
+def _outcome_pie_chart(outcome_distribution, outcome_colors, title):
+    if outcome_distribution.get('outcome_counts') or outcome_distribution.get('conversations_without_outcome', 0) > 0:
+        outcome_data = [{'outcome': outcome, 'count': count, 'color': outcome_colors[outcome]} for outcome, count in outcome_distribution.get('outcome_counts', {}).items()]
+        outcome_data.append({'outcome': 'No Outcome', 'count': outcome_distribution['conversations_without_outcome'], 'color': outcome_colors['No Outcome']})
+
+        outcomes_df = pd.DataFrame(outcome_data)
+        fig_orig = px.pie(outcomes_df, values='count', names='outcome', color='color', title=title)
+        st.plotly_chart(fig_orig, use_container_width=True)
 
 
 def select_from_dataframe(df: pd.DataFrame, table_name: str, multi_rows: bool = False) -> Tuple[Any, Any]:
@@ -377,7 +312,6 @@ def select_from_dataframe(df: pd.DataFrame, table_name: str, multi_rows: bool = 
         return ([] if multi_rows else None), ([] if multi_rows else None)
     
     # Display selection table
-    mode = "single-row" if not multi_rows else "multi-row"
     st.subheader(f"📋 Select {table_name}")
     
     # Show summary columns for selection
@@ -388,10 +322,10 @@ def select_from_dataframe(df: pd.DataFrame, table_name: str, multi_rows: bool = 
         use_container_width=True,
         key=f"select_{table_name}",
         on_select="rerun",
-        selection_mode=mode
-    )  # type: ignore[call-overload]
+        selection_mode="single-row" if not multi_rows else "multi-row"
+    )
     
-    selected_rows = selection_result.selection['rows']
+    selected_rows = selection_result.selection['rows']  # type: ignore
     
     if selected_rows:
         if not multi_rows:
@@ -461,104 +395,6 @@ def display_conversation(conversation_data: Dict, title: str = "Conversation"):
                     """,
                     unsafe_allow_html=True
                 )
-
-
-def analyze_consecutive_messages(conversation_data: Dict) -> Dict[str, Any]:
-    """Analyze consecutive messages from the same sender in a conversation.
-    
-    Args:
-        conversation_data: Dictionary containing conversation messages
-        
-    Returns:
-        Dictionary with consecutive message statistics
-    """
-    messages = conversation_data.get('messages', [])
-    if len(messages) < 2:
-        return {
-            'total_consecutive_sequences': 0,
-            'customer_consecutive_sequences': 0,
-            'agent_consecutive_sequences': 0,
-            'max_consecutive_customer': 0,
-            'max_consecutive_agent': 0,
-            'avg_consecutive_customer': 0,
-            'avg_consecutive_agent': 0,
-            'consecutive_sequences_details': []
-        }
-    
-    consecutive_sequences = []
-    current_sender = messages[0].get('sender', 'unknown')
-    current_count = 1
-    
-    # Analyze consecutive messages
-    for i in range(1, len(messages)):
-        sender = messages[i].get('sender', 'unknown')
-        
-        if sender == current_sender:
-            current_count += 1
-        else:
-            # End of consecutive sequence (only count if > 1 message)
-            if current_count > 1:
-                consecutive_sequences.append({
-                    'sender': current_sender,
-                    'count': current_count,
-                    'start_index': i - current_count,
-                    'end_index': i - 1
-                })
-            
-            current_sender = sender
-            current_count = 1
-    
-    # Don't forget the last sequence
-    if current_count > 1:
-        consecutive_sequences.append({
-            'sender': current_sender,
-            'count': current_count,
-            'start_index': len(messages) - current_count,
-            'end_index': len(messages) - 1
-        })
-    
-    # Calculate statistics
-    customer_sequences = [seq for seq in consecutive_sequences if seq['sender'] == 'customer']
-    agent_sequences = [seq for seq in consecutive_sequences if seq['sender'] == 'agent']
-    
-    return {
-        'total_consecutive_sequences': len(consecutive_sequences),
-        'customer_consecutive_sequences': len(customer_sequences),
-        'agent_consecutive_sequences': len(agent_sequences),
-        'max_consecutive_customer': max([seq['count'] for seq in customer_sequences], default=0),
-        'max_consecutive_agent': max([seq['count'] for seq in agent_sequences], default=0),
-        'avg_consecutive_customer': np.mean([seq['count'] for seq in customer_sequences]) if customer_sequences else 0,
-        'avg_consecutive_agent': np.mean([seq['count'] for seq in agent_sequences]) if agent_sequences else 0,
-        'consecutive_sequences_details': consecutive_sequences
-    }
-
-
-def calculate_consecutive_stats_for_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate consecutive message statistics for all conversations in a dataframe.
-    
-    Args:
-        df: DataFrame containing conversation data
-        
-    Returns:
-        DataFrame with consecutive message statistics added
-    """
-    if df.empty:
-        return df
-    
-    consecutive_stats = []
-    for _, row in df.iterrows():
-        stats = analyze_consecutive_messages(row['conversation_data'])
-        consecutive_stats.append(stats)
-    
-    # Add the statistics as new columns
-    stats_df = pd.DataFrame(consecutive_stats)
-    result_df = df.copy()
-    
-    for col in stats_df.columns:
-        if col != 'consecutive_sequences_details':  # Skip the detailed list
-            result_df[col] = stats_df[col]
-    
-    return result_df
 
 
 def main():
