@@ -1,6 +1,6 @@
 """Tests for conversation simulator models."""
 
-from datetime import datetime, timedelta, timezone, UTC
+from datetime import datetime, timedelta, UTC
 
 from conversation_simulator.models import (
     Message,
