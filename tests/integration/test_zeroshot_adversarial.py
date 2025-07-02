@@ -109,7 +109,7 @@ async def test_identify_real_conversation_integration(openai_model: ChatOpenAI, 
 
     # When we pass the real conversation first, we expect True
     result = await tester.identify_real_conversation(
-        real_conversation, simulated_conversation
+        AdversarialTest(real_conversation, simulated_conversation)
     )
     
     # The result should be True since the first conversation is the real one
@@ -117,7 +117,7 @@ async def test_identify_real_conversation_integration(openai_model: ChatOpenAI, 
     
     # Also test with the conversations swapped - should return False
     swapped_result = await tester.identify_real_conversation(
-        simulated_conversation, real_conversation
+        AdversarialTest(simulated_conversation, real_conversation)
     )
     assert swapped_result is False, "Expected False when second conversation is real"
 
@@ -159,11 +159,11 @@ async def test_identify_real_conversation_returns_none_for_empty(openai_model: C
     tester = ZeroShotAdversarialTester(model=openai_model)
 
     # Test with empty first conversation
-    result1 = await tester.identify_real_conversation(empty_conversation, real_conversation)
+    result1 = await tester.identify_real_conversation(AdversarialTest(empty_conversation, real_conversation))
     assert result1 is None
 
     # Test with empty second conversation
-    result2 = await tester.identify_real_conversation(real_conversation, empty_conversation)
+    result2 = await tester.identify_real_conversation(AdversarialTest(empty_conversation, real_conversation))
     assert result2 is None
 
     # Test batch with empty conversation

@@ -5,7 +5,6 @@ from real conversations by testing whether a model or human can identify which
 conversation is real when presented with a pair.
 """
 from abc import ABC, abstractmethod
-import asyncio
 from typing import cast
 
 from attrs import frozen
@@ -29,15 +28,13 @@ class AdversarialTester(ABC):
     @abstractmethod
     async def identify_real_conversation(
         self,
-        real_conversation: Conversation,
-        simulated_conversation: Conversation
+        adversarial_test: AdversarialTest,
     ) -> bool | None:
         """Evaluate a single pair of conversations to determine if the real conversation
         can be correctly identified.
 
-        Args:  
-            real_conversation: The real conversation to evaluate
-            simulated_conversation: The simulated conversation to evaluate
+        Args:
+            adversarial_test: An instance containing a real conversation and a simulated conversation.
         Returns:
             bool | None: True if the real conversation is correctly identified, False if not,
                          or None if the conversation was empty. Underlying errors
@@ -45,7 +42,7 @@ class AdversarialTester(ABC):
                          not an error.
         """
         result = (await self.identify_real_conversations(
-            (AdversarialTest(real_conversation, simulated_conversation), ),
+            (adversarial_test,),
             return_exceptions=False
         ))[0]
         return cast(bool | None, result)

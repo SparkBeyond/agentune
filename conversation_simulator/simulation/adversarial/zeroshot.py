@@ -35,7 +35,7 @@ class ZeroShotAdversarialTester(AdversarialTester):
     """
 
     model: BaseChatModel
-    example_conversations: tuple[Conversation, ...]
+    example_conversations: tuple[Conversation, ...] = ()
     max_concurrency: int = 50
     random_seed: int = 0
 
@@ -85,20 +85,19 @@ class ZeroShotAdversarialTester(AdversarialTester):
         return self.example_conversations
 
     async def identify_real_conversation(
-        self, real_conversation: Conversation, simulated_conversation: Conversation,
-    ) -> bool | None:
+        self, adversarial_test: AdversarialTest,
+    ) -> bool | Exception | None:
         """Identify which conversation is real.
 
         Args:
-            real_conversation: A real conversation.
-            simulated_conversation: A simulated conversation.
-
+            adversarial_test: An instance containing a real conversation and a simulated conversation.
         Returns:
             bool: True if the real conversation was identified, False if the simulated
                 conversation was identified, None if either conversation is empty or invalid.
         """
         results = await self.identify_real_conversations(
-            (real_conversation,), (simulated_conversation,)
+            (adversarial_test,),
+            return_exceptions=False
         )
         return results[0] if results else None
 

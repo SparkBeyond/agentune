@@ -13,21 +13,23 @@ This test validates the complete end-to-end workflow:
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import override
 
 import pytest
 from langchain_openai import ChatOpenAI
 
+from conversation_simulator.util.structure import converter
 from conversation_simulator import SimulationSession
 from conversation_simulator.intent_extraction.dummy import DummyIntentExtractor
 from conversation_simulator.models import Conversation, Message, Outcome, Outcomes
+from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.outcome_detection.base import OutcomeDetectionTest, OutcomeDetector
 from conversation_simulator.participants.agent.config import AgentConfig
 from conversation_simulator.participants.agent.zero_shot import ZeroShotAgentFactory
 from conversation_simulator.participants.customer.zero_shot import ZeroShotCustomerFactory
 from conversation_simulator.simulation.adversarial import ZeroShotAdversarialTester
-from conversation_simulator.util.structure import converter
 
 
 class SimpleOutcomeDetector(OutcomeDetector):
@@ -61,27 +63,7 @@ class TestFullPipelineIntegration:
             data = json.load(f)
 
         # Convert first 2 conversations to our models (very small for real LLM testing)
-        conversations = []
-        for conv_data in data["conversations"][:2]:
-            messages = [
-                Message(
-                    sender=msg["sender"],
-                    content=msg["content"],
-                    timestamp=msg["timestamp"]
-                )
-                for msg in conv_data["messages"]
-            ]
-            
-            outcome = Outcome(
-                name=conv_data["outcome"]["name"],
-                description=conv_data["outcome"]["description"]
-            )
-            
-            conversation = Conversation(
-                messages=tuple(messages),
-                outcome=outcome
-            )
-            conversations.append(conversation)
+        conversations: list[Conversation] = converter.structure(data["conversations"], list[Conversation])
 
         return conversations
 
@@ -111,13 +93,21 @@ class TestFullPipelineIntegration:
         customer_factory = ZeroShotCustomerFactory(model=openai_model)
         outcome_detector = SimpleOutcomeDetector()
 
+        # Create a dummy conversation to use as example so we don't sample from real conversations
+        dummy_conversation = Conversation(
+            messages=(
+                Message(sender=ParticipantRole.CUSTOMER, content="Hello", timestamp=datetime(2024, 1, 1, 0, 0, 0)),
+                Message(sender=ParticipantRole.AGENT, content="Hi there!", timestamp=datetime(2024, 1, 1, 0, 0, 0)),
+            )
+        )
+
         return SimulationSession(
             intent_extractor=intent_extractor,
             agent_factory=agent_factory,
             customer_factory=customer_factory,
             outcomes=outcomes,
             outcome_detector=outcome_detector,
-            adversarial_tester=ZeroShotAdversarialTester(model=openai_model, max_concurrency=10),
+            adversarial_tester=ZeroShotAdversarialTester(model=openai_model, max_concurrency=10, example_conversations=(dummy_conversation,)),
         )
 
     @pytest.mark.asyncio
