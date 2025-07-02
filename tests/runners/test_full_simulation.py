@@ -7,54 +7,14 @@ import attrs
 
 import pytest
 
+from ._conversation_util import MessageWithTimestamp, MockTurnBasedParticipant, ConversationSplits
 from conversation_simulator.models.conversation import Conversation
 from conversation_simulator.models.intent import Intent
-from conversation_simulator.models.message import Message, MessageDraft
+from conversation_simulator.models.message import MessageDraft
 from conversation_simulator.models.outcome import Outcome, Outcomes
 from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.outcome_detection.base import OutcomeDetectionTest, OutcomeDetector
-from conversation_simulator.participants.base import Participant
 from conversation_simulator.runners.full_simulation import FullSimulationRunner
-
-
-@attrs.frozen
-class MessageWithTimestamp:
-    """Message with an associated timestamp."""
-    content: str
-    timestamp: datetime
-    
-    def __str__(self) -> str:
-        """String representation of the message."""
-        return f"{self.timestamp}: {self.content}"
-
-
-@attrs.frozen
-class MockTurnBasedParticipant(Participant):
-    """Mock participant for turn-based testing that returns or skips messages in sequence.
-
-    Attributes:
-        role: The role of this participant
-        messages: List of messages to return in sequence (None = finished)
-    """
-
-    role: ParticipantRole
-    messages: tuple[MessageWithTimestamp | None, ...]
-    message_index = 0
-
-    def with_intent(self, intent_description: str) -> MockTurnBasedParticipant:
-        return self  # Intent is not used in this mock
-
-    async def get_next_message(self, conversation: Conversation) -> Message | None:
-        """Return the next message in sequence or None if no more messages or explicitly pass."""
-        if self.message_index >= len(self.messages):
-            return None
-
-        message = self.messages[self.message_index]
-        self.message_index += 1
-
-        # If message is None, this represents a deliberate pass
-        if message is None:
-            return None
 
 
 @attrs.frozen
@@ -85,7 +45,7 @@ class MockOutcomeDetector(OutcomeDetector):
 @pytest.fixture
 def base_timestamp() -> datetime:
     """Base timestamp for test messages."""
-    return datetime(2024, 1, 1, 10, 0, 0)
+    return datetime.now()
 
 
 @pytest.fixture
@@ -117,80 +77,10 @@ def initial_message() -> MessageDraft:
     )
 
 
+
 class TestFullSimulationRunner:
     """Test cases for FullSimulationRunner."""
     
-    @pytest.mark.asyncio
-    async def test_basic_conversation_flow(
-        self,
-        base_timestamp: datetime,
-        sample_intent: Intent,
-        sample_outcomes: Outcomes,
-        initial_message: MessageDraft
-    ) -> None:
-        """Test basic conversation flow with timestamp-based message selection."""
-        # Create mock participants with predetermined messages
-        customer_messages = (
-            MessageWithTimestamp(
-                content="Can you check order #12345?",
-                timestamp=base_timestamp + timedelta(seconds=10),
-            ),
-            MessageWithTimestamp(
-                content="Thank you for your help!",
-                timestamp=base_timestamp + timedelta(seconds=30),
-            ),
-        )
-        
-        agent_messages = (
-            MessageWithTimestamp(
-                content="I'd be happy to help. Let me check that for you.",
-                timestamp=base_timestamp + timedelta(seconds=5),  # Earlier timestamp
-            ),
-            MessageWithTimestamp(
-                content="Your order is being processed and will ship tomorrow.",
-                timestamp=base_timestamp + timedelta(seconds=20),
-            ),
-            MessageWithTimestamp(
-                content="You're welcome! Is there anything else I can help you with?",
-                timestamp=base_timestamp + timedelta(seconds=35),
-            ),
-        )
-        
-        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
-        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
-        
-        # Create runner
-        outcome_detector = MockOutcomeDetector(10000)  # Never detects outcome
-        runner = FullSimulationRunner(
-            customer=customer,
-            agent=agent,
-            initial_message=initial_message,
-            intent=sample_intent,
-            outcomes=sample_outcomes,
-            outcome_detector=outcome_detector,
-            max_messages=10,
-            base_timestamp=base_timestamp,
-        )
-        
-        # Run simulation
-        result = await runner.run()
-        
-        # Verify conversation structure
-        total_expected_messages = len(customer_messages) + len(agent_messages) + 1  # initial message + all messages
-        assert len(result.conversation.messages) == total_expected_messages
-        assert result.conversation.messages[0].content == initial_message.content
-        
-        # Verify timestamp-based selection (agent message should come first due to earlier timestamp)
-        assert result.conversation.messages[1].content == agent_messages[0].content
-        assert result.conversation.messages[1].sender == ParticipantRole.AGENT
-        
-        # Verify next message is customer (next in timestamp order)
-        assert result.conversation.messages[2].content == customer_messages[0].content
-        assert result.conversation.messages[2].sender == ParticipantRole.CUSTOMER
-        
-        # Verify conversation ended due to both participants finishing
-        assert runner.is_complete
-        
     @pytest.mark.asyncio
     async def test_max_messages_limit(
         self,
@@ -199,21 +89,37 @@ class TestFullSimulationRunner:
         sample_outcomes: Outcomes,
         initial_message: MessageDraft
     ) -> None:
-        """Test that conversation stops when max_messages is reached."""
-        # Create participants that would continue indefinitely
-        customer_messages = tuple(
+        """Test that conversation stops after max_messages is reached."""
+        
+        # Create mock participants with many messages
+        customer_messages = (
             MessageWithTimestamp(
-                content=f"Customer message {i}",
-                timestamp=base_timestamp + timedelta(seconds=i*2),
+                content="First customer message",
+                timestamp=base_timestamp + timedelta(seconds=10),
+            ),
+            MessageWithTimestamp(
+                content="Second customer message",
+                timestamp=base_timestamp + timedelta(seconds=30),
+            ),
+            MessageWithTimestamp(
+                content="Third customer message that should not appear",
+                timestamp=base_timestamp + timedelta(seconds=50),
+            ),
             )
-            for i in range(10)
-        )
-        agent_messages = tuple(
+        
+        agent_messages = (
             MessageWithTimestamp(
-                content=f"Agent message {i}",
-                timestamp=base_timestamp + timedelta(seconds=i*2+1),
-                )
-            for i in range(10)
+                content="First agent message",
+                timestamp=base_timestamp + timedelta(seconds=5),
+            ),
+            MessageWithTimestamp(
+                content="Second agent message",
+                timestamp=base_timestamp + timedelta(seconds=20),
+            ),
+            MessageWithTimestamp(
+                content="Third agent message that should not appear",
+                timestamp=base_timestamp + timedelta(seconds=40),
+            ),
         )
         
         customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
@@ -304,170 +210,6 @@ class TestFullSimulationRunner:
         assert len(result.conversation.messages) == 5  # initial + 2 + 2 follow-up
         assert runner.is_complete
     
-    @pytest.mark.asyncio
-    async def test_turn_based_flow(
-        self,
-        base_timestamp: datetime,
-        sample_intent: Intent,
-        sample_outcomes: Outcomes,
-        initial_message: MessageDraft
-    ) -> None:
-        """Test turn-based conversation flow behavior.
-
-        Specifically validates:
-        1. Strict alternating turns between participants
-        2. Conversation continuing when one participant passes
-        3. Conversation ending when both participants pass consecutively
-        """
-        # First message from customer (initial), then agent turn, then customer passes,
-        # then agent's final message, then both pass to end conversation
-        customer_messages = (
-            MessageWithTimestamp(
-                content="I need help",
-                timestamp=base_timestamp + timedelta(seconds=10)
-            ),
-            None,  # Customer passes their turn
-        )
-        agent_messages = (
-            MessageWithTimestamp(
-                content="How can I help?",
-                timestamp=base_timestamp + timedelta(seconds=20)
-            ),
-            MessageWithTimestamp(
-                content="Please provide more details",
-                timestamp=base_timestamp + timedelta(seconds=30)
-            ),
-            None,  # Agent passes their turn
-        )
-
-        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
-        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
-
-        runner = FullSimulationRunner(
-            customer=customer,
-            agent=agent,
-            initial_message=initial_message,
-            intent=sample_intent,
-            outcomes=sample_outcomes,
-            outcome_detector=MockOutcomeDetector(detect_after_messages=100),  # Never detect outcome
-            base_timestamp=base_timestamp,
-        )
-
-        # Run simulation
-        result = await runner.run()
-
-        # Verify turn-based behavior
-        messages = result.conversation.messages
-
-        # Should have 4 messages: initial + 1 customer + 2 agent
-        assert len(messages) == 4
-
-        # Check strict alternating pattern (initial→agent→customer→agent)
-        assert messages[0].sender == ParticipantRole.CUSTOMER  # initial
-        assert messages[1].sender == ParticipantRole.AGENT     # agent turn
-        assert messages[2].sender == ParticipantRole.CUSTOMER  # customer turn
-        assert messages[3].sender == ParticipantRole.AGENT     # agent turn
-
-        # Verify message content (confirms turns happened in right order)
-        assert messages[1].content == "How can I help?"
-        assert messages[2].content == "I need help"
-        assert messages[3].content == "Please provide more details"
-
-        # Verify conversation ended due to consecutive passes
-        assert runner.is_complete
-        # Outcome should be None since we set detect_after_messages to 100
-        assert result.conversation.outcome is None
-
-    @pytest.mark.asyncio
-    async def test_participant_pass_then_speak_again(
-        self,
-        base_timestamp: datetime,
-        sample_intent: Intent,
-        sample_outcomes: Outcomes,
-        initial_message: MessageDraft
-    ) -> None:
-        """Test that a participant can pass their turn and then speak on a later turn.
-
-        This illustrates a scenario where:
-        1. Customer sends initial message
-        2. Agent responds with a greeting
-        3. Customer passes their turn (doesn't respond)
-        4. Agent sends a reminder message
-        5. Customer responds after initially passing
-        6. Agent sends a final message
-        7. Both participants pass to end the conversation
-        """
-        # Setup customer message pattern: pass on first turn, then respond, then pass again
-        customer_messages = (
-            # First turn: pass (explicitly return None)
-            None,
-            # Second turn: respond after agent's reminder
-            MessageWithTimestamp(
-                content="Sorry for the delay, I'm here now",
-                timestamp=base_timestamp + timedelta(seconds=20),
-            ),
-        )
-
-        # Setup agent message pattern: greeting, reminder, acknowledgement, then pass
-        agent_messages = (
-            # First response is a greeting
-            MessageWithTimestamp(
-                content="Hello, how can I assist you today?",
-                timestamp=base_timestamp + timedelta(seconds=5),
-            ),
-            # Second response is a reminder after customer passes
-            MessageWithTimestamp(
-                content="Are you still there? I'm waiting to help.",
-                timestamp=base_timestamp + timedelta(seconds=15),
-            ),
-            # Third response acknowledges customer's return
-            MessageWithTimestamp(
-                content="Thanks for returning! How can I help?",
-                timestamp=base_timestamp + timedelta(seconds=25),
-            ),
-        )
-
-        # Create participants using the MockTurnBasedParticipant class which supports explicit passing
-        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
-        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
-
-        # Create outcome detector that never detects an outcome
-        outcome_detector = MockOutcomeDetector(100)  # Only detects after 100 messages
-
-        # Create runner
-        runner = FullSimulationRunner(
-            customer=customer,
-            agent=agent,
-            initial_message=initial_message,
-            intent=sample_intent,
-            outcomes=sample_outcomes,
-            outcome_detector=outcome_detector,
-            base_timestamp=base_timestamp,
-        )
-
-        # Run simulation
-        result = await runner.run()
-
-        # Get messages for easier assertions
-        messages = result.conversation.messages
-
-        # Verify message sequence with customer passing and then speaking again
-        assert len(messages) == 5  # initial + 4 more messages
-        assert messages[0].sender == ParticipantRole.CUSTOMER  # initial message
-        assert messages[1].sender == ParticipantRole.AGENT     # greeting
-        assert messages[2].sender == ParticipantRole.AGENT     # reminder (customer passed)
-        assert messages[3].sender == ParticipantRole.CUSTOMER  # customer returns
-        assert messages[4].sender == ParticipantRole.AGENT     # agent acknowledgement
-
-        # Verify message content
-        assert messages[1].content == "Hello, how can I assist you today?"
-        assert messages[2].content == "Are you still there? I'm waiting to help."
-        assert messages[3].content == "Sorry for the delay, I'm here now"
-        assert messages[4].content == "Thanks for returning! How can I help?"
-
-        # Verify conversation ended due to consecutive passes
-        assert runner.is_complete
-        assert result.conversation.outcome is None
 
     @pytest.mark.asyncio
     async def test_immediate_termination_on_outcome(
@@ -524,3 +266,211 @@ class TestFullSimulationRunner:
         assert result.conversation.outcome.name == "quick_resolution"
         assert len(result.conversation.messages) == 2  # initial + 1 message that triggered outcome
         assert runner.is_complete
+
+    @pytest.mark.asyncio
+    async def test_round_trip_customer_starts_with_passes(
+        self,
+        conversation_customer_starts_with_passes: Conversation,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        base_timestamp: datetime
+    ) -> None:
+        """Test round-trip reconstruction of a conversation where customer starts and includes passes."""
+        await _assert_round_trip_conversation(
+            conversation_customer_starts_with_passes,
+            sample_intent,
+            sample_outcomes,
+            base_timestamp
+        )
+
+    @pytest.mark.asyncio
+    async def test_round_trip_agent_starts_with_passes(
+        self,
+        conversation_agent_starts_with_passes: Conversation,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        base_timestamp: datetime
+    ) -> None:
+        """Test round-trip reconstruction of a conversation where agent starts and includes passes."""
+        await _assert_round_trip_conversation(
+            conversation_agent_starts_with_passes,
+            sample_intent,
+            sample_outcomes,
+            base_timestamp
+        )
+
+    @pytest.mark.asyncio
+    async def test_round_trip_simple_back_and_forth(
+        self,
+        conversation_simple_back_and_forth: Conversation,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        base_timestamp: datetime
+    ) -> None:
+        """Test round-trip reconstruction of a simple conversation with perfect alternation."""
+        await _assert_round_trip_conversation(
+            conversation_simple_back_and_forth,
+            sample_intent,
+            sample_outcomes,
+            base_timestamp
+        )
+
+    @pytest.mark.asyncio
+    async def test_round_trip_multiple_consecutive_passes(
+        self,
+        conversation_multiple_consecutive_passes: Conversation,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        base_timestamp: datetime
+    ) -> None:
+        """Test round-trip reconstruction of a conversation with multiple consecutive messages."""
+        await _assert_round_trip_conversation(
+            conversation_multiple_consecutive_passes,
+            sample_intent,
+            sample_outcomes,
+            base_timestamp
+        )
+
+    @pytest.mark.asyncio
+    async def test_round_trip_agent_starts_simple(
+        self,
+        conversation_agent_starts_simple: Conversation,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        base_timestamp: datetime
+    ) -> None:
+        """Test round-trip reconstruction of a simple agent-initiated conversation."""
+        await _assert_round_trip_conversation(
+            conversation_agent_starts_simple,
+            sample_intent,
+            sample_outcomes,
+            base_timestamp
+        )
+
+    @pytest.mark.asyncio
+    async def test_round_trip_single_message(
+        self,
+        conversation_single_message: Conversation,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        base_timestamp: datetime
+    ) -> None:
+        """Test round-trip reconstruction of a conversation with just one message."""
+        await _assert_round_trip_conversation(
+            conversation_single_message,
+            sample_intent,
+            sample_outcomes,
+            base_timestamp
+        )
+
+    @pytest.mark.asyncio
+    async def test_round_trip_alternating_passes_pattern(
+        self,
+        conversation_alternating_passes_pattern: Conversation,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        base_timestamp: datetime
+    ) -> None:
+        """Test round-trip reconstruction of a conversation with complex pass patterns."""
+        await _assert_round_trip_conversation(
+            conversation_alternating_passes_pattern,
+            sample_intent,
+            sample_outcomes,
+            base_timestamp
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("conversation_fixture_name", [
+        "conversation_customer_starts_with_passes",
+        "conversation_agent_starts_with_passes", 
+        "conversation_simple_back_and_forth",
+        "conversation_multiple_consecutive_passes",
+        "conversation_agent_starts_simple",
+        "conversation_single_message",
+        "conversation_alternating_passes_pattern",
+    ])
+    async def test_round_trip_parametrized(
+        self,
+        conversation_fixture_name: str,
+        sample_intent: Intent,
+        sample_outcomes: Outcomes,
+        base_timestamp: datetime,
+        request: pytest.FixtureRequest
+    ) -> None:
+        """Parametrized test that runs round-trip on all conversation fixtures."""
+        # Get the conversation fixture by name
+        conversation = request.getfixturevalue(conversation_fixture_name)
+        
+        await _assert_round_trip_conversation(
+            conversation,
+            sample_intent,
+            sample_outcomes,
+            base_timestamp
+        )
+    
+
+async def _assert_round_trip_conversation(
+    conversation: Conversation,
+    sample_intent: Intent,
+    sample_outcomes: Outcomes,
+    base_timestamp: datetime
+) -> None:
+    """Assert that a conversation can be reconstructed via round-trip through participants.
+    
+    This helper:
+    1. Splits the conversation into participant message sequences
+    2. Creates MockTurnBasedParticipants with those sequences
+    3. Runs a new simulation using those participants
+    4. Verifies the new conversation matches the original exactly
+    
+    Args:
+        conversation: The original conversation to round-trip
+        sample_intent: Shared intent fixture to use for simulation
+        sample_outcomes: Shared outcomes fixture to use for simulation  
+        base_timestamp: Shared base timestamp fixture to use for simulation
+    """
+    # Split conversation into participant sequences
+    splits = ConversationSplits.reconstruct(conversation)
+    
+    # Create mock participants from the splits
+    customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, splits.customer_messages)
+    agent = MockTurnBasedParticipant(ParticipantRole.AGENT, splits.agent_messages)
+    
+    # Determine who starts and create initial message
+    first_message = conversation.messages[0]
+    initial_message = MessageDraft(
+        content=first_message.content,
+        sender=first_message.sender
+    )
+    
+    # Create runner with shared fixtures
+    outcome_detector = MockOutcomeDetector(10000)  # Never detects outcome
+    runner = FullSimulationRunner(
+        customer=customer,
+        agent=agent,
+        initial_message=initial_message,
+        intent=sample_intent,
+        outcomes=sample_outcomes,
+        outcome_detector=outcome_detector,
+        max_messages=len(conversation.messages) + 5,  # Allow some buffer
+        base_timestamp=base_timestamp,
+    )
+    
+    # Run the simulation
+    result = await runner.run()
+    
+    # Assert exact match of message contents and senders
+    assert len(result.conversation.messages) == len(conversation.messages), (
+        f"Message count mismatch: expected {len(conversation.messages)}, "
+        f"got {len(result.conversation.messages)}"
+    )
+    
+    for i, (original, reconstructed) in enumerate(zip(conversation.messages, result.conversation.messages)):
+        assert original.content == reconstructed.content, (
+            f"Message {i} content mismatch: expected '{original.content}', "
+            f"got '{reconstructed.content}'"
+        )
+        assert original.sender == reconstructed.sender, (
+            f"Message {i} sender mismatch: expected {original.sender}, "
+            f"got {reconstructed.sender}"
+        )

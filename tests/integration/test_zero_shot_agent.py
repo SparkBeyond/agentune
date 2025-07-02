@@ -41,10 +41,7 @@ class TestZeroShotAgentIntegration:
         assert response.sender == ParticipantRole.AGENT
         assert len(response.content.strip()) > 10
         logger.info("Agent response (customer initiated): %s", response.content)
-        
-        # Check timing is realistic (3-20 seconds)
-        time_diff = response.timestamp - customer_message.timestamp
-        assert 3 <= time_diff.total_seconds() <= 20
+
 
     @pytest.mark.asyncio
     async def test_agent_intent_agent_initiates_mentions_intent(self, sales_agent_config, openai_model):

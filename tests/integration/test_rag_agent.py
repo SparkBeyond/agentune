@@ -19,7 +19,7 @@ from conversation_simulator.rag import conversations_to_langchain_documents
 
 from conversation_simulator.runners.full_simulation import FullSimulationRunner
 from tests.runners.test_full_simulation import (
-    MockParticipant, 
+    MockTurnBasedParticipant, 
     MessageWithTimestamp, 
     MockOutcomeDetector 
 )
@@ -226,7 +226,7 @@ class TestRagAgentIntegration:
                 timestamp=base_timestamp + timedelta(seconds=10),
             ),
         )
-        customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
+        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
 
         # 3. Setup runner
         initial_message = MessageDraft(
