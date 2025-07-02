@@ -1,6 +1,6 @@
 
 import logging
-from typing import List, Sequence
+from collections.abc import Sequence
 
 from langchain_core.documents import Document
 
@@ -16,10 +16,10 @@ def _format_conversation_history(messages: Sequence[Message]) -> str:
 
 
 def conversations_to_langchain_documents(
-    conversations: List[Conversation],
+    conversations: list[Conversation],
     role: ParticipantRole,
-) -> List[Document]:
-    documents: List[Document] = []
+) -> list[Document]:
+    documents: list[Document] = []
     for conversation in conversations:
         if len(conversation.messages) < 2:
             continue # Need at least one message for history and one for the 'next message'
@@ -35,7 +35,7 @@ def conversations_to_langchain_documents(
                 logger.debug(f"Skipping empty next_message at index {i} in conversation starting with: {conversation.messages[0].content[:50]}...")
                 continue
 
-            history_messages: List[Message] = list(conversation.messages[:i])
+            history_messages: list[Message] = list(conversation.messages[:i])
             # The history becomes the content to be embedded
             page_content = _format_conversation_history(history_messages)
 
@@ -55,12 +55,12 @@ async def get_few_shot_examples(
     vector_store: VectorStore,
     k: int,
     target_role: ParticipantRole,
-) -> List[Document]:
+) -> list[Document]:
     """Retrieves k relevant documents for a given role from a vector store."""
     query = _format_conversation_history(conversation_history)
 
     # Let exceptions propagate instead of catching them
-    retrieved_docs: List[Document] = await vector_store.asimilarity_search(
+    retrieved_docs: list[Document] = await vector_store.asimilarity_search(
         query=query, k=k
     )
 

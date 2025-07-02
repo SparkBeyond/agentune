@@ -8,7 +8,7 @@ significantly as requirements become clearer.
 """
 
 import abc
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from ..models.conversation import Conversation
 from ..models.message import Message

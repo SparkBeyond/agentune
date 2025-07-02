@@ -2,7 +2,7 @@
 
 from collections import Counter
 import random
-from typing import Iterable
+from collections.abc import Iterable
 import logging
 
 from conversation_simulator.simulation.adversarial.base import AdversarialTest

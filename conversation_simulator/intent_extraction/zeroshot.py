@@ -6,7 +6,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
-from typing import Optional, override
+from typing import override
 
 from ..models.conversation import Conversation
 from ..models.intent import Intent
@@ -27,11 +27,11 @@ class IntentExtractionResult(BaseModel):
     reasoning: str = Field(
         description="Explanation of the extracted intent and why it was chosen"
     )
-    role: Optional[ParticipantRole] = Field(
+    role: ParticipantRole | None = Field(
         description="Role of the participant who initiated the intent (CUSTOMER or AGENT), "
                   "or None if no intent was detected"
     )
-    description: Optional[str] = Field(
+    description: str | None = Field(
         description="Description of the extracted intent, or None if no intent was detected"
     )
     

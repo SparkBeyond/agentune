@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import random
 from datetime import datetime, timedelta
-from typing import List, Sequence
+from collections.abc import Sequence
 
 from attrs import field, frozen
 import attrs
@@ -59,7 +59,7 @@ class RagAgent(Agent):
             return None
 
         # 1. Retrieval
-        few_shot_examples: List[Document] = await self._get_few_shot_examples(
+        few_shot_examples: list[Document] = await self._get_few_shot_examples(
             conversation.messages,
             k=3,
             vector_store=self.agent_vector_store
@@ -68,7 +68,7 @@ class RagAgent(Agent):
         # 2. Augmentation
         # Format few-shot examples and history for the prompt template
         formatted_examples = self._format_examples(few_shot_examples)
-        chat_history: List[BaseMessage] = conversation.to_langchain_messages()
+        chat_history: list[BaseMessage] = conversation.to_langchain_messages()
 
         # 3. Generation
         response_content = await self.llm_chain.ainvoke({
@@ -93,13 +93,13 @@ class RagAgent(Agent):
             timestamp=response_timestamp,
         )
 
-    def _format_examples(self, examples: List[Document]) -> List[BaseMessage]:
+    def _format_examples(self, examples: list[Document]) -> list[BaseMessage]:
         """
         Formats the retrieved few-shot example Documents into a list of LangChain messages.
         Each Document's page_content (history, typically customer's turn) becomes a HumanMessage,
         and the metadata (next agent message) becomes an AIMessage.
         """
-        formatted_messages: List[BaseMessage] = []
+        formatted_messages: list[BaseMessage] = []
         for doc in examples:
             try:
                 # History (customer's turn or context)
@@ -142,7 +142,7 @@ class RagAgent(Agent):
         return formatted_messages
 
     @staticmethod
-    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> List[Document]:
+    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
         return await get_few_shot_examples(
             conversation_history=conversation_history,
             vector_store=vector_store,

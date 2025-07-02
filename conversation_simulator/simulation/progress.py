@@ -1,5 +1,6 @@
 import asyncio
-from typing import Sequence, override
+from typing import override
+from collections.abc import Sequence
 import logging
 
 from attrs import define, field, frozen

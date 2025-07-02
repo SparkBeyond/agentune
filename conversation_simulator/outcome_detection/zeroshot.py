@@ -1,6 +1,6 @@
 """Zero-shot outcome detection implementation."""
 
-from typing import Optional, override
+from typing import override
 
 from attrs import field, frozen
 from langchain_core.output_parsers import PydanticOutputParser
@@ -24,7 +24,7 @@ class OutcomeDetectionResult(BaseModel):
     detected: bool = Field(
         description="Whether a specific outcome was detected in the conversation"
     )
-    outcome: Optional[str] = Field(
+    outcome: str | None = Field(
         default=None,
         description="Name of the detected outcome, or null if no outcome was detected"
     )
@@ -145,7 +145,7 @@ Always provide detailed reasoning for your decision.
 Has this conversation reached one of the defined outcomes? If so, which one?
 """
     
-    def _parse_outcome(self, result: OutcomeDetectionResult, possible_outcomes: Outcomes) -> Optional[Outcome]:
+    def _parse_outcome(self, result: OutcomeDetectionResult, possible_outcomes: Outcomes) -> Outcome | None:
         """Parse the detection result to find a matching outcome.
         
         Args:

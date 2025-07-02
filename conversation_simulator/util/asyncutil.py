@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from typing import Awaitable, Callable, Iterable, Literal, cast, overload
+from typing import Literal, cast, overload
+from collections.abc import Awaitable, Callable, Iterable
 import queue
 
 type AsyncRunnable[T] = Callable[[], Awaitable[T]]
