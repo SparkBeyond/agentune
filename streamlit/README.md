@@ -36,10 +36,10 @@ pip install streamlit pandas plotly
 
 ```bash
 # Using Poetry
-poetry run streamlit run streamlit/app.py
+poetry run streamlit run streamlit/Conversation Simulator Results Analyzer.py
 
 # Or directly
-streamlit run streamlit/app.py
+streamlit run streamlit/Conversation Simulator Results Analyzer.py
 ```
 
 ## Usage
