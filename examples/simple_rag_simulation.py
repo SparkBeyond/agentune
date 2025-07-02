@@ -25,7 +25,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List
 
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -45,7 +44,7 @@ from conversation_simulator.util.structure import converter
 # Get module logger
 logger = logging.getLogger(__name__)
 
-def load_sample_conversations() -> List[Conversation]:
+def load_sample_conversations() -> list[Conversation]:
     """Load sample conversations from the test data file using cattrs.
     
     Returns:
@@ -63,14 +62,14 @@ def load_sample_conversations() -> List[Conversation]:
         with data_file.open('r', encoding='utf-8') as f:
             data = json.load(f)
         # Convert JSON data to Conversation objects using cattrs
-        conversations: List[Conversation] = converter.structure(data['conversations'], List[Conversation])
+        conversations: list[Conversation] = converter.structure(data['conversations'], list[Conversation])
         logger.info(f"Loaded {len(conversations)} sample conversations")
         return conversations
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         raise ValueError(f"Failed to parse conversation data: {e}") from e
 
 
-def extract_outcomes_from_conversations(conversations: List[Conversation]) -> Outcomes:
+def extract_outcomes_from_conversations(conversations: list[Conversation]) -> Outcomes:
     """Extract unique outcomes from conversations.
     
     Args:
@@ -96,7 +95,7 @@ def extract_outcomes_from_conversations(conversations: List[Conversation]) -> Ou
 
 
 async def build_simple_vector_stores(
-    reference_conversations: List[Conversation],
+    reference_conversations: list[Conversation],
     embeddings_model: OpenAIEmbeddings
 ) -> tuple[InMemoryVectorStore, InMemoryVectorStore]:
     """Build simple in-memory vector stores for agent and customer messages.
@@ -141,7 +140,7 @@ async def run_rag_simulation(
     embeddings_model_name: str,
     chat_model_name: str,
     outcomes: Outcomes,
-    reference_conversations: List[Conversation],
+    reference_conversations: list[Conversation],
     number_of_simulations: int = 20,
 ) -> SimulationSessionResult:
     """Run RAG-based simulation with specified parameters.

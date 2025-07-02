@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import TypedDict, Dict, Any, List, Optional
+from typing import TypedDict, Any
 
 from conversation_simulator.models import Message, ParticipantRole
 from conversation_simulator.models.conversation import Conversation
@@ -25,18 +25,18 @@ class MockDocMetadata(TypedDict):
 
 class MockDocData(TypedDict):
     page_content: str
-    metadata: Dict[str, Any]  # Use Dict for flexibility in tests
+    metadata: dict[str, Any]  # Use Dict for flexibility in tests
 
 def create_mock_doc_data(
-    history_messages: List[Message],
+    history_messages: list[Message],
     next_message_role: str,
     next_message_content: str,
     next_message_timestamp_str: str,
     conversation_id: str,
     message_index: int,
-    remove_keys: Optional[List[str]] = None
+    remove_keys: list[str] | None = None
 ) -> MockDocData:
-    metadata: Dict[str, Any] = {
+    metadata: dict[str, Any] = {
         "conversation_id": conversation_id,
         "message_index": message_index,
         "role": next_message_role,
@@ -103,7 +103,7 @@ MOCK_CUSTOMER_DOCS = [
 # Mock conversation data for create_vector_stores tests
 BASE_TEST_TIME = datetime(2023, 1, 1, 12, 0, 0)
 
-MOCK_CONVERSATIONS: List[Conversation] = [
+MOCK_CONVERSATIONS: list[Conversation] = [
     Conversation(
         messages=tuple([
             Message(sender=ParticipantRole.CUSTOMER, content="Hello, I have a problem.", timestamp=BASE_TEST_TIME),

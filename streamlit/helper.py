@@ -8,10 +8,10 @@ import streamlit as st
 import pandas as pd
 import json
 import plotly.express as px
-from typing import Dict, Optional, Tuple, Any
+from typing import Any
 
 
-def load_simulation_results(uploaded_file) -> Optional[Dict]:
+def load_simulation_results(uploaded_file) -> dict | None:
     """Load simulation results from uploaded JSON file."""
     try:
         content = uploaded_file.read()
@@ -26,7 +26,7 @@ def load_simulation_results(uploaded_file) -> Optional[Dict]:
         return None
 
 
-def extract_conversation_data(results: Dict) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def extract_conversation_data(results: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Extract conversation data into DataFrames for analysis."""
     
     # Extract original conversations
@@ -71,7 +71,7 @@ def extract_conversation_data(results: Dict) -> Tuple[pd.DataFrame, pd.DataFrame
     return original_df, simulated_df
 
 
-def select_from_dataframe(df: pd.DataFrame, table_name: str, multi_rows: bool = False) -> Tuple[Any, Any]:
+def select_from_dataframe(df: pd.DataFrame, table_name: str, multi_rows: bool = False) -> tuple[Any, Any]:
     """Select conversations from dataframe with filtering."""
     
     if df.empty:
@@ -147,7 +147,7 @@ def select_from_dataframe(df: pd.DataFrame, table_name: str, multi_rows: bool = 
     return ([] if multi_rows else None), ([] if multi_rows else None)
 
 
-def display_conversation(conversation_data: Dict, title: str = "Conversation"):
+def display_conversation(conversation_data: dict, title: str = "Conversation"):
     """Display a conversation in a chat-like format."""
     
     st.subheader(f"💬 {title}")

@@ -51,7 +51,7 @@ line-length = 100                   # matches your guideline
 
 [tool.ruff.lint]
 # Linter configuration
-select = ["E", "F"]  # Only the essentials
+select = ["E", "F", "UP006", "UP007", "UP045", "UP035"]  # Add modern type hint rules
 ignore = ["E203", "E266", "E501"]  # Relax whitespace & long-line rules
 
 [tool.mypy]
