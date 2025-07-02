@@ -1,6 +1,6 @@
 """Tests for conversation simulator models."""
 
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 
 from conversation_simulator.models import (
     Message,
@@ -19,7 +19,7 @@ class TestMessage:
     
     def test_message_creation(self):
         """Test creating a message with all fields."""
-        timestamp = datetime.now(UTC)
+        timestamp = datetime.now(timezone.utc)
         message = Message(
             content="Hello world",
             timestamp=timestamp,
@@ -32,7 +32,7 @@ class TestMessage:
     
     def test_message_defaults(self):
         """Test message with default values."""
-        timestamp = datetime.now(UTC)
+        timestamp = datetime.now(timezone.utc)
         message = Message(
             content="Test message",
             timestamp=timestamp,
@@ -104,7 +104,7 @@ class TestConversation:
     
     def test_conversation_creation(self):
         """Test creating a conversation."""
-        timestamp = datetime.now(UTC)
+        timestamp = datetime.now(timezone.utc)
         messages = (
             Message("Hello", timestamp, ParticipantRole.CUSTOMER),
             Message("Hi there!", timestamp, ParticipantRole.AGENT),
