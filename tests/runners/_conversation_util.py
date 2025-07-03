@@ -142,7 +142,7 @@ class MockTurnBasedParticipant(Participant):
 
     role: ParticipantRole
     messages: tuple[MessageWithTimestamp | None, ...]
-    message_index = 0
+    message_index: int = 0
 
     def with_intent(self, intent_description: str) -> MockTurnBasedParticipant:
         return self  # Intent is not used in this mock
