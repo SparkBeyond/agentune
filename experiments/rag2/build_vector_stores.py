@@ -19,7 +19,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List
 
 from langchain_community.vectorstores import FAISS
 from langchain_core.embeddings import Embeddings
@@ -43,7 +42,7 @@ DEFAULT_OUTPUT_DIR = "vector_store"
 
 
 async def build_persistent_vector_store(
-    reference_conversations: List[Conversation],
+    reference_conversations: list[Conversation],
     embeddings_model: Embeddings,
     output_dir: Path
 ) -> FAISS:

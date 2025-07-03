@@ -24,7 +24,6 @@ import random
 import sys
 import time
 from pathlib import Path
-from typing import List
 
 # Import common utilities from examples directory
 sys.path.append(str(Path(__file__).parent.parent.parent / "examples"))
@@ -101,7 +100,7 @@ def load_persistent_vector_store(
 async def run_simulation_with_persistent_store(
     vector_store: FAISS,
     chat_model: BaseChatModel,
-    reference_conversations: List[Conversation],
+    reference_conversations: list[Conversation],
     number_of_simulations: int = DEFAULT_NUM_SIMULATIONS
 ) -> SimulationSessionResult:
     """
@@ -161,7 +160,7 @@ async def run_simulation_with_persistent_store(
     return result
 
 
-def extract_outcomes_from_conversations(conversations: List[Conversation]) -> Outcomes:
+def extract_outcomes_from_conversations(conversations: list[Conversation]) -> Outcomes:
     """
     Extract unique outcomes from reference conversations.
     

@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 import random
 import math
-from datetime import timedelta
-from typing import Optional
+from datetime import datetime
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import PydanticOutputParser
@@ -32,7 +31,7 @@ class CustomerResponse(BaseModel):
     should_respond: bool = Field(
         description="Whether the customer should respond at this point"
     )
-    response: Optional[str] = Field(
+    response: str | None = Field(
         default=None,
         description="Response content, or null if should_respond is false"
     )
@@ -105,18 +104,8 @@ class RagCustomer(Customer):
             logger.debug(f"Role: {self.role}, Randomly decided not to respond: {probability}")
             return None
         
-        delays_before_next_message_for_role = await index_by_prefix.calculate_next_message_timedeltas(
-            role=self.role,
-            similar_docs=few_shot_examples
-        )
-        estimated_delay = delays_before_next_message_for_role[0] if delays_before_next_message_for_role else None
-        logger.debug(f"Role: {self.role}, Estimated delay: {estimated_delay}")
-
-        if estimated_delay is None:
-            logger.error("Estimated delay is None, even though probability is above threshold!")
-            return None
-
-        estimated_timestamp = conversation.messages[-1].timestamp + timedelta(seconds=estimated_delay)
+        # Use current timestamp instead of predicting one
+        current_timestamp = datetime.now()
 
         # 3. Augmentation
         # Select few-shot examples randomly, to avoid bias
@@ -154,7 +143,7 @@ class RagCustomer(Customer):
         return Message(
             sender=self.role,
             content=response.response,  # Now guaranteed to be not None
-            timestamp=estimated_timestamp,
+            timestamp=current_timestamp
         )
 
     def _format_examples(self, examples: list[tuple[Document, float]]) -> str:

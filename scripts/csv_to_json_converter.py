@@ -10,7 +10,7 @@ import pandas as pd
 import json
 from datetime import datetime
 import os
-from typing import Dict, List, Any
+from typing import Any
 
 
 def load_data(conversations_path: str, opportunities_path: str) -> tuple:
@@ -62,7 +62,7 @@ def format_timestamp(timestamp_str: str) -> str:
         return timestamp_str
 
 
-def map_status_to_outcome(status: str) -> Dict[str, str]:
+def map_status_to_outcome(status: str) -> dict[str, str]:
     """
     Map status value to outcome dictionary
     
@@ -85,8 +85,8 @@ def map_status_to_outcome(status: str) -> Dict[str, str]:
 
 
 def process_conversations(conversations_df: pd.DataFrame, 
-                         opportunity_to_company: Dict[str, str],
-                         opportunity_to_status: Dict[str, str]) -> Dict[str, List[Dict[str, Any]]]:
+                         opportunity_to_company: dict[str, str],
+                         opportunity_to_status: dict[str, str]) -> dict[str, list[dict[str, Any]]]:
     """
     Process conversations and organize them by company
     
@@ -142,7 +142,7 @@ def process_conversations(conversations_df: pd.DataFrame,
     return conversations_by_company
 
 
-def save_json_by_company(conversations_by_company: Dict[str, List[Dict[str, Any]]], output_dir: str) -> None:
+def save_json_by_company(conversations_by_company: dict[str, list[dict[str, Any]]], output_dir: str) -> None:
     """
     Save conversations to JSON files by company
     

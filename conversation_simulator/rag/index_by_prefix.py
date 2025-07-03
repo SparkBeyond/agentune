@@ -1,7 +1,7 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import List, Sequence, Tuple
+from collections.abc import Sequence
 
 from langchain_core.documents import Document
 
@@ -17,9 +17,9 @@ def _format_conversation_history(messages: Sequence[Message]) -> str:
 
 
 def conversations_to_langchain_documents(
-    conversations: List[Conversation]
-) -> List[Document]:
-    documents: List[Document] = []
+    conversations: list[Conversation]
+) -> list[Document]:
+    documents: list[Document] = []
     # Filter out empty conversations
     conversations = [conversation for conversation in conversations if len(conversation.messages) > 0]
 
@@ -28,7 +28,7 @@ def conversations_to_langchain_documents(
             current_message: Message = conversation.messages[i]
             next_message: Message | None = conversation.messages[i+1] if i+1 < len(conversation.messages) else None
 
-            history_messages: List[Message] = list(conversation.messages[:i+1])
+            history_messages: list[Message] = list(conversation.messages[:i+1])
             # The history becomes the content to be embedded
             page_content = _format_conversation_history(history_messages)
 
@@ -63,7 +63,7 @@ async def get_few_shot_examples(
     
     query = _format_conversation_history(conversation_history)
 
-    retrieved_docs: List[Tuple[Document, float]] = await vector_store.asimilarity_search_with_score(
+    retrieved_docs: list[tuple[Document, float]] = await vector_store.asimilarity_search_with_score(
         query=query, k=k,
         filter={"current_message_role": current_message_role.value}
     )
@@ -84,7 +84,7 @@ async def get_few_shot_examples(
     return unique_docs
 
 
-async def probability_of_next_message_for(role: ParticipantRole, similar_docs: List[Tuple[Document, float]]) -> float:
+async def probability_of_next_message_for(role: ParticipantRole, similar_docs: list[tuple[Document, float]]) -> float:
     """Estimates the probability of a next message for a given role based on similar documents.
     
     This function uses a weighted approach where each document's contribution is
@@ -115,7 +115,7 @@ async def probability_of_next_message_for(role: ParticipantRole, similar_docs: L
     return float(weighted_matches / total_weight)
 
 
-async def calculate_next_message_timedeltas(role: ParticipantRole, similar_docs: List[Tuple[Document, float]]) -> list[float]:
+async def calculate_next_message_timedeltas(role: ParticipantRole, similar_docs: list[tuple[Document, float]]) -> list[float]:
     """Calculate the timedelta in seconds between current last message and next message for a given role (of the next message).
     
     Returns a list of timedeltas for each document, for documents where the next message's role matches the target role.

@@ -8,7 +8,6 @@ The implementation follows the same API as ZeroshotOutcomeDetector but enhances 
 leveraging existing conversations from the vector store as examples.
 """
 
-from typing import Optional, List, Tuple
 
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.language_models import BaseChatModel
@@ -68,7 +67,7 @@ class RAGOutcomeDetector(OutcomeDetector):
         conversation: Conversation, 
         intent: Intent, 
         possible_outcomes: Outcomes
-    ) -> Optional[Outcome]:
+    ) -> Outcome | None:
         """Detect if conversation has reached any of the possible outcomes.
         
         This method is stateless and does not modify any instance variables.
@@ -115,7 +114,7 @@ class RAGOutcomeDetector(OutcomeDetector):
         detected_outcome = self._parse_outcome(result, possible_outcomes)
         return detected_outcome
     
-    async def _retrieve_examples(self, conversation: Conversation) -> List[Tuple[Document, float]]:
+    async def _retrieve_examples(self, conversation: Conversation) -> list[tuple[Document, float]]:
         """Retrieve similar conversation examples from the vector store.
         
         Formats the current conversation as a query and searches for similar
@@ -179,7 +178,7 @@ class RAGOutcomeDetector(OutcomeDetector):
         
         return chain
     
-    def _parse_outcome(self, result: OutcomeDetectionResult, possible_outcomes: Outcomes) -> Optional[Outcome]:
+    def _parse_outcome(self, result: OutcomeDetectionResult, possible_outcomes: Outcomes) -> Outcome | None:
         """Parse the detection result to find a matching outcome.
         
         Args:

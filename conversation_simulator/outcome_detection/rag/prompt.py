@@ -1,6 +1,5 @@
 """Prompts for RAG-based outcome detection."""
 
-from typing import List, Tuple
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import PydanticOutputParser
@@ -59,7 +58,7 @@ def build_system_prompt(output_parser: PydanticOutputParser) -> str:
 def build_human_prompt(
     format_instructions: str,
     conversation: Conversation, 
-    examples: List[Tuple[Document, float]],
+    examples: list[tuple[Document, float]],
     intent: Intent,
     possible_outcomes: Outcomes
 ) -> str:
@@ -100,7 +99,7 @@ def build_human_prompt(
     )
 
 
-def format_examples(examples: List[Tuple[Document, float]]) -> str:
+def format_examples(examples: list[tuple[Document, float]]) -> str:
     """Format retrieved examples for the prompt.
     
     Args:
