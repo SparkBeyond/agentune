@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import random
-import math
 from datetime import datetime
 
 from langchain_core.documents import Document
@@ -101,10 +100,6 @@ class Rag2Agent(Agent):
             similar_docs=few_shot_examples
         )
         logger.debug(f"Role: {self.role}, Probability of next message: {probability}")
-
-        if self._random.random() > math.pow(probability, 0.5):
-            logger.debug(f"Role: {self.role}, Randomly decided not to respond: {probability}")
-            return None
         
         # Use current timestamp instead of predicting one
         current_timestamp = datetime.now()

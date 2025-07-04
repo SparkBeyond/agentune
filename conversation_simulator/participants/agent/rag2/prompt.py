@@ -6,7 +6,10 @@ from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplat
 # System prompt for the agent
 AGENT_SYSTEM_PROMPT = """You goal is to simulate an Agent in a text-based conversation.
 You'll be given a conversation history and a few examples of similar conversation states and their responses.
-Your task is to generate a response that is similar in both style and content, based on the examples."""
+Your task is to generate a response that is similar in both style and content, based on the examples.
+
+You will also be provided with a probability value which indicates the likelihood that the agent would respond at this point based on historical data.
+Use this probability to inform your decision about whether the agent should respond or not."""
 
 # Human message template for the agent
 AGENT_HUMAN_TEMPLATE = """Below are examples of similar conversation states and their responses:
@@ -20,7 +23,9 @@ AGENT_HUMAN_TEMPLATE = """Below are examples of similar conversation states and 
 Current conversation:
 {current_conversation}
 
-Based on the examples, and the current conversation, answer the following questions:
+The probability that the agent would respond at this point (based on similar conversation patterns in the historical data) is: {probability}
+
+Based on the examples, the current conversation, and the probability, answer the following questions:
 1. Would a real agent respond next?
 2. If so, what would the response be?
 3. If not, why not?
