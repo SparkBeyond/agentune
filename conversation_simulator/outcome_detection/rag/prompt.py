@@ -2,101 +2,108 @@
 
 
 from langchain_core.documents import Document
+from pydantic import BaseModel, Field
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 
 from ...models.conversation import Conversation
-from ...models.intent import Intent
-from ...models.outcome import Outcomes
+
+
+class OutcomeDetectionResult(BaseModel):
+    """Result of outcome detection with reasoning."""
+    
+    reasoning: str = Field(
+        description="Explanation of why this outcome was detected. Alternatively, explanation of why no outcome was detected"
+    )
+    detected: bool = Field(
+        description="Whether a specific outcome was detected in the conversation"
+    )
+    outcome: str | None = Field(
+        default=None,
+        description="Name of the detected outcome, or null if no outcome was detected"
+    )
+
 
 # System prompt for outcome detection
-SYSTEM_PROMPT_TEMPLATE = """You are an expert at analyzing conversations and detecting when specific outcomes have been reached.
+SYSTEM_PROMPT = f"""You are an expert at analyzing conversations and detecting when specific outcomes have been reached.
 
-If an outcome has been reached, set 'detected' to true and specify the exact outcome name in 'outcome'.
-If no outcome has been reached yet, set 'detected' to false and 'outcome' to null.
+**Key guidance about evidence sources**
+
+1. The conversation text itself may *not* always provide enough information to assign an outcome confidently (e.g., relevant events—such as a purchase, support-ticket resolution, or account change—can occur after the conversation ends or without any additional messages).
+2. Therefore, you **must leverage the provided example conversations as your primary external evidence**.  Compare the structure, tone, key phrases, and context of the current conversation with those examples.  When the current conversation is highly similar to one or more examples, assume the same outcome *unless* there is clear contradictory evidence in the conversation.
+3. Do not blindly copy a majority label; reason about *why* a specific example (or group of examples) justifies the chosen outcome.
+4. If neither the conversation **nor** the examples give sufficient evidence, respond with `"detected": false` and `"outcome": null`.
+
+---
+
+If an outcome has been reached, set `detected` to **true** and specify the exact outcome name in `outcome`.
+If no outcome has been reached yet, set `detected` to **false** and `outcome` to **null**.
 Always provide detailed reasoning for your decision.
+
+---
+
+### Output format
+
+Respond with a single JSON object that conforms to the following schema.  **The `reasoning` field must be the first key in the object.**
+
+{PydanticOutputParser(pydantic_object=OutcomeDetectionResult).get_format_instructions()}
+
+---
+
+### Recommended reasoning workflow (chain‑of‑thought)
+
+1. **Extract clues** from the conversation that might indicate an outcome (purchase intent, discount acceptance, explicit refusal, etc.).
+2. **Retrieve parallels**: list the example conversations that most closely match those clues.
+3. **Compare & decide**: explain why the chosen examples support a particular outcome (or why evidence is insufficient).
+4. **Produce JSON** as specified.
 """
 
+print(f"""=> 
+
+{SYSTEM_PROMPT}
+
+""")
+
+
 # Human message template for outcome detection
-HUMAN_PROMPT_TEMPLATE = """I need you to analyze if a conversation has reached a specific outcome.
+HUMAN_PROMPT_TEMPLATE = """Instructions: follow the System Guidance above when deciding the conversations outcome.
+
+---
 
 POSSIBLE OUTCOMES:
 {outcomes_str}
 
-Here are some example completed conversations for reference:
+---
+
+Here are some example completed conversations for reference.
+Those conversations have been picked due to their similarity to currently analyzed conversations, and should be used as a source to understanding what should be it's outcome.
 
 {examples_text}
+
+---
 
 Here is the conversation to analyze:
 
 {conversation_text}
 
+---
+
+Additional information about the analyzed conversation:
+
 This conversations was initiated by {intent_role} 
 Intent: {intent_description}
 
-Has this conversation reached one of the defined outcomes? If so, which one? Provide detailed reasoning for your analysis.
+---
 
-Format your response as a JSON object with the following structure:
-{format_instructions}
+Output only the JSON object, following the workflow described in the System Guidance.
 """
 
+print(f"""=> 
 
-def build_system_prompt(output_parser: PydanticOutputParser) -> str:
-    """Build the minimal system prompt for outcome detection.
-        
-    Args:
-        output_parser: The output parser for formatting instructions
-        
-    Returns:
-        System prompt string
-    """
-    format_instructions = output_parser.get_format_instructions()
-    return SYSTEM_PROMPT_TEMPLATE.format(format_instructions=format_instructions)
+{HUMAN_PROMPT_TEMPLATE}
 
-
-def build_human_prompt(
-    format_instructions: str,
-    conversation: Conversation, 
-    examples: list[tuple[Document, float]],
-    intent: Intent,
-    possible_outcomes: Outcomes
-) -> str:
-    """Build the human prompt containing the conversation and examples.
-    
-    Args:
-        format_instructions: Instructions for formatting the response
-        conversation: The conversation to analyze
-        examples: List of similar conversations as (Document, score) tuples
-        intent: The conversation intent/goal
-        possible_outcomes: Possible outcomes to detect
-        
-    Returns:
-        Human prompt string
-    """
-    # Format outcomes
-    outcomes_str = "\n".join([
-        f"- {outcome.name}: {outcome.description}" 
-        for outcome in possible_outcomes.outcomes
-    ])
-    
-    # Format the current conversation
-    conversation_text = "\n".join([
-        f"{message.sender}: {message.content}"
-        for message in conversation.messages
-    ])
-    
-    # Format the examples
-    examples_text = format_examples(examples)
-    
-    return HUMAN_PROMPT_TEMPLATE.format(
-        format_instructions=format_instructions,
-        intent_role=intent.role.title(),
-        intent_description=intent.description,
-        outcomes_str=outcomes_str,
-        examples_text=examples_text,
-        conversation_text=conversation_text
-    )
+""")
 
 
 def format_examples(examples: list[tuple[Document, float]]) -> str:
@@ -120,19 +127,14 @@ def format_examples(examples: list[tuple[Document, float]]) -> str:
     return "\n\n".join(formatted_examples)
 
 
-# Create a prompt template that can be reused
-def create_prompt_template(output_parser: PydanticOutputParser) -> ChatPromptTemplate:
-    """Create a ChatPromptTemplate with system and human messages.
-    
-    Args:
-        output_parser: The output parser for formatting instructions
-        
-    Returns:
-        A ready-to-use ChatPromptTemplate
-    """
-    system_content = build_system_prompt(output_parser)
-    
-    return ChatPromptTemplate.from_messages([
-        SystemMessage(content=system_content),
-        HumanMessagePromptTemplate.from_template(HUMAN_PROMPT_TEMPLATE)
+def format_conversation(conversation: Conversation) -> str:
+    return "\n".join([
+        f"{message.sender.value.capitalize()}: {message.content}"
+        for message in conversation.messages
     ])
+
+# Create a prompt template that can be reused
+OUTCOME_DETECTION_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
+    SystemMessage(content=SYSTEM_PROMPT),
+    HumanMessagePromptTemplate.from_template(HUMAN_PROMPT_TEMPLATE)
+])

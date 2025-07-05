@@ -9,21 +9,20 @@ leveraging existing conversations from the vector store as examples.
 """
 
 
-from langchain_core.output_parsers import PydanticOutputParser
+from typing import override
+import asyncio
+
+from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import Runnable
 from langchain_core.vectorstores import VectorStore
-from langchain_core.documents import Document
-from langchain_core.messages import SystemMessage, HumanMessage
 
 from ...models.conversation import Conversation
-from ...models.intent import Intent
 from ...models.outcome import Outcome, Outcomes
 from ...rag import index_by_prefix
-from .base import OutcomeDetector
-from .zeroshot import OutcomeDetectionResult
-from .prompt import build_system_prompt, build_human_prompt
+from ..base import OutcomeDetector, OutcomeDetectionTest
+from .prompt import OUTCOME_DETECTION_PROMPT_TEMPLATE, format_conversation, format_examples, OutcomeDetectionResult
 
 
 class RAGOutcomeDetector(OutcomeDetector):
@@ -62,57 +61,86 @@ class RAGOutcomeDetector(OutcomeDetector):
         self.num_examples = num_examples
         self._output_parser = PydanticOutputParser(pydantic_object=OutcomeDetectionResult)
     
-    async def detect_outcome(
+    @override
+    async def detect_outcomes(
         self, 
-        conversation: Conversation, 
-        intent: Intent, 
-        possible_outcomes: Outcomes
-    ) -> Outcome | None:
-        """Detect if conversation has reached any of the possible outcomes.
+        instances: tuple[OutcomeDetectionTest, ...], 
+        possible_outcomes: Outcomes,
+        return_exceptions: bool = True
+    ) -> tuple[Outcome | None | Exception, ...]:
+        """Detect if conversations have reached any of the possible outcomes.
         
-        This method is stateless and does not modify any instance variables.
-        It follows these steps:
-        1. Retrieve similar, completed conversations from the vector store
-        2. Build system and human prompts with the retrieved examples
-        3. Execute a chain that runs the prompts through the language model
-        4. Parse the model's response to determine if an outcome was reached
+        This method processes multiple instances in batch. For each instance, it:
+        1. Retrieves similar, completed conversations from the vector store
+        2. Builds system and human prompts with the retrieved examples
+        3. Executes a chain that runs the prompts through the language model
+        4. Parses the model's response to determine if an outcome was reached
         
         Args:
-            conversation: Current conversation state with all messages
-            intent: Original intent/goal of the conversation
+            instances: Tuple of test instances containing conversations and intents
             possible_outcomes: Set of defined outcomes to detect
+            return_exceptions: Whether to return exceptions or raise them
             
         Returns:
-            Detected outcome object or None if no outcome was detected
+            Tuple of detected outcomes, None values, or exceptions matching the input instances
         """
-        # If conversation is empty, no outcome can be detected
-        if not conversation.messages:
-            return None
+        # If no instances or all conversations are empty, return all None
+        valid_indices = [i for i, instance in enumerate(instances) if instance.conversation.messages]
+        if not valid_indices:
+            return tuple(None for _ in instances)
         
-        # Retrieve similar conversations from the vector store
-        few_shot_examples = await self._retrieve_examples(conversation)
-        
-        # Set up the detection chain
+        # Create the detection chain
         chain = self._create_detection_chain()
         
-        # Prepare inputs for the chain
-        chain_input = {
-            "system_prompt": build_system_prompt(self._output_parser),
-            "human_prompt": build_human_prompt(
-                format_instructions=self._output_parser.get_format_instructions(),
-                conversation=conversation,
-                examples=few_shot_examples,
-                intent=intent,
-                possible_outcomes=possible_outcomes
-            )
-        }
+        # Process each valid instance
+        async def prepare_prompt_template_params(instance_idx):
+            instance = instances[instance_idx]
+            # Retrieve similar conversations for this instance
+            few_shot_examples = await self._retrieve_examples(instance.conversation)
+
+            formatted_conversation = format_conversation(instance.conversation)
+            formatted_examples = format_examples(few_shot_examples)
+            outcomes_str = "\n".join([
+                f"- {outcome.name}: {outcome.description}" 
+                for outcome in possible_outcomes.outcomes
+            ])
+
+            params = {
+                "conversation_text": formatted_conversation,
+                "examples_text": formatted_examples,
+                "intent_role": instance.intent.role.value.capitalize(),
+                "intent_description": instance.intent.description,
+                "outcomes_str": outcomes_str
+            }
+
+            import json
+            print(f"""=> 
+
+{json.dumps(params, indent=2)}
+
+""")
+            
+            # Prepare inputs for the chain
+            # 'conversation_text', 'outcomes_str', 'examples_text'
+            return instance_idx, params
         
-        # Execute chain
-        result = await chain.ainvoke(chain_input)
+        # Gather all inputs for valid instances
+        input_params_by_instance_idx = await asyncio.gather(*[prepare_prompt_template_params(i) for i in valid_indices])
+        input_params = [input for _, input in input_params_by_instance_idx]
+
+        # Execute chain in batch mode
+        results = await chain.abatch(input_params, return_exceptions=return_exceptions)
         
-        # Parse the response to determine if an outcome was detected
-        detected_outcome = self._parse_outcome(result, possible_outcomes)
-        return detected_outcome
+        # Map results back to original indices
+        detected_outcome_by_index: dict[int, Outcome | None | Exception] = {}
+        for (idx, _), result in zip(input_params_by_instance_idx, results):
+            if isinstance(result, Exception):
+                detected_outcome_by_index[idx] = result
+            else:
+                detected_outcome_by_index[idx] = self._parse_outcome(result, possible_outcomes)
+        
+        # Return results in original order
+        return tuple(detected_outcome_by_index.get(i, None) for i in range(len(instances)))
     
     async def _retrieve_examples(self, conversation: Conversation) -> list[tuple[Document, float]]:
         """Retrieve similar conversation examples from the vector store.
@@ -167,14 +195,8 @@ class RAGOutcomeDetector(OutcomeDetector):
         Returns:
             A LangChain chain that processes the input prompts through the model and parser
         """
-        # Get a ChatPromptTemplate with system and human messages
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="{system_prompt}"),
-            HumanMessage(content="{human_prompt}")
-        ])
-        
         # Build the chain: prompt | model | output_parser
-        chain = prompt | self.model | self._output_parser
+        chain = OUTCOME_DETECTION_PROMPT_TEMPLATE | self.model | self._output_parser
         
         return chain
     

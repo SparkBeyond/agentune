@@ -34,13 +34,16 @@ def conversations_to_langchain_documents(
 
             full_conversation = _format_conversation_history(conversation.messages)
 
+            outcome = conversation.outcome.name if conversation.outcome else None
+
             # The 'next message' becomes the metadata
             metadata = {
                 "current_message_index": i,
                 "has_next_message": bool(next_message),
                 "current_message_role": current_message.sender.value,
                 "current_message_timestamp": current_message.timestamp.isoformat(),
-                "full_conversation": full_conversation
+                "full_conversation": full_conversation,
+                "outcome": outcome
             }
             
             if next_message:
@@ -79,7 +82,7 @@ async def get_few_shot_examples(
             unique_docs.append((doc, score))
             seen_conversations.add(doc.metadata.get("full_conversation"))
 
-    logger.info(f"Retrieved {len(retrieved_docs)} documents, deduplicated to {len(unique_docs)}.")
+    logger.debug(f"Retrieved {len(retrieved_docs)} documents, deduplicated to {len(unique_docs)}.")
 
     return unique_docs
 
