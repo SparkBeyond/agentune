@@ -22,50 +22,45 @@ def format_conversation(conversation: Conversation) -> str:
 
 
 SYSTEM_PROMPT = """You are tasked with distinguishing between a real conversation and an auto-generated conversation.
-Based solely on the content, context flow, and natural language patterns, determine which conversation is real and which is auto-generated.
+Based solely on the content, context flow, and natural language patterns, and similarity with example real conversations, determine which conversation is real and which is auto-generated.
 
-Analyze the two conversations for:
+Reasoning flow:
+Focus on Customer messages - in real conversations it's a human customer, in generated an LLM was used. 
+Analyze the example real conversations for:
 1. Natural flow of dialogue
-2. Consistency in language style
-3. Appropriate responses to questions/statements
-4. Presence of natural human errors or patterns
-5. Contextual understanding
+2. Language style
+3. Messages length
+4 Appropriate responses to questions/statements
+5. Presence of natural human errors or patterns
+6. Contextual understanding
 
-Return your answer in the following JSON format without any additional explanations:
-{{
+Then apply the same analysis to the compared conversations
+Which of the compared conversations follows the same patterns?
+
+Return your answer in the following JSON format, provide detailed reasoning, make sure "reasoning" field appears first
+{
+  "reasoning": "your reasoning"
   "real_conversation": "A" or "B"
-}}"""
+}"""
 
-HUMAN_PROMPT_TEMPLATE = """Conversation A:\n{conversation_a}\n\nConversation B:\n{conversation_b}"""
+HUMAN_PROMPT_TEMPLATE = """Here are some examples of real conversations:
+
+{examples}
+
+Conversation A:\n{conversation_a}\n\nConversation B:\n{conversation_b}"""
 
 
-def create_system_prompt(
-    example_conversations: tuple[Conversation, ...] | None = None,
-) -> str:
-    """Creates a system prompt that includes example conversations.
-
-    Args:
-        example_conversations: Optional list of example conversations to include.
-
-    Returns:
-        The system prompt with examples incorporated.
-    """
-    if not example_conversations:
-        return SYSTEM_PROMPT
-
-    # Create a prompt with examples
-    examples_formatted = "\n\nHere are some examples of real conversations:\n\n"
-    for i, example in enumerate(example_conversations, 1):
-        formatted_conversation = format_conversation(example)
-        examples_formatted += f"Example {i}:\n{formatted_conversation}\n\n"
-
-    # Return the system prompt with examples
-    return SYSTEM_PROMPT + examples_formatted.rstrip()
+def format_examples(conversations: tuple[Conversation, ...]) -> str:
+    formatted_examples = ""
+    for i, conversation in enumerate(conversations, 1):
+        formatted_examples += f"Example {i}:\n{format_conversation(conversation)}\n\n"
+    return formatted_examples.rstrip()
 
 
 def create_comparison_prompt_inputs(
     real_conversation: Conversation,
     simulated_conversation: Conversation,
+    formatted_examples: str,
     is_real_a: bool,
 ) -> dict[str, str]:
     """Create inputs for the conversation comparison prompt.
@@ -73,6 +68,7 @@ def create_comparison_prompt_inputs(
     Args:
         real_conversation: The real conversation.
         simulated_conversation: The simulated conversation.
+        formatted_examples: Formatted examples of real conversations.
         is_real_a: Whether the real conversation should be labeled 'A' (True) or 'B' (False).
 
     Returns:
@@ -85,4 +81,4 @@ def create_comparison_prompt_inputs(
         conv_a = format_conversation(simulated_conversation)
         conv_b = format_conversation(real_conversation)
 
-    return {"conversation_a": conv_a, "conversation_b": conv_b}
+    return {"conversation_a": conv_a, "conversation_b": conv_b, "examples": formatted_examples}

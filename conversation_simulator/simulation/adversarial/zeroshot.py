@@ -6,10 +6,10 @@ from typing import override
 
 import attrs
 from attrs import field, frozen
+from langchain_core.messages import SystemMessage
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import (ChatPromptTemplate, HumanMessagePromptTemplate,
-                                  SystemMessagePromptTemplate)
+from langchain_core.prompts import (ChatPromptTemplate, HumanMessagePromptTemplate)
 from langchain_core.runnables import Runnable
 from langchain_core.runnables import RunnableLambda
 
@@ -18,7 +18,8 @@ from .base import AdversarialTest, AdversarialTester
 from .prompts import (
     HUMAN_PROMPT_TEMPLATE,
     create_comparison_prompt_inputs,
-    create_system_prompt,
+    SYSTEM_PROMPT,
+    format_examples,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,14 +51,10 @@ class ZeroShotAdversarialTester(AdversarialTester):
     @_chain.default
     def _create_adversarial_chain(self) -> Runnable:
         """Creates the LangChain runnable for adversarial evaluation."""
-        system_prompt_text = create_system_prompt(self.example_conversations)
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                SystemMessagePromptTemplate.from_template(system_prompt_text),
-                HumanMessagePromptTemplate.from_template(HUMAN_PROMPT_TEMPLATE),
-            ]
-        )
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessagePromptTemplate.from_template(HUMAN_PROMPT_TEMPLATE)
+        ])
 
         label_extractor = RunnableLambda(self._extract_label)
         return prompt | self.model | JsonOutputParser() | label_extractor
@@ -116,13 +113,15 @@ class ZeroShotAdversarialTester(AdversarialTester):
         real_labels = []
         results: list[bool | None | Exception] = [None] * len(instances)
 
+        formatted_examples = format_examples(self.example_conversations)
+
         for i, instance in enumerate(instances):
             if not instance.real_conversation.messages or not instance.simulated_conversation.messages:
                 continue  # Skip empty conversations, leaving as None
 
             is_real_a = self._random.choice([True, False])
             prompt_inputs.append(
-                create_comparison_prompt_inputs(instance.real_conversation, instance.simulated_conversation, is_real_a)
+                create_comparison_prompt_inputs(instance.real_conversation, instance.simulated_conversation, formatted_examples, is_real_a)
             )
             real_labels.append("A" if is_real_a else "B")
             valid_indices.append(i)
