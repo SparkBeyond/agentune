@@ -59,12 +59,6 @@ Respond with a single JSON object that conforms to the following schema.  **The 
 4. **Produce JSON** as specified.
 """
 
-print(f"""=> 
-
-{SYSTEM_PROMPT}
-
-""")
-
 
 # Human message template for outcome detection
 HUMAN_PROMPT_TEMPLATE = """Instructions: follow the System Guidance above when deciding the conversations outcome.
@@ -98,12 +92,6 @@ Intent: {intent_description}
 
 Output only the JSON object, following the workflow described in the System Guidance.
 """
-
-print(f"""=> 
-
-{HUMAN_PROMPT_TEMPLATE}
-
-""")
 
 
 def format_examples(examples: list[tuple[Document, float]]) -> str:

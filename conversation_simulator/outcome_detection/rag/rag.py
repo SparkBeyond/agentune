@@ -113,15 +113,6 @@ class RAGOutcomeDetector(OutcomeDetector):
                 "outcomes_str": outcomes_str
             }
 
-            import json
-            print(f"""=> 
-
-{json.dumps(params, indent=2)}
-
-""")
-            
-            # Prepare inputs for the chain
-            # 'conversation_text', 'outcomes_str', 'examples_text'
             return instance_idx, params
         
         # Gather all inputs for valid instances
