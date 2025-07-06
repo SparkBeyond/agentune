@@ -92,6 +92,12 @@ class RagCustomer(Customer):
         )
         logger.debug(f"Role: {self.role}, Retrieved {len(few_shot_examples)} few-shot examples")
 
+        # if this is a first message, select 1 few-shot example, so that a simulated customer 
+        # adapts a behavior of a real customer    
+        if len(conversation.messages) == 1:
+            few_shot_examples = self._random.sample(few_shot_examples, 1)
+
+
         # 2. Calculate probability of returning a message for the target role
         probability = await index_by_prefix.probability_of_next_message_for(
             role=self.role,
@@ -104,7 +110,8 @@ class RagCustomer(Customer):
 
         # 3. Augmentation
         # Select few-shot examples randomly, to avoid bias
-        few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
+        if len(few_shot_examples) > 5:
+            few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
 
         # Format few-shot examples and history for the prompt template
         formatted_examples = self._format_examples(few_shot_examples)
@@ -121,8 +128,9 @@ class RagCustomer(Customer):
         response: CustomerResponse = await chain.ainvoke({
             "examples": formatted_examples,
             "current_conversation": formatted_current_conversation,
+            "probability": probability,
             "goal_line": goal_line,
-            "format_instructions": self._output_parser.get_format_instructions()
+            # "format_instructions": self._output_parser.get_format_instructions()
         })
 
         if not response.should_respond:

@@ -123,6 +123,7 @@ class Rag2Agent(Agent):
         response: AgentResponse = await chain.ainvoke({
             "examples": formatted_examples,
             "current_conversation": formatted_current_conversation,
+            "probability": probability,
             "goal_line": goal_line,
             "format_instructions": self._output_parser.get_format_instructions()
         })
