@@ -1,0 +1,647 @@
+"""
+🤖 Conversation Simulator Runner
+
+A Streamlit page for running RAG-based conversation simulations.
+"""
+
+import streamlit as st
+import asyncio
+from datetime import datetime
+from typing import List, Dict, Any
+
+# Import conversation simulator components
+from conversation_simulator.models import Conversation, Outcomes
+from conversation_simulator.models.results import SimulationSessionResult, ConversationResult
+from conversation_simulator.models.outcome import Outcome
+from conversation_simulator.participants.agent.rag import RagAgentFactory
+from conversation_simulator.participants.customer.rag import RagCustomerFactory
+from conversation_simulator.simulation.session_builder import SimulationSessionBuilder
+from conversation_simulator.simulation.progress import ProgressCallback
+from conversation_simulator.rag import conversations_to_langchain_documents
+from conversation_simulator.models.roles import ParticipantRole
+from conversation_simulator.intent_extraction.zeroshot import ZeroshotIntentExtractor
+from conversation_simulator.outcome_detection.zeroshot import ZeroshotOutcomeDetector
+from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
+
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from cattrs.preconf.orjson import make_converter
+
+# Import helper functions
+from helper import (
+    load_conversation_data, conversations_to_dataframe, select_from_dataframe,
+    display_conversation, get_openai_models, format_results_for_download,
+    validate_api_key, extract_unique_outcomes
+)
+
+# Configure cattrs for JSON serialization with datetime handling
+converter = make_converter()
+converter.register_unstructure_hook(datetime, lambda dt: dt.isoformat())
+
+
+class StreamlitProgressCallback(ProgressCallback):
+    """Progress callback that updates Streamlit UI elements in real-time."""
+    
+    def __init__(self, progress_placeholder, status_placeholder):
+        """Initialize with Streamlit placeholders for updating UI.
+        
+        Args:
+            progress_placeholder: Streamlit placeholder for progress bar
+            status_placeholder: Streamlit placeholder for status text
+        """
+        self.progress_placeholder = progress_placeholder
+        self.status_placeholder = status_placeholder
+        self.total_scenarios = 0
+        self.completed_scenarios = 0
+        self.current_phase = "Initializing..."
+        
+    def on_generated_scenarios(self, scenarios) -> None:
+        """Called when scenarios are generated."""
+        self.total_scenarios = len(scenarios)
+        self.current_phase = "Generated scenarios"
+        self._update_display()
+    
+    def on_scenario_start(self, scenario) -> None:
+        """Called when a scenario starts."""
+        self.current_phase = f"Running scenario: {scenario.id}"
+        self._update_display()
+    
+    def on_scenario_complete(self, scenario, result: ConversationResult) -> None:
+        """Called when a scenario completes successfully."""
+        self.completed_scenarios += 1
+        self.current_phase = f"Completed {self.completed_scenarios}/{self.total_scenarios} scenarios"
+        self._update_display()
+    
+    def on_scenario_failed(self, scenario, exception: Exception) -> None:
+        """Called when a scenario fails."""
+        self.completed_scenarios += 1
+        self.current_phase = f"Completed {self.completed_scenarios}/{self.total_scenarios} scenarios (1 failed)"
+        self._update_display()
+    
+    def on_all_scenarios_complete(self) -> None:
+        """Called when all scenarios are complete."""
+        self.current_phase = "All scenarios complete. Analyzing results..."
+        self._update_display()
+    
+    def _update_display(self):
+        """Update the Streamlit UI elements."""
+        try:
+            if self.total_scenarios > 0:
+                progress = self.completed_scenarios / self.total_scenarios
+                self.progress_placeholder.progress(progress, text=f"Progress: {self.completed_scenarios}/{self.total_scenarios}")
+            else:
+                self.progress_placeholder.progress(0, text="Preparing...")
+            
+            self.status_placeholder.text(f"Status: {self.current_phase}")
+        except Exception:
+            # Silently ignore any UI update errors to avoid breaking simulation
+            pass
+
+
+def select_model_with_temperature(
+    label: str,
+    chat_models: List[str],
+    default_model: str,
+    thinking_models: List[str],
+    help_text: str,
+    key_prefix: str = ""
+) -> Dict[str, Any]:
+    """Select a model and optionally its temperature, returning model kwargs.
+    
+    Args:
+        label: Label for the model selection
+        chat_models: List of available chat models
+        default_model: Default model to select
+        thinking_models: List of thinking models (no temperature)
+        help_text: Help text for the model selection
+        key_prefix: Optional prefix for widget keys to ensure uniqueness
+        
+    Returns:
+        Dict containing model kwargs ready for ChatOpenAI
+    """
+    col1, col2 = st.columns([3, 1])
+    model = col1.selectbox(
+        label,
+        chat_models,
+        index=chat_models.index(default_model),
+        help=help_text,
+        key=f"{key_prefix}_model" if key_prefix else None
+    )
+
+    model_kwargs: Dict[str, Any] = {'model': model}
+
+    if model not in thinking_models:
+        temp = col2.number_input(
+            "temp",
+            min_value=0.0,
+            max_value=2.0,
+            value=0.0,
+            step=0.1,
+            help=f"Temperature for {label.lower()}",
+            key=f"{key_prefix}_temp" if key_prefix else None
+        )
+        model_kwargs['temperature'] = temp
+    
+    return model_kwargs
+
+
+def initialize_sidebar():
+    """Initialize sidebar with configuration options."""
+    st.sidebar.header("⚙️ Configuration")
+    
+    # File upload
+    st.sidebar.subheader("📁 Data")
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload conversation data file",
+        type=['json'],
+        help="Upload JSON file containing conversation data"
+    )
+    
+    # Model selection
+    st.sidebar.subheader("🤖 Models")
+    models = get_openai_models()
+    
+    # Chat models for selection (exclude embedding models)
+    chat_models = []
+    for category, model_list in models.items():
+        if "Embedding" not in category:
+            chat_models.extend(model_list)
+
+    default_model_candidates = [model_name for model_name in chat_models if model_name.startswith("gpt-4o-mini")]
+    default_model: str = default_model_candidates[0] if default_model_candidates else chat_models[0]
+    
+    # Default adversarial model (thinking model)
+    thinking_models = models.get("Thinking Models", [])
+    default_adversarial: str = thinking_models[-1] if thinking_models else default_model
+    
+    # Settings mode toggle
+    use_advanced = st.sidebar.toggle(
+        "🔧 Advanced Settings",
+        value=False,
+        help="Enable advanced configuration with individual component models"
+    )
+    
+    # Advanced settings - individual models for each component
+    st.sidebar.markdown("**Models:**")
+    if use_advanced:
+        
+        with st.sidebar:
+            agent_model_kwargs = select_model_with_temperature(
+                "Agent Model",
+                chat_models,
+                default_model,
+                thinking_models,
+                "Model for the agent participant",
+                "agent"
+            )
+
+            customer_model_kwargs = select_model_with_temperature(
+                "Customer Model",
+                chat_models,
+                default_model,
+                thinking_models,
+                "Model for the customer participant",
+                "customer"
+            )
+            
+            intent_model_kwargs = select_model_with_temperature(
+                "Intent Classification",
+                chat_models,
+                default_model,
+                thinking_models,
+                "Model for intent extraction",
+                "intent"
+            )
+
+            outcome_model_kwargs = select_model_with_temperature(
+                "Outcome Detection",
+                chat_models,
+                default_model,
+                thinking_models,
+                "Model for outcome detection",
+                "outcome"
+            )
+            
+            adversarial_model_kwargs = select_model_with_temperature(
+                "Adversarial Model",
+                chat_models,
+                default_adversarial,
+                thinking_models,
+                "Model for adversarial testing",
+                "adversarial"
+            )
+    else:
+        # Basic settings - simplified interface
+        with st.sidebar:
+            basic_model_kwargs = select_model_with_temperature(
+                "Main Model",
+                chat_models,
+                default_model,
+                thinking_models,
+                "Model for agent, customer, intent, and outcome detection",
+                "basic"
+            )
+
+            adversarial_model_kwargs = select_model_with_temperature(
+                "Adversarial Model",
+                chat_models,
+                default_adversarial,
+                thinking_models,
+                "Model for adversarial testing (recommended: thinking model)",
+                "adversarial_basic"
+            )
+        
+        # Use basic model for all components
+        agent_model_kwargs = basic_model_kwargs.copy()
+        customer_model_kwargs = basic_model_kwargs.copy()
+        intent_model_kwargs = basic_model_kwargs.copy()
+        outcome_model_kwargs = basic_model_kwargs.copy()
+        
+    # Embedding model (always shown)
+    embedding_models = models.get("Embedding Models", ["text-embedding-3-small"])
+    embedding_model = st.sidebar.selectbox(
+        "Embedding Model",
+        embedding_models,
+        help="Model for generating embeddings for RAG"
+    )
+    
+    # Simulation parameters
+    st.sidebar.markdown("**Simulation Parameters:**")
+    
+    max_messages = st.sidebar.number_input(
+        "Max Messages per Conversation",
+        min_value=5,
+        max_value=100,
+        value=20,
+        help="Maximum number of messages in each simulated conversation"
+    )
+    
+    max_concurrent_conversations = st.sidebar.number_input(
+        "Max Concurrent Conversations",
+        min_value=1,
+        max_value=200,
+        value=50,
+        help="Maximum number of conversations to run in parallel"
+    )
+
+    session_name = st.sidebar.text_input(
+        "Session Name",
+        value="RAG Simulation",
+        help="Name for this simulation session"
+    )
+    
+    return {
+        'uploaded_file': uploaded_file,
+        'embedding_model': embedding_model,
+        'max_messages': max_messages,
+        'max_concurrent_conversations': max_concurrent_conversations,
+        'session_name': session_name,
+        'agent_model_kwargs': agent_model_kwargs,
+        'customer_model_kwargs': customer_model_kwargs,
+        'intent_model_kwargs': intent_model_kwargs,
+        'outcome_model_kwargs': outcome_model_kwargs,
+        'adversarial_model_kwargs': adversarial_model_kwargs
+    }
+
+
+async def build_vector_stores(
+    reference_conversations: List[Dict],
+    embeddings_model: OpenAIEmbeddings
+) -> tuple[InMemoryVectorStore, InMemoryVectorStore]:
+    """Build vector stores for agent and customer messages."""
+    
+    # Convert conversations to Conversation objects
+    conversation_objects = [converter.structure(conv, Conversation) for conv in reference_conversations]
+    
+    # Convert conversations to documents for each role
+    agent_documents = conversations_to_langchain_documents(
+        conversation_objects,
+        role=ParticipantRole.AGENT
+    )
+    customer_documents = conversations_to_langchain_documents(
+        conversation_objects,
+        role=ParticipantRole.CUSTOMER
+    )
+    
+    # Create in-memory vector stores
+    agent_vector_store = InMemoryVectorStore.from_documents(
+        documents=agent_documents,
+        embedding=embeddings_model
+    )
+    
+    customer_vector_store = InMemoryVectorStore.from_documents(
+        documents=customer_documents,
+        embedding=embeddings_model
+    )
+    
+    return agent_vector_store, customer_vector_store
+
+
+async def run_simulation(
+    selected_conversations: List[Dict],
+    all_conversations: List[Dict],
+    config: Dict[str, Any],
+    progress_callback: ProgressCallback
+) -> SimulationSessionResult:
+    """Run the conversation simulation."""
+    
+    # Initialize models
+    agent_model = ChatOpenAI(**config['agent_model_kwargs'])
+    customer_model = ChatOpenAI(**config['customer_model_kwargs'])
+    intent_model = ChatOpenAI(**config['intent_model_kwargs'])
+    outcome_model = ChatOpenAI(**config['outcome_model_kwargs'])
+    adversarial_model = ChatOpenAI(**config['adversarial_model_kwargs'])
+    embeddings_model = OpenAIEmbeddings(model=config['embedding_model'])
+    
+    # Build vector stores (using all conversations for context)
+    agent_vector_store, customer_vector_store = await build_vector_stores(
+        all_conversations,
+        embeddings_model
+    )
+    
+    # Create participant factories
+    agent_factory = RagAgentFactory(
+        model=agent_model,
+        agent_vector_store=agent_vector_store
+    )
+    
+    customer_factory = RagCustomerFactory(
+        model=customer_model,
+        customer_vector_store=customer_vector_store
+    )
+    
+    # Extract outcomes
+    unique_outcome_dicts = extract_unique_outcomes(selected_conversations)
+    if not unique_outcome_dicts:
+        raise ValueError("No outcomes found in selected conversations")
+    
+    # Convert outcome dictionaries to Outcome objects
+    unique_outcomes = []
+    for outcome_dict in unique_outcome_dicts:
+        outcome_obj = Outcome(
+            name=outcome_dict.get('name', 'unknown'),
+            description=outcome_dict.get('description', '')
+        )
+        unique_outcomes.append(outcome_obj)
+    
+    outcomes = Outcomes(outcomes=tuple(unique_outcomes))
+    
+    # Build simulation session with custom models
+    session_description = (
+        f"RAG simulation using {config['agent_model_kwargs']['model']} (agent), "
+        f"{config['customer_model_kwargs']['model']} (customer), {config['intent_model_kwargs']['model']} (intent), "
+        f"{config['outcome_model_kwargs']['model']} (outcome), {config['adversarial_model_kwargs']['model']} (adversarial)"
+    )
+    
+    session = (SimulationSessionBuilder(
+        chat_model=agent_model,  # Use agent model as default
+        agent_factory=agent_factory,
+        customer_factory=customer_factory,
+        outcomes=outcomes,
+        session_name=config['session_name'],
+        session_description=session_description,
+        max_messages=config['max_messages'],
+        max_concurrent_conversations=config['max_concurrent_conversations'],
+        progress_callback=progress_callback,
+    )
+    .with_intent_extractor(ZeroshotIntentExtractor(intent_model))
+    .with_outcome_detector(ZeroshotOutcomeDetector(outcome_model))
+    .with_adversarial_tester(ZeroShotAdversarialTester(adversarial_model, max_concurrency=config['max_concurrent_conversations']))
+    .build())
+    
+    # Convert selected conversations to Conversation objects
+    conversation_objects = [converter.structure(conv, Conversation) for conv in selected_conversations]
+    
+    # Run simulation
+    result = await session.run_simulation(conversation_objects)
+    
+    return result
+
+
+def main():
+    """Main function for the simulation runner page."""
+    
+    st.title("🤖 Conversation Simulator Runner")
+    st.markdown("Run RAG-based conversation simulations with custom settings")
+    
+    # Validate API key
+    if not validate_api_key():
+        return
+    
+    # Initialize sidebar
+    config = initialize_sidebar()
+    
+    if config['uploaded_file'] is None:
+        st.markdown("""
+        ## Welcome to the Conversation Simulator Runner! 🚀
+        
+        To get started:
+        1. **Upload conversation data** using the file uploader in the sidebar
+        2. **Configure models** and settings for your simulation
+        3. **Select conversations** to use as scenarios for simulation
+        4. **Run the simulation** and download results
+        
+        ### Features:
+        - 🤖 **Flexible Model Selection**: Use different models for agent and customer
+        - 🎯 **Custom Scenarios**: Select specific conversations to simulate
+        - ⚙️ **Advanced Settings**: Control temperature, message limits, and more
+        - 📊 **Real-time Progress**: Monitor simulation progress
+        - 💾 **Download Results**: Get results in JSON format for analysis
+        
+        ### Requirements:
+        - Valid OpenAI API key in environment variables
+        - Conversation data in JSON format
+        """)
+        return
+    
+    # Load conversation data
+    with st.spinner("Loading conversation data..."):
+        conversations = load_conversation_data(config['uploaded_file'])
+        if conversations is None:
+            return
+    
+    st.success(f"✅ Loaded {len(conversations)} conversations")
+    
+    # Convert to DataFrame for selection
+    df = conversations_to_dataframe(conversations)
+    
+    # Show conversation selection
+    st.header("📋 Select Conversations to Simulate")
+    st.markdown("Choose the conversations you want to use as scenarios for simulation:")
+    
+    selected_conversations, selected_indices = select_from_dataframe(
+        df, "Conversations for Simulation", multi_rows=True, random_select=True
+    )
+    
+    if not selected_conversations:
+        st.info("Please select one or more conversations to simulate.")
+        return
+    
+    st.success(f"Selected {len(selected_conversations)} conversations for simulation")
+    
+    # Show preview of selected conversations
+    with st.expander("📖 Preview Selected Conversations", expanded=False):
+        for i, conv in enumerate(selected_conversations[:3]):  # Show first 3
+            st.markdown(f"**Conversation {i + 1}:**")
+            display_conversation(conv['conversation_data'], f"Preview {i + 1}")
+            if i < len(selected_conversations) - 1:
+                st.markdown("---")
+        
+        if len(selected_conversations) > 3:
+            st.info(f"... and {len(selected_conversations) - 3} more conversations")
+    
+    # Run simulation
+    st.header("🚀 Run Simulation")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        run_button = st.button(
+            "▶️ Start Simulation",
+            type="primary",
+            use_container_width=True,
+            help="Start the conversation simulation with selected settings"
+        )
+    
+    # Handle simulation execution
+    if run_button:
+        # Extract conversation data for simulation
+        simulation_conversations = [conv['conversation_data'] for conv in selected_conversations]
+        
+        # Create progress display elements
+        progress_container = st.container()
+        with progress_container:
+            st.markdown("### 🔄 Simulation Progress")
+            progress_placeholder = st.empty()
+            status_placeholder = st.empty()
+            
+        # Create progress callback
+        progress_callback = StreamlitProgressCallback(progress_placeholder, status_placeholder)
+        
+        try:
+            # Run the simulation with progress callback
+            result = asyncio.run(run_simulation(simulation_conversations, conversations, config, progress_callback))
+            
+            # Clear progress display
+            progress_container.empty()
+            
+            # Store results in session state
+            st.session_state['simulation_result'] = result
+            st.session_state['simulation_config'] = config
+            st.session_state['simulation_conversations'] = simulation_conversations
+            
+            st.success("🎉 Simulation completed successfully!")
+            
+        except Exception as e:
+            st.error(f"❌ Simulation failed: {str(e)}")
+            st.markdown("Please check your configuration and try again.")
+            with st.expander("Error Details"):
+                st.code(str(e))
+            # Clear any existing results on failure
+            if 'simulation_result' in st.session_state:
+                del st.session_state['simulation_result']
+            raise e
+    
+    # Display results if they exist in session state
+    if 'simulation_result' in st.session_state:
+        result = st.session_state['simulation_result']
+        config = st.session_state['simulation_config']
+        simulation_conversations = st.session_state['simulation_conversations']
+        
+        # Show results summary
+        st.header("📊 Simulation Results")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Input Conversations", len(simulation_conversations))
+        
+        with col2:
+            st.metric("Generated Conversations", len(result.simulated_conversations))
+            
+        with col3:
+            if result.simulated_conversations:
+                avg_messages = sum(
+                    len(conv.conversation.messages)
+                    for conv in result.simulated_conversations
+                ) / len(result.simulated_conversations)
+                st.metric("Avg Messages", f"{avg_messages:.1f}")
+            else:
+                st.metric("Avg Messages", "0")
+        
+        with col4:
+            # Calculate duration
+            if result.started_at and result.completed_at:
+                duration = result.completed_at - result.started_at
+                st.metric("Duration", f"{duration.total_seconds():.1f}s")
+            else:
+                st.metric("Duration", "Unknown")
+        
+        # Show outcome distribution
+        if result.simulated_conversations:
+            st.subheader("🎯 Outcome Distribution")
+            outcome_counts = {}
+            for sim_conv in result.simulated_conversations:
+                outcome_name = sim_conv.conversation.outcome.name if sim_conv.conversation.outcome else "unknown"
+                outcome_counts[outcome_name] = outcome_counts.get(outcome_name, 0) + 1
+            
+            for outcome, count in sorted(outcome_counts.items()):
+                percentage = (count / len(result.simulated_conversations)) * 100
+                st.write(f"**{outcome}**: {count} conversations ({percentage:.1f}%)")
+        
+        # Show sample conversation
+        if result.simulated_conversations:
+            st.subheader("💬 Sample Generated Conversation")
+            sample_conv = result.simulated_conversations[0].conversation
+            
+            with st.expander("View Sample Conversation", expanded=False):
+                # Convert to dict format for display_conversation
+                sample_dict = {
+                    'messages': [
+                        {
+                            'sender': msg.sender.value,
+                            'content': msg.content,
+                            'timestamp': msg.timestamp.isoformat() if msg.timestamp else ''
+                        }
+                        for msg in sample_conv.messages
+                    ],
+                    'outcome': {
+                        'name': sample_conv.outcome.name if sample_conv.outcome else 'unknown',
+                        'description': sample_conv.outcome.description if sample_conv.outcome else ''
+                    }
+                }
+                display_conversation(sample_dict, "Sample Generated Conversation")
+        
+        # Download results
+        st.header("💾 Download Results")
+        
+        # Format results for download
+        json_str, filename = format_results_for_download(
+            converter.unstructure(result),
+            config['session_name'].replace(' ', '_').lower()
+        )
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.download_button(
+                label="📥 Download Simulation Results",
+                data=json_str,
+                file_name=filename,
+                mime="application/json",
+                type="primary",
+                use_container_width=True
+            )
+        
+        st.info("💡 You can analyze these results using the **💬 Conversation Simulator Results Analyzer** page.")
+        
+        # Option to clear results
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🗑️ Clear Results", help="Clear the current simulation results"):
+                del st.session_state['simulation_result']
+                del st.session_state['simulation_config']
+                del st.session_state['simulation_conversations']
+                st.rerun()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,80 +1,59 @@
-# Conversation Simulator Results Analyzer
+# Conversation Simulator Streamlit App
 
-A Streamlit web application for analyzing and visualizing RAG simulation results.
+A Streamlit web application for running RAG-based conversation simulations and analyzing results.
 
 ## Features
 
-### 📊 Statistics Dashboard
-- Session overview with duration, conversation counts, and metadata
-- Outcome distribution comparison with pie charts
-- Message length distribution analysis with histograms
-- Summary statistics for original vs simulated conversations
-- Adversarial Evaluation: Quality assessment using AI-powered distinction testing
+### 🤖 Conversation Simulator Runner
+- Upload conversation data and configure simulation settings
+- Flexible model selection (GPT, o1, o3 models) with temperature controls
+- Advanced/Basic configuration modes
+- Random conversation selection with filters
+- Real-time simulation progress tracking
+- Download simulation results as JSON
 
-### 🔍 Browse Conversations
-- Interactive filtering by outcome and message count
-- Chat-like conversation viewer with metadata
-- Select and view individual conversations
-
-### 🆚 Compare Conversations
+### 📊 Results Analyzer
+- Statistics dashboard with outcome distribution and message length analysis
+- Browse individual conversations with interactive filtering
 - Side-by-side comparison of original vs simulated conversations
-- Metrics comparison: message counts, outcomes, and message lengths
+- Adversarial evaluation quality assessment
 
 ## Installation & Setup
 
-Required packages: `streamlit`, `pandas`, `plotly`
-
 ```bash
-# Using Poetry (recommended)
+# Install dependencies
 poetry install --with streamlit
 
-# Or using pip
-pip install streamlit pandas plotly
+# Set OpenAI API key (required for simulation)
+export OPENAI_API_KEY='your-api-key-here'
+
+# Or create a .env file in the project root
+echo "OPENAI_API_KEY=your-api-key-here" > .env
 ```
 
 ## Running the App
 
 ```bash
-# Using Poetry
-poetry run streamlit run streamlit/Conversation Simulator Results Analyzer.py
-
-# Or directly
-streamlit run streamlit/Conversation Simulator Results Analyzer.py
+# Run the main app (Streamlit automatically handles pages)
+streamlit run "Conversation Simulator Results Analyzer.py"
 ```
 
 ## Usage
 
-1. Upload your simulation results JSON file using the sidebar uploader
-2. Navigate between Statistics, Browse, and Compare tabs
-3. **Statistics Dashboard**: View comprehensive analysis including:
-   - Session overview and metadata
-   - Outcome distribution comparisons with pie charts
-   - Message length distribution histograms
-   - Summary statistics table
-   - Adversarial evaluation quality assessment
-4. **Browse Conversations**: Use filters to find specific conversations by outcome and message count
-5. **Compare Tool**: Select conversations for side-by-side analysis with detailed metrics
+### Running Simulations
+1. Navigate to "Conversation Simulator Runner" page
+2. Upload conversation data (JSON format)
+3. Configure models and simulation parameters
+4. Select conversations to simulate (manual or random)
+5. Run simulation and download results
+
+### Analyzing Results
+1. Upload simulation results JSON file
+2. Explore statistics, browse conversations, or compare side-by-side
+3. View adversarial evaluation and quality metrics
 
 ## Data Format
 
-Expected JSON structure (created by the simulator):
-- `session_name`, `session_description`
-- `started_at`, `completed_at` (ISO timestamps)
-- `original_conversations`, `simulated_conversations` arrays
-- `analysis_result`: Contains comprehensive analysis data including:
-  - `outcome_comparison`: Original vs simulated outcome distributions
-  - `message_distribution_comparison`: Message length statistics and distributions
-  - `adversarial_evaluation`: AI-powered quality assessment results
+**Input (for simulation):** JSON array of conversations with `messages` and `outcome`
 
-Each conversation includes:
-- `id`: Unique identifier
-- `conversation`: Contains `messages` array and `outcome`
-- Simulated conversations: `scenario_id` and `original_conversation_id`
-
-## Troubleshooting
-
-**Common Issues:**
-- **Import Errors**: Install required packages (`poetry install`)
-- **JSON Format Errors**: Check your file follows the expected data format
-- **Empty Data**: Ensure both original and simulated conversations are present
-- **Performance**: Large datasets may be slow; consider filtering data
+**Output (simulation results):** Complete analysis including original conversations, simulated conversations, outcome comparisons, and adversarial evaluation
