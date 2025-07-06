@@ -134,8 +134,7 @@ class TestFullSimulationRunner:
             intent=sample_intent,
             outcomes=sample_outcomes,
             outcome_detector=outcome_detector,
-            max_messages=3,  # Low limit
-            base_timestamp=base_timestamp,
+            max_messages=3
         )
         
         # Run simulation
@@ -197,8 +196,7 @@ class TestFullSimulationRunner:
             intent=sample_intent,
             outcomes=sample_outcomes,
             outcome_detector=outcome_detector,
-            max_messages_after_outcome=2,
-            base_timestamp=base_timestamp,
+            max_messages_after_outcome=2
         )
         
         # Run simulation
@@ -254,8 +252,7 @@ class TestFullSimulationRunner:
             intent=sample_intent,
             outcomes=sample_outcomes,
             outcome_detector=outcome_detector,
-            max_messages_after_outcome=0,  # Immediate termination
-            base_timestamp=base_timestamp,
+            max_messages_after_outcome=0  # Immediate termination
         )
         
         # Run simulation
@@ -453,7 +450,6 @@ async def _assert_round_trip_conversation(
         outcomes=sample_outcomes,
         outcome_detector=outcome_detector,
         max_messages=len(conversation.messages) + 5,  # Allow some buffer
-        base_timestamp=base_timestamp,
     )
     
     # Run the simulation
