@@ -2,6 +2,7 @@
 
 import abc
 from datetime import datetime
+import logging
 
 from attrs import define, field
 
@@ -14,6 +15,9 @@ from ..models.results import ConversationResult
 from ..models.roles import ParticipantRole
 from ..outcome_detection.base import OutcomeDetector
 from ..participants.base import Participant
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProgressHandler(abc.ABC):
@@ -117,10 +121,11 @@ class FullSimulationRunner(Runner):
             # Ask the current participant for their next message
             try:
                 message = await current_participant.get_next_message(self._conversation)
-            except Exception:
+            except Exception as e:
                 # If the participant had an error, end the conversation
+                logger.error(f"Error from {current_participant_role}: {e}")
                 self._is_complete = True
-                break
+                raise e
             
             # Check if the current participant passed (returned None)
             if message is None:
@@ -144,27 +149,37 @@ class FullSimulationRunner(Runner):
             current_participant_role = self._alternate_turns(current_participant_role)
             
             # Check for outcome detection (only if not already detected)
-            if not self._outcome_detected:
-                detected_outcome = await self.outcome_detector.detect_outcome(
-                    self._conversation,
-                    self.intent,
-                    self.outcomes
-                )
-                if detected_outcome:
-                    self._conversation = self._conversation.set_outcome(detected_outcome)
-                    self._outcome_detected = True
-                    
-                    # If max_messages_after_outcome is 0, end immediately
-                    if self.max_messages_after_outcome == 0:
-                        self._is_complete = True
-                        break
-            
-            # Track messages after outcome detection
-            elif self._outcome_detected:
-                self._messages_after_outcome += 1
-                if self._messages_after_outcome >= self.max_messages_after_outcome:
-                    self._is_complete = True
-                    break
+            # if not self._outcome_detected:
+            #     detected_outcome = await self.outcome_detector.detect_outcome(
+            #         self._conversation,
+            #         self.intent,
+            #         self.outcomes
+            #     )
+            #     if detected_outcome:
+            #         self._conversation = self._conversation.set_outcome(detected_outcome)
+            #         self._outcome_detected = True
+
+            #         # If max_messages_after_outcome is 0, end immediately
+            #         if self.max_messages_after_outcome == 0:
+            #             self._is_complete = True
+            #             break
+
+            # # Track messages after outcome detection
+            # elif self._outcome_detected:
+            #     self._messages_after_outcome += 1
+            #     if self._messages_after_outcome >= self.max_messages_after_outcome:
+            #         self._is_complete = True
+            #         break
+
+        # Detect outcome
+        detected_outcome = await self.outcome_detector.detect_outcome(
+            self._conversation,
+            self.intent,
+            self.outcomes
+        )
+
+        if detected_outcome:
+            self._conversation = self._conversation.set_outcome(detected_outcome)
         
         # Check if we reached max messages
         if len(self._conversation.messages) >= self.max_messages and not self._is_complete:
