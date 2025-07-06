@@ -205,7 +205,7 @@ class FullSimulationRunner(Runner):
         """
         # Implementation: turn-based sequential message generation
         # - Participants strictly alternate turns
-        # - Each participant can respond with a message or pass (None)
+        # - Each participant in turn can respond with a message or pass (None)
         # - Conversation ends when both participants pass consecutively
         # - Uses outcome_detector to check for conversation completion after each message
         # - Supports configurable post-outcome message handling
