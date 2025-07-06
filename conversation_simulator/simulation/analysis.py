@@ -7,7 +7,7 @@ import logging
 
 from conversation_simulator.simulation.adversarial.base import AdversarialTest
 
-from .. import Outcomes, Scenario
+from .. import Outcomes, Scenario, Outcome
 from ..models.conversation import Conversation
 from ..outcome_detection.base import OutcomeDetectionTest, OutcomeDetector
 
@@ -75,11 +75,17 @@ async def analyze_simulation_results(
         if isinstance(predicted_outcome, Exception):
             _logger.error('Error trying to predict outcome', exc_info=predicted_outcome)
 
+    def apply_outcome_if_defined(conversation: Conversation, outcome: Outcome | None) -> Conversation:
+        """Apply the predicted outcome to the conversation if it is defined."""
+        if outcome is not None:
+            return conversation.set_outcome(outcome=outcome)
+        return conversation
+
     # Only set outcomes for conversations where we got a valid prediction
     original_conversations_with_predicted_outcomes = [
-        original_conversation.conversation.set_outcome(outcome=predicted_outcome)
+        apply_outcome_if_defined(original_conversation.conversation, predicted_outcome)
         for original_conversation, predicted_outcome in zip(conversations_for_outcome_prediction, original_conversations_predicted_outcomes)
-        if predicted_outcome is not None and not isinstance(predicted_outcome, Exception)
+        if not isinstance(predicted_outcome, Exception)
     ]
 
     # Perform all analysis
