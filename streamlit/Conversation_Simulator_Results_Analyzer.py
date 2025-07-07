@@ -58,7 +58,11 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
     
     with col4:
         st.metric("Simulated Conversations", len(simulated_df))
-    
+
+    # Description
+    st.subheader("📝 Session Description")
+    st.write(results.get('session_description', 'No description provided'))
+
     # Outcome distribution comparison
     st.subheader("🎯 Outcome Distribution Comparison")
     
@@ -72,7 +76,7 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
             if dist_data.get('outcome_counts'):
                 all_outcomes.update(dist_data['outcome_counts'].keys())
         
-        colors = px.colors.qualitative.Set2
+        colors = px.colors.qualitative.Light24
         outcome_colors = {outcome: colors[i % len(colors)] for i, outcome in enumerate(sorted(all_outcomes))}
         
         # Dynamically create columns based on number of distributions

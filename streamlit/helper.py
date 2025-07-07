@@ -142,9 +142,36 @@ def show_conversation_filters(df: pd.DataFrame, table_name: str) -> pd.DataFrame
             key=f"messages_{table_name}"
         )
     
+    # Text search filter row
+    search_col1, search_col2, search_col3 = st.columns([3, 1, 1])
+    
+    with search_col1:
+        search_text = st.text_input(
+            "🔍 Search in conversation text",
+            placeholder="Enter text to search in conversation messages...",
+            key=f"search_text_{table_name}",
+            help="Search for specific words or phrases within the conversation messages"
+        )
+    
+    with search_col2:
+        case_sensitive = st.checkbox(
+            "Case sensitive",
+            value=False,
+            key=f"case_sensitive_{table_name}",
+            help="Enable case-sensitive search"
+        )
+    
+    with search_col3:
+        whole_words = st.checkbox(
+            "Whole words",
+            value=False,
+            key=f"whole_words_{table_name}",
+            help="Match whole words only"
+        )
+    
     # Check if filters changed and clear random selection if so
     filter_state_key = f"filter_state_{table_name}"
-    current_filter_state = (selected_outcome, message_range)
+    current_filter_state = (selected_outcome, message_range, search_text, case_sensitive, whole_words)
     
     if filter_state_key in st.session_state:
         if st.session_state[filter_state_key] != current_filter_state:
@@ -163,6 +190,43 @@ def show_conversation_filters(df: pd.DataFrame, table_name: str) -> pd.DataFrame
     filtered_df = filtered_df[
         (filtered_df['num_messages'] >= message_range[0]) & (filtered_df['num_messages'] <= message_range[1])
     ]
+    
+    # Apply text search filter
+    if search_text.strip():
+        def search_in_conversation(row):
+            """Search for text within conversation messages."""
+            try:
+                conversation_data = row['conversation_data']
+                messages = conversation_data.get('messages', [])
+                
+                # Combine all message content into one text
+                full_text = ' '.join([msg.get('content', '') for msg in messages])
+                
+                # Prepare search text
+                search_term = search_text.strip()
+                text_to_search = full_text
+                
+                # Apply case sensitivity
+                if not case_sensitive:
+                    search_term = search_term.lower()
+                    text_to_search = text_to_search.lower()
+                
+                # Apply whole words matching
+                if whole_words:
+                    import re
+                    # Use word boundaries for whole word matching
+                    pattern = r'\b' + re.escape(search_term) + r'\b'
+                    return bool(re.search(pattern, text_to_search))
+                else:
+                    return search_term in text_to_search
+                    
+            except Exception:
+                # If there's any error in processing, exclude the row
+                return False
+        
+        # Apply the search filter
+        search_mask = filtered_df.apply(search_in_conversation, axis=1)
+        filtered_df = filtered_df[search_mask]
     
     # Reset index to ensure continuous 0-based indexing
     filtered_df = filtered_df.reset_index(drop=True)
@@ -385,17 +449,18 @@ def create_outcome_pie_chart(outcome_distribution, outcome_colors, title):
     """Create a pie chart for outcome distribution."""
     if outcome_distribution.get('outcome_counts') or outcome_distribution.get('conversations_without_outcome', 0) > 0:
         outcome_data = [
-            {'outcome': outcome, 'count': count, 'color': outcome_colors[outcome]}
+            {'outcome': outcome, 'count': count}
             for outcome, count in outcome_distribution.get('outcome_counts', {}).items()
         ]
         outcome_data.append({
             'outcome': 'No Outcome',
-            'count': outcome_distribution['conversations_without_outcome'],
-            'color': outcome_colors['No Outcome']
+            'count': outcome_distribution['conversations_without_outcome']
         })
 
         outcomes_df = pd.DataFrame(outcome_data)
-        fig_orig = px.pie(outcomes_df, values='count', names='outcome', color='color', title=title)
+        fig_orig = px.pie(outcomes_df, values='count', names='outcome',
+                          color_discrete_map=outcome_colors,
+                          color='outcome', title=title)
         st.plotly_chart(fig_orig, use_container_width=True)
 
 
