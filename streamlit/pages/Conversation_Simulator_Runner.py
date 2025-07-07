@@ -53,6 +53,7 @@ class StreamlitProgressCallback(ProgressCallback):
         self.status_placeholder = status_placeholder
         self.total_scenarios = 0
         self.completed_scenarios = 0
+        self.failed_scenarios = 0
         self.current_phase = "Initializing..."
         
     def on_generated_scenarios(self, scenarios) -> None:
@@ -69,18 +70,18 @@ class StreamlitProgressCallback(ProgressCallback):
     def on_scenario_complete(self, scenario, result: ConversationResult) -> None:
         """Called when a scenario completes successfully."""
         self.completed_scenarios += 1
-        self.current_phase = f"Completed {self.completed_scenarios}/{self.total_scenarios} scenarios"
+        self.current_phase = f"Completed {self.completed_scenarios}/{self.total_scenarios} scenarios {f'({self.failed_scenarios} failed)' if self.failed_scenarios > 0 else ''}"
         self._update_display()
     
     def on_scenario_failed(self, scenario, exception: Exception) -> None:
         """Called when a scenario fails."""
-        self.completed_scenarios += 1
-        self.current_phase = f"Completed {self.completed_scenarios}/{self.total_scenarios} scenarios (1 failed)"
+        self.failed_scenarios += 1
+        self.current_phase = f"Completed {self.completed_scenarios}/{self.total_scenarios} scenarios ({self.failed_scenarios} failed)"
         self._update_display()
     
     def on_all_scenarios_complete(self) -> None:
         """Called when all scenarios are complete."""
-        self.current_phase = "All scenarios complete. Analyzing results..."
+        self.current_phase = f"All scenarios complete. ({self.completed_scenarios} completed, {self.failed_scenarios} failed) Analyzing results..."
         self._update_display()
     
     def _update_display(self):
