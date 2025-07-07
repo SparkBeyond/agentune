@@ -3,7 +3,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore
-from conversation_simulator.rag.commons import _format_conversation_history
+from conversation_simulator.rag.indexing_and_retrieval_utils import _format_conversation_history
 from conversation_simulator.participants.agent.rag.rag import RagAgent
 
 # Import common test utilities
@@ -31,9 +31,18 @@ async def test_get_few_shot_examples_for_agent_success():
     formatted_history_query = _format_conversation_history(mock_history)
 
     # Simulate asimilarity_search returning the 2 relevant agent documents for k=2.
+    # Create documents with the expected next_message_content and next_message_role fields
+    doc1_metadata = FS_MOCK_AGENT_DOC_1["metadata"].copy()
+    doc1_metadata["next_message_content"] = doc1_metadata.get("content", "")
+    doc1_metadata["next_message_role"] = ParticipantRole.AGENT.value
+    
+    doc2_metadata = FS_MOCK_AGENT_DOC_4_FOLLOWUP["metadata"].copy()
+    doc2_metadata["next_message_content"] = doc2_metadata.get("content", "")
+    doc2_metadata["next_message_role"] = ParticipantRole.AGENT.value
+    
     retrieved_docs = [
-        Document(page_content=FS_MOCK_AGENT_DOC_1["page_content"], metadata=FS_MOCK_AGENT_DOC_1["metadata"]),
-        Document(page_content=FS_MOCK_AGENT_DOC_4_FOLLOWUP["page_content"], metadata=FS_MOCK_AGENT_DOC_4_FOLLOWUP["metadata"]),
+        Document(page_content=FS_MOCK_AGENT_DOC_1["page_content"], metadata=doc1_metadata),
+        Document(page_content=FS_MOCK_AGENT_DOC_4_FOLLOWUP["page_content"], metadata=doc2_metadata),
     ]
     mock_agent_store.asimilarity_search = AsyncMock(return_value=retrieved_docs)
 
@@ -45,11 +54,11 @@ async def test_get_few_shot_examples_for_agent_success():
 
     assert len(examples) == 2
     assert isinstance(examples[0], Document)
-    assert examples[0].metadata["role"] == ParticipantRole.AGENT.value
-    assert examples[0].metadata["content"] == FS_MOCK_AGENT_DOC_1["metadata"]["content"]
-    assert examples[1].metadata["content"] == FS_MOCK_AGENT_DOC_4_FOLLOWUP["metadata"]["content"]
+    assert examples[0].metadata.get("next_message_role") == ParticipantRole.AGENT.value
+    assert examples[0].metadata.get("content") == FS_MOCK_AGENT_DOC_1["metadata"].get("content")
+    assert examples[1].metadata.get("content") == FS_MOCK_AGENT_DOC_4_FOLLOWUP["metadata"].get("content")
     
-    mock_agent_store.asimilarity_search.assert_called_once_with(query=formatted_history_query, k=2)
+    mock_agent_store.asimilarity_search.assert_called_once_with(query=formatted_history_query, k=2, filter={"next_message_role": ParticipantRole.AGENT.value})
 
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_for_agent_empty_store():
@@ -61,7 +70,7 @@ async def test_get_few_shot_examples_for_agent_empty_store():
     mock_history = [Message(sender=ParticipantRole.CUSTOMER, content="Any query", timestamp=datetime.now())]
 
     # Test with empty store
-    with pytest.raises(ValueError, match="No documents retrieved from vector store"):
+    with pytest.raises(ValueError, match="Not enough valid documents retrieved for role agent"):
         await RagAgent._get_few_shot_examples(
             conversation_history=mock_history,
             vector_store=mock_agent_store_empty,
@@ -78,13 +87,17 @@ async def test_get_few_shot_examples_for_agent_no_docs_retrieved():
     mock_history = [Message(sender=ParticipantRole.CUSTOMER, content="A query", timestamp=datetime.now())]
     formatted_history_query = _format_conversation_history(mock_history)
 
-    with pytest.raises(ValueError, match="No documents retrieved from vector store"):
+    with pytest.raises(ValueError, match="Not enough valid documents retrieved for role agent"):
         await RagAgent._get_few_shot_examples(
             conversation_history=mock_history,
             vector_store=mock_agent_store,
             k=2
         )
-    mock_agent_store.asimilarity_search.assert_called_once_with(query=formatted_history_query, k=2)
+    mock_agent_store.asimilarity_search.assert_called_once_with(
+        query=formatted_history_query, 
+        k=2, 
+        filter={"next_message_role": ParticipantRole.AGENT.value}
+    )
 
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_for_agent_less_than_k_valid():
@@ -111,13 +124,17 @@ async def test_get_few_shot_examples_for_agent_less_than_k_valid():
     retrieved_docs = [doc_with_ts, doc_without_ts]
     mock_agent_store.asimilarity_search = AsyncMock(return_value=retrieved_docs)
 
-    with pytest.raises(ValueError, match="Not enough valid documents retrieved from vector store"):
+    with pytest.raises(ValueError, match="Not enough valid documents retrieved for role agent"):
         await RagAgent._get_few_shot_examples(
             conversation_history=mock_history,
             vector_store=mock_agent_store,
             k=3
         )
-    mock_agent_store.asimilarity_search.assert_called_once_with(query=formatted_history_query, k=3)
+    mock_agent_store.asimilarity_search.assert_called_once_with(
+        query=formatted_history_query, 
+        k=3, 
+        filter={"next_message_role": ParticipantRole.AGENT.value}
+    )
 
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_for_agent_missing_metadata():
@@ -149,14 +166,18 @@ async def test_get_few_shot_examples_for_agent_missing_metadata():
     mock_agent_store.asimilarity_search = AsyncMock(return_value=[doc_missing_content, valid_doc])
 
     # The function should raise an error since we asked for 2 documents but only 1 is valid
-    with pytest.raises(ValueError, match="Not enough valid documents retrieved from vector store"):
+    with pytest.raises(ValueError, match="Not enough valid documents retrieved for role agent"):
         await RagAgent._get_few_shot_examples(
             conversation_history=mock_history,
             vector_store=mock_agent_store,
             k=2
         )
     
-    mock_agent_store.asimilarity_search.assert_called_once_with(query=formatted_history_query, k=2)
+    mock_agent_store.asimilarity_search.assert_called_once_with(
+        query=formatted_history_query, 
+        k=2,
+        filter={"next_message_role": ParticipantRole.AGENT.value}
+    )
 
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_for_agent_wrong_role_in_metadata():
@@ -187,14 +208,18 @@ async def test_get_few_shot_examples_for_agent_wrong_role_in_metadata():
     mock_agent_store.asimilarity_search = AsyncMock(return_value=[doc_wrong_role, valid_doc])
 
     # The function should raise an error since we asked for 2 documents but only 1 has the correct role
-    with pytest.raises(ValueError, match="Not enough valid documents retrieved from vector store"):
+    with pytest.raises(ValueError, match="Not enough valid documents retrieved for role agent"):
         await RagAgent._get_few_shot_examples(
             conversation_history=mock_history,
             vector_store=mock_agent_store,
             k=2
         )
     
-    mock_agent_store.asimilarity_search.assert_called_once_with(query=formatted_history_query, k=2)
+    mock_agent_store.asimilarity_search.assert_called_once_with(
+        query=formatted_history_query, 
+        k=2, 
+        filter={"next_message_role": ParticipantRole.AGENT.value}
+    )
 
 @pytest.mark.asyncio
 async def test_get_few_shot_examples_for_agent_similarity_search_error():
@@ -212,4 +237,54 @@ async def test_get_few_shot_examples_for_agent_similarity_search_error():
             vector_store=mock_agent_store,
             k=2
         )
-    mock_agent_store.asimilarity_search.assert_called_once_with(query=formatted_history_query, k=2)
+    mock_agent_store.asimilarity_search.assert_called_once_with(
+        query=formatted_history_query, 
+        k=2, 
+        filter={"next_message_role": ParticipantRole.AGENT.value}
+    )
+
+@pytest.mark.asyncio
+async def test_get_few_shot_examples_for_agent_success_with_filter():
+    mock_agent_store = MagicMock(spec=VectorStore)
+    mock_agent_store.index = MagicMock()
+    mock_agent_store.index.ntotal = 3 # Simulate a non-empty store
+
+    mock_history = [Message(sender=ParticipantRole.CUSTOMER, content="Tell me about product X", timestamp=datetime.now())]
+    formatted_history_query = _format_conversation_history(mock_history)
+
+    # Create documents with proper metadata structure needed by the new implementation
+    doc1 = Document(
+        page_content="Agent: Here's information about product X. It has features A, B, and C.",
+        metadata={
+            "conversation_id": "test_conv_1",
+            "next_message_role": ParticipantRole.AGENT.value,
+            "next_message_content": "Here's information about product X. It has features A, B, and C."
+        }
+    )
+    doc2 = Document(
+        page_content="Agent: Product X comes with a 1-year warranty and free technical support.",
+        metadata={
+            "conversation_id": "test_conv_2",
+            "next_message_role": ParticipantRole.AGENT.value,
+            "next_message_content": "Product X comes with a 1-year warranty and free technical support."
+        }
+    )
+    
+    mock_agent_store.asimilarity_search = AsyncMock(return_value=[doc1, doc2])
+
+    examples = await RagAgent._get_few_shot_examples(
+        conversation_history=mock_history,
+        vector_store=mock_agent_store,
+        k=2
+    )
+
+    assert len(examples) == 2
+    assert isinstance(examples[0], Document)
+    assert examples[0].metadata["next_message_content"] == "Here's information about product X. It has features A, B, and C."
+    assert examples[1].metadata["next_message_content"] == "Product X comes with a 1-year warranty and free technical support."
+    
+    mock_agent_store.asimilarity_search.assert_called_once_with(
+        query=formatted_history_query, 
+        k=2,
+        filter={"next_message_role": ParticipantRole.AGENT.value}
+    )

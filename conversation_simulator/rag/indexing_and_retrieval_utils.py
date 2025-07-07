@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from langchain_core.documents import Document
 
 from langchain_core.vectorstores import VectorStore
-from ..models import Conversation, Message
+from ..models import Conversation, Message, ParticipantRole
 
 logger = logging.getLogger(__name__)
 
@@ -87,4 +87,52 @@ async def get_similar_finished_conversations(
     retrieved_docs.sort(key=lambda x: x[1], reverse=True)
 
     return retrieved_docs
+
+
+async def get_similar_examples_for_next_message_role(
+    conversation_history: Sequence[Message],
+    vector_store: VectorStore,
+    k: int,
+    target_role: ParticipantRole,
+) -> list[Document]:
+    """Retrieves examples from the vector store where the next message is from the specified role.
+    
+    This function finds conversations similar to the provided history where the subsequent
+    message was authored by the specified role (e.g., AGENT, CUSTOMER). This allows for
+    efficient RAG implementations across different participant types using a single index.
+    
+    Args:
+        conversation_history: The current conversation history
+        vector_store: Vector store containing the indexed conversations
+        k: Number of examples to retrieve
+        target_role: The role to filter results for (e.g., AGENT, CUSTOMER)
+        
+    Returns:
+        List of relevant Document objects for the specified role
+        
+    Raises:
+        ValueError: If not enough valid documents are retrieved
+    """
+    query = _format_conversation_history(conversation_history)
+    
+    # Filter for documents where the next_message_role matches the target role
+    retrieved_docs: list[Document] = await vector_store.asimilarity_search(
+        query=query,
+        k=k,  # Use the exact k value requested
+        filter={"next_message_role": target_role.value}
+    )
+    
+    # Filter documents to ensure they have all required metadata
+    valid_docs = [
+        doc for doc in retrieved_docs
+        if doc.metadata.get("next_message_content", "").strip()  # Ensure content is not empty
+    ]
+    
+    # Limit to k documents
+    valid_docs = valid_docs[:k]
+    
+    if len(valid_docs) < k:
+        raise ValueError(f"Not enough valid documents retrieved for role {target_role.value}. Expected {k}, got {len(valid_docs)}.")
+    
+    return valid_docs
 

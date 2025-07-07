@@ -3,7 +3,7 @@ from typing import TypedDict, Any
 
 from conversation_simulator.models import Message, ParticipantRole
 from conversation_simulator.models.conversation import Conversation
-from conversation_simulator.rag.commons import _format_conversation_history
+from conversation_simulator.rag.indexing_and_retrieval_utils import _format_conversation_history
 
 # --- Timestamps ---
 TIMESTAMP_NOW = datetime.now()

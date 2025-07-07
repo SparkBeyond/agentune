@@ -32,7 +32,6 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from conversation_simulator.models import (
     Conversation,
     Outcomes,
-    ParticipantRole,
 )
 from conversation_simulator.models.results import SimulationSessionResult
 from conversation_simulator.participants.agent.rag import RagAgentFactory
@@ -94,46 +93,7 @@ def extract_outcomes_from_conversations(conversations: list[Conversation]) -> Ou
     return Outcomes(outcomes=outcomes_tuple)
 
 
-async def build_simple_vector_stores(
-    reference_conversations: list[Conversation],
-    embeddings_model: OpenAIEmbeddings
-) -> tuple[InMemoryVectorStore, InMemoryVectorStore]:
-    """Build simple in-memory vector stores for agent and customer messages.
-    
-    Args:
-        reference_conversations: List of reference conversations
-        embeddings_model: OpenAI embeddings model instance
-        
-    Returns:
-        Tuple of (agent_vector_store, customer_vector_store)
-    """
-    logger.info("Building in-memory vector stores from reference conversations")
-    
-    # Convert conversations to documents for each role
-    agent_documents = conversations_to_langchain_documents(
-        reference_conversations, 
-        role=ParticipantRole.AGENT
-    )
-    customer_documents = conversations_to_langchain_documents(
-        reference_conversations, 
-        role=ParticipantRole.CUSTOMER
-    )
-    
-    logger.info(f"Created {len(agent_documents)} agent documents and {len(customer_documents)} customer documents")
-    
-    # Create in-memory vector stores
-    agent_vector_store = InMemoryVectorStore.from_documents(
-        documents=agent_documents,
-        embedding=embeddings_model
-    )
-    
-    customer_vector_store = InMemoryVectorStore.from_documents(
-        documents=customer_documents,
-        embedding=embeddings_model
-    )
-    
-    logger.info("In-memory vector stores created successfully")
-    return agent_vector_store, customer_vector_store
+
 
 
 async def run_rag_simulation(
@@ -163,21 +123,26 @@ async def run_rag_simulation(
     chat_model = ChatOpenAI(model=chat_model_name, temperature=0.0)
     embeddings_model = OpenAIEmbeddings(model=embeddings_model_name)
     
-    # Build vector stores
-    agent_vector_store, customer_vector_store = await build_simple_vector_stores(
-        reference_conversations, 
-        embeddings_model
-    )
+    # Build a single vector store
+    logger.info("Building in-memory vector store from reference conversations")
+    
+    # Convert conversations to documents
+    documents = conversations_to_langchain_documents(reference_conversations)
+    logger.info(f"Created {len(documents)} documents with role metadata")
+    
+    # Create a single in-memory vector store
+    vector_store = InMemoryVectorStore.from_documents(documents, embeddings_model)
+    logger.info("In-memory vector store created successfully")
     
     # Create participant factories
     agent_factory = RagAgentFactory(
         model=chat_model,
-        agent_vector_store=agent_vector_store
+        agent_vector_store=vector_store
     )
     
     customer_factory = RagCustomerFactory(
         model=chat_model,
-        customer_vector_store=customer_vector_store
+        customer_vector_store=vector_store
     )
     
     # Build simulation session
@@ -275,7 +240,7 @@ async def main() -> None:
             chat_model_name="gpt-4o-mini",
             outcomes=outcomes,
             reference_conversations=reference_conversations,
-            number_of_simulations=20,  # Limit to 20 for this example
+            number_of_simulations=5,  # Limit to 20 for this example
         )
         
         # Display results (using print for pretty user output)
