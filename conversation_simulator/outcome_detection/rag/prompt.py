@@ -77,16 +77,16 @@ Those conversations have been picked due to their similarity to currently analyz
 
 ---
 
-Here is the conversation to analyze:
+Additional information about the analyzed conversation:
 
-{conversation_text}
+This conversation was initiated by {intent_role} 
+Intent: {intent_description}
 
 ---
 
-Additional information about the analyzed conversation:
+Here is the conversation to analyze:
 
-This conversations was initiated by {intent_role} 
-Intent: {intent_description}
+{conversation_text}
 
 ---
 
