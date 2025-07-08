@@ -6,7 +6,6 @@ A Streamlit page for running RAG-based conversation simulations.
 
 import streamlit as st
 import asyncio
-from datetime import datetime
 from typing import List, Dict, Any
 
 # Import conversation simulator components
@@ -15,7 +14,6 @@ from conversation_simulator.models.results import SimulationSessionResult, Conve
 from conversation_simulator.models.outcome import Outcome
 from conversation_simulator.participants.agent.rag import RagAgentFactory
 from conversation_simulator.participants.customer.rag import RagCustomerFactory
-from conversation_simulator.simulation.session_builder import SimulationSessionBuilder
 from conversation_simulator.simulation.progress import ProgressCallback
 from conversation_simulator.rag import conversations_to_langchain_documents
 from conversation_simulator.models.roles import ParticipantRole
@@ -25,7 +23,7 @@ from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdver
 
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from cattrs.preconf.orjson import make_converter
+from conversation_simulator.simulation.simulation_session import SimulationSession
 
 # Import helper functions
 from helper import (
@@ -33,10 +31,6 @@ from helper import (
     display_conversation, get_openai_models, format_results_for_download,
     validate_api_key, extract_unique_outcomes
 )
-
-# Configure cattrs for JSON serialization with datetime handling
-converter = make_converter()
-converter.register_unstructure_hook(datetime, lambda dt: dt.isoformat())
 
 
 class StreamlitProgressCallback(ProgressCallback):
@@ -76,6 +70,7 @@ class StreamlitProgressCallback(ProgressCallback):
     def on_scenario_failed(self, scenario, exception: Exception) -> None:
         """Called when a scenario fails."""
         self.failed_scenarios += 1
+        self.completed_scenarios += 1
         self.current_phase = f"Completed {self.completed_scenarios}/{self.total_scenarios} scenarios ({self.failed_scenarios} failed)"
         self._update_display()
     
@@ -103,7 +98,7 @@ def select_model_with_temperature(
     label: str,
     chat_models: List[str],
     default_model: str,
-    thinking_models: List[str],
+    reasoning_models: List[str],
     help_text: str,
     key_prefix: str = ""
 ) -> Dict[str, Any]:
@@ -113,7 +108,7 @@ def select_model_with_temperature(
         label: Label for the model selection
         chat_models: List of available chat models
         default_model: Default model to select
-        thinking_models: List of thinking models (no temperature)
+        reasoning_models: List of reasoning models (no temperature)
         help_text: Help text for the model selection
         key_prefix: Optional prefix for widget keys to ensure uniqueness
         
@@ -131,7 +126,7 @@ def select_model_with_temperature(
 
     model_kwargs: Dict[str, Any] = {'model': model}
 
-    if model not in thinking_models:
+    if model not in reasoning_models:
         temp = col2.number_input(
             "temp",
             min_value=0.0,
@@ -171,9 +166,9 @@ def initialize_sidebar():
     default_model_candidates = [model_name for model_name in chat_models if model_name.startswith("gpt-4o-mini")]
     default_model: str = default_model_candidates[0] if default_model_candidates else chat_models[0]
     
-    # Default adversarial model (thinking model)
-    thinking_models = models.get("Thinking Models", [])
-    default_adversarial: str = thinking_models[-1] if thinking_models else default_model
+    # Default adversarial model (reasoning model)
+    reasoning_models = models.get("Reasoning Models", [])
+    default_adversarial: str = reasoning_models[-1] if reasoning_models else default_model
     
     # Settings mode toggle
     use_advanced = st.sidebar.toggle(
@@ -191,7 +186,7 @@ def initialize_sidebar():
                 "Agent Model",
                 chat_models,
                 default_model,
-                thinking_models,
+                reasoning_models,
                 "Model for the agent participant",
                 "agent"
             )
@@ -200,7 +195,7 @@ def initialize_sidebar():
                 "Customer Model",
                 chat_models,
                 default_model,
-                thinking_models,
+                reasoning_models,
                 "Model for the customer participant",
                 "customer"
             )
@@ -209,7 +204,7 @@ def initialize_sidebar():
                 "Intent Classification",
                 chat_models,
                 default_model,
-                thinking_models,
+                reasoning_models,
                 "Model for intent extraction",
                 "intent"
             )
@@ -218,7 +213,7 @@ def initialize_sidebar():
                 "Outcome Detection",
                 chat_models,
                 default_model,
-                thinking_models,
+                reasoning_models,
                 "Model for outcome detection",
                 "outcome"
             )
@@ -227,7 +222,7 @@ def initialize_sidebar():
                 "Adversarial Model",
                 chat_models,
                 default_adversarial,
-                thinking_models,
+                reasoning_models,
                 "Model for adversarial testing",
                 "adversarial"
             )
@@ -238,7 +233,7 @@ def initialize_sidebar():
                 "Main Model",
                 chat_models,
                 default_model,
-                thinking_models,
+                reasoning_models,
                 "Model for agent, customer, intent, and outcome detection",
                 "basic"
             )
@@ -247,8 +242,8 @@ def initialize_sidebar():
                 "Adversarial Model",
                 chat_models,
                 default_adversarial,
-                thinking_models,
-                "Model for adversarial testing (recommended: thinking model)",
+                reasoning_models,
+                "Model for adversarial testing (recommended: reasoning model)",
                 "adversarial_basic"
             )
         
@@ -263,7 +258,8 @@ def initialize_sidebar():
     embedding_model = st.sidebar.selectbox(
         "Embedding Model",
         embedding_models,
-        help="Model for generating embeddings for RAG"
+        help="Model for generating embeddings for RAG",
+        key="embedding_model"
     )
     
     # Simulation parameters
@@ -306,21 +302,18 @@ def initialize_sidebar():
 
 
 async def build_vector_stores(
-    reference_conversations: List[Dict],
+    reference_conversations: List[Conversation],
     embeddings_model: OpenAIEmbeddings
 ) -> tuple[InMemoryVectorStore, InMemoryVectorStore]:
     """Build vector stores for agent and customer messages."""
     
-    # Convert conversations to Conversation objects
-    conversation_objects = [converter.structure(conv, Conversation) for conv in reference_conversations]
-    
     # Convert conversations to documents for each role
     agent_documents = conversations_to_langchain_documents(
-        conversation_objects,
+        reference_conversations,
         role=ParticipantRole.AGENT
     )
     customer_documents = conversations_to_langchain_documents(
-        conversation_objects,
+        reference_conversations,
         role=ParticipantRole.CUSTOMER
     )
     
@@ -339,8 +332,8 @@ async def build_vector_stores(
 
 
 async def run_simulation(
-    selected_conversations: List[Dict],
-    all_conversations: List[Dict],
+    selected_conversations: List[Conversation],
+    all_conversations: List[Conversation],
     config: Dict[str, Any],
     progress_callback: ProgressCallback
 ) -> SimulationSessionResult:
@@ -370,6 +363,10 @@ async def run_simulation(
         model=customer_model,
         customer_vector_store=customer_vector_store
     )
+
+    intent_extractor = ZeroshotIntentExtractor(intent_model, max_concurrency=config['max_concurrent_conversations'])
+    outcome_detector = ZeroshotOutcomeDetector(outcome_model, max_concurrency=config['max_concurrent_conversations'])
+    adversarial_tester = ZeroShotAdversarialTester(adversarial_model, max_concurrency=config['max_concurrent_conversations'])
     
     # Extract outcomes
     unique_outcome_dicts = extract_unique_outcomes(selected_conversations)
@@ -394,27 +391,23 @@ async def run_simulation(
         f"{config['outcome_model_kwargs']['model']} (outcome), {config['adversarial_model_kwargs']['model']} (adversarial)"
     )
     
-    session = (SimulationSessionBuilder(
-        chat_model=agent_model,  # Use agent model as default
+    session = SimulationSession(
+        outcomes=outcomes,
         agent_factory=agent_factory,
         customer_factory=customer_factory,
-        outcomes=outcomes,
+        intent_extractor=intent_extractor,
+        outcome_detector=outcome_detector,
+        adversarial_tester=adversarial_tester,
         session_name=config['session_name'],
         session_description=session_description,
         max_messages=config['max_messages'],
         max_concurrent_conversations=config['max_concurrent_conversations'],
-        progress_callback=progress_callback,
+        return_exceptions=True,
+        progress_callback=progress_callback
     )
-    .with_intent_extractor(ZeroshotIntentExtractor(intent_model))
-    .with_outcome_detector(ZeroshotOutcomeDetector(outcome_model))
-    .with_adversarial_tester(ZeroShotAdversarialTester(adversarial_model, max_concurrency=config['max_concurrent_conversations']))
-    .build())
-    
-    # Convert selected conversations to Conversation objects
-    conversation_objects = [converter.structure(conv, Conversation) for conv in selected_conversations]
     
     # Run simulation
-    result = await session.run_simulation(conversation_objects)
+    result = await session.run_simulation(selected_conversations)
     
     return result
 
@@ -500,7 +493,8 @@ def main():
             "▶️ Start Simulation",
             type="primary",
             use_container_width=True,
-            help="Start the conversation simulation with selected settings"
+            help="Start the conversation simulation with selected settings",
+            disabled=not bool(selected_conversations)
         )
     
     # Handle simulation execution
@@ -560,14 +554,9 @@ def main():
             st.metric("Generated Conversations", len(result.simulated_conversations))
             
         with col3:
-            if result.simulated_conversations:
-                avg_messages = sum(
-                    len(conv.conversation.messages)
-                    for conv in result.simulated_conversations
-                ) / len(result.simulated_conversations)
-                st.metric("Avg Messages", f"{avg_messages:.1f}")
-            else:
-                st.metric("Avg Messages", "0")
+            # Use analysis_result for more accurate average
+            avg_messages = result.analysis_result.message_distribution_comparison.simulated_stats.mean_messages
+            st.metric("Avg Messages", f"{avg_messages:.1f}")
         
         with col4:
             # Calculate duration
@@ -577,17 +566,20 @@ def main():
             else:
                 st.metric("Duration", "Unknown")
         
-        # Show outcome distribution
-        if result.simulated_conversations:
-            st.subheader("🎯 Outcome Distribution")
-            outcome_counts = {}
-            for sim_conv in result.simulated_conversations:
-                outcome_name = sim_conv.conversation.outcome.name if sim_conv.conversation.outcome else "unknown"
-                outcome_counts[outcome_name] = outcome_counts.get(outcome_name, 0) + 1
+        # Show outcome distribution using analysis_result
+        outcome_comparison = result.analysis_result.outcome_comparison
+        
+        if outcome_comparison:
+            st.subheader("🎯 Outcome Distribution Comparison")
             
-            for outcome, count in sorted(outcome_counts.items()):
-                percentage = (count / len(result.simulated_conversations)) * 100
-                st.write(f"**{outcome}**: {count} conversations ({percentage:.1f}%)")
+            # Show simulated distribution
+            simulated_dist = outcome_comparison.simulated_distribution
+            if simulated_dist and simulated_dist.outcome_counts:
+                st.markdown("**Simulated Conversations:**")
+                total_simulated = simulated_dist.total_conversations
+                for outcome, count in sorted(simulated_dist.outcome_counts.items()):
+                    percentage = (count / total_simulated * 100) if total_simulated > 0 else 0
+                    st.write(f"**{outcome}**: {count} conversations ({percentage:.1f}%)")
         
         # Show sample conversation
         if result.simulated_conversations:
@@ -595,29 +587,15 @@ def main():
             sample_conv = result.simulated_conversations[0].conversation
             
             with st.expander("View Sample Conversation", expanded=False):
-                # Convert to dict format for display_conversation
-                sample_dict = {
-                    'messages': [
-                        {
-                            'sender': msg.sender.value,
-                            'content': msg.content,
-                            'timestamp': msg.timestamp.isoformat() if msg.timestamp else ''
-                        }
-                        for msg in sample_conv.messages
-                    ],
-                    'outcome': {
-                        'name': sample_conv.outcome.name if sample_conv.outcome else 'unknown',
-                        'description': sample_conv.outcome.description if sample_conv.outcome else ''
-                    }
-                }
-                display_conversation(sample_dict, "Sample Generated Conversation")
+                # Display the conversation directly since display_conversation now handles Conversation objects
+                display_conversation(sample_conv, "Sample Generated Conversation")
         
         # Download results
         st.header("💾 Download Results")
         
         # Format results for download
         json_str, filename = format_results_for_download(
-            converter.unstructure(result),
+            result,
             config['session_name'].replace(' ', '_').lower()
         )
         

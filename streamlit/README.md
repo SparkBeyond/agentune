@@ -34,7 +34,10 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
 ## Running the App
 
 ```bash
-# Run the main app (Streamlit automatically handles pages)
+# Using Poetry
+poetry run streamlit run streamlit/Conversation_Simulator_Results_Analyzer.py
+
+# Or directly
 streamlit run streamlit/Conversation_Simulator_Results_Analyzer.py
 ```
 
