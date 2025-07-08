@@ -240,7 +240,7 @@ async def main() -> None:
             chat_model_name="gpt-4o-mini",
             outcomes=outcomes,
             reference_conversations=reference_conversations,
-            number_of_simulations=20,  # Limit to 20 for this example
+            number_of_simulations=5,  # Limit to 20 for this example
         )
         
         # Display results (using print for pretty user output)

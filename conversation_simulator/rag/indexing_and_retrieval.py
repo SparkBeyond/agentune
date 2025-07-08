@@ -15,6 +15,20 @@ def _format_conversation_history(messages: Sequence[Message]) -> str:
     return "\n".join([f"{msg.sender.value.capitalize()}: {msg.content}" for msg in messages])
 
 
+def _get_metadata(metadata_or_doc: dict | Document) -> dict:
+    """Safely retrieve metadata if needed.
+
+    A workaround for the fact that filter functions in different LangChain vector stores
+    may require different metadata formats.
+    """
+    if isinstance(metadata_or_doc, Document):
+        metadata: dict =  metadata_or_doc.metadata
+        return metadata
+    elif isinstance(metadata_or_doc, dict):
+        return metadata_or_doc
+    raise TypeError("metadata_or_doc must be either a Document or dict")
+
+
 def conversations_to_langchain_documents(
     conversations: list[Conversation]
 ) -> list[Document]:
@@ -76,11 +90,15 @@ async def get_similar_finished_conversations(
     """
     query = _format_conversation_history(conversation.messages)
 
+    def filter_by_finished_conversation(metadata_or_doc: dict | Document) -> bool:
+        """Filter function to check if the conversation is finished."""
+        return _get_metadata(metadata_or_doc).get("has_next_message", False) is False
+
     # Retrieve similar conversations, filtering for finished conversations only
     retrieved_docs: list[tuple[Document, float]] = await vector_store.asimilarity_search_with_score(
         query=query,
         k=k,
-        filter={"has_next_message": False}
+        filter=filter_by_finished_conversation
     )
 
     # Sort by similarity score (highest first)
@@ -114,12 +132,17 @@ async def get_similar_examples_for_next_message_role(
         ValueError: If not enough valid documents are retrieved
     """
     query = _format_conversation_history(conversation_history)
+
+    def filter_by_matching_next_speaker(metadata_or_doc: dict | Document) -> bool:
+        """Filter function to check if the next message role matches the target role."""
+        role: str = _get_metadata(metadata_or_doc).get("next_message_role", "")
+        return role == target_role.value
     
     # Filter for documents where the next_message_role matches the target role
     retrieved_docs: list[Document] = await vector_store.asimilarity_search(
         query=query,
         k=k,  # Use the exact k value requested
-        filter={"next_message_role": target_role.value}
+        filter=filter_by_matching_next_speaker
     )
     
     # Filter documents to ensure they have all required metadata
@@ -127,12 +150,6 @@ async def get_similar_examples_for_next_message_role(
         doc for doc in retrieved_docs
         if doc.metadata.get("next_message_content", "").strip()  # Ensure content is not empty
     ]
-    
-    # Limit to k documents
-    valid_docs = valid_docs[:k]
-    
-    if len(valid_docs) < k:
-        raise ValueError(f"Not enough valid documents retrieved for role {target_role.value}. Expected {k}, got {len(valid_docs)}.")
     
     return valid_docs
 

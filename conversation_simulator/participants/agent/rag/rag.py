@@ -16,7 +16,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 
 from ....models import Conversation, Message, ParticipantRole
-from ....rag import indexing_and_retrieval_utils
+from ....rag import indexing_and_retrieval
 from ..base import Agent, AgentFactory
 from ..config import AgentConfig
 from .prompt import AGENT_PROMPT
@@ -137,7 +137,7 @@ class RagAgent(Agent):
 
     @staticmethod
     async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
-        return await indexing_and_retrieval_utils.get_similar_examples_for_next_message_role(
+        return await indexing_and_retrieval.get_similar_examples_for_next_message_role(
             conversation_history=conversation_history,
             vector_store=vector_store,
             k=k,

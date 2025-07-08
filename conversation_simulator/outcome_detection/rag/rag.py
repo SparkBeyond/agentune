@@ -18,7 +18,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.vectorstores import VectorStore
 
 from ...models.outcome import Outcome, Outcomes
-from ...rag import indexing_and_retrieval_utils
+from ...rag import indexing_and_retrieval
 from ..base import OutcomeDetector, OutcomeDetectionTest
 from .prompt import OUTCOME_DETECTION_PROMPT_TEMPLATE, format_conversation, format_examples, OutcomeDetectionResult
 
@@ -94,7 +94,7 @@ class RAGOutcomeDetector(OutcomeDetector):
         async def prepare_prompt_template_params(instance_idx):
             instance = instances[instance_idx]
             # Retrieve similar conversations for this instance
-            few_shot_examples = await indexing_and_retrieval_utils.get_similar_finished_conversations(self.vector_store, instance.conversation, k=self.num_examples)
+            few_shot_examples = await indexing_and_retrieval.get_similar_finished_conversations(self.vector_store, instance.conversation, k=self.num_examples)
 
             formatted_conversation = format_conversation(instance.conversation)
             formatted_examples = format_examples(few_shot_examples)

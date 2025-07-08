@@ -4,7 +4,7 @@ This module provides tools for creating and managing vector stores from conversa
 which can then be used by RAG-enabled participants in the conversation simulator.
 """
 
-from .indexing_and_retrieval_utils import (
+from .indexing_and_retrieval import (
     conversations_to_langchain_documents,
     get_similar_examples_for_next_message_role
 )
