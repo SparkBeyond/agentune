@@ -12,14 +12,14 @@ Note that this example is designed to be simple and straightforward, focusing on
 
 **Features:**
 - Loading reference conversations from JSON data
-- Building vector stores for both agent and customer messages using InMemoryVectorStore
-- Creating RAG-based participant factories
-- Running simulation session to generate conversation 20 conversations
+- Building a single vector store for all RAG components using InMemoryVectorStore
+- Using the opinionated SimulationSessionBuilder with RAG-based participants
+- Running simulation session to generate 20 conversations
 - Analyzing and saving results
 - Uses cattrs for structured data loading
 
 **Core Function:**
-The main entry point is [`run_rag_simulation()`](./simple_rag_simulation.py#L151-L220) which provides a clean interface for running the complete simulation pipeline.
+The main entry point is [`run_rag_simulation()`](./simple_rag_simulation.py#L97-L160) which provides a clean interface for running the complete simulation pipeline.
 
 **Requirements:**
 - OpenAI API key set in environment (`OPENAI_API_KEY`)
@@ -41,29 +41,28 @@ python examples/simple_rag_simulation.py
 **What it demonstrates:**
 1. **Data Loading**: Parse real conversation data from JSON using cattrs
 2. **Outcome Extraction**: Automatically extract unique outcomes from conversations
-3. **Vector Store Setup**: Create InMemoryVectorStore embeddings for RAG retrieval
-4. **Participant Creation**: Initialize RAG-based agents and customers
-5. **Session Building**: Configure simulation parameters
-6. **Execution**: Run the complete simulation pipeline
-7. **Analysis**: Generate outcome distributions and analysis
-8. **Results Export**: Save structured results to JSON with datetime handling
+3. **Vector Store Setup**: Create a single InMemoryVectorStore for all RAG components
+4. **Session Building**: Use SimulationSessionBuilder with opinionated RAG/zero-shot defaults
+5. **Execution**: Run the complete simulation pipeline
+6. **Analysis**: Generate outcome distributions and analysis
+7. **Results Export**: Save structured results to JSON
 
 ## Code Structure Reference
 
 For developers who want to understand or modify the example:
 
-- **Main execution flow**: [`main()`](./simple_rag_simulation.py#L271-L315)
-- **Data loading utilities**: [`load_sample_conversations()`](./simple_rag_simulation.py#L59-L81), [`extract_outcomes_from_conversations()`](./simple_rag_simulation.py#L84-L107)
-- **Vector store setup**: [`build_simple_vector_stores()`](./simple_rag_simulation.py#L109-L149)
-- **Core simulation logic**: [`run_rag_simulation()`](./simple_rag_simulation.py#L151-L220)
-- **Results analysis**: [`print_simple_summary()`](./simple_rag_simulation.py#L223-L269)
+- **Main execution flow**: [`main()`](./simple_rag_simulation.py#L209-L250)
+- **Data loading utilities**: [`load_sample_conversations()`](./simple_rag_simulation.py#L44-L65), [`extract_outcomes_from_conversations()`](./simple_rag_simulation.py#L69-L93)
+- **Core simulation logic**: [`run_rag_simulation()`](./simple_rag_simulation.py#L97-L160)
+- **Results analysis**: [`print_simple_summary()`](./simple_rag_simulation.py#L161-L207)
 
 ### Key Library Components Used
 
 - **Models**: [`Conversation`](../conversation_simulator/models/conversation.py), [`Outcomes`](../conversation_simulator/models/outcome.py), [`SimulationSessionResult`](../conversation_simulator/models/results.py)
-- **Participants**: [`RagAgentFactory`](../conversation_simulator/participants/agent/rag/rag.py), [`RagCustomerFactory`](../conversation_simulator/participants/customer/rag/rag.py)
-- **Session Builder**: [`SimulationSessionBuilder`](../conversation_simulator/simulation/session_builder.py)
-- **RAG Utilities**: [`conversations_to_langchain_documents`](../conversation_simulator/rag/commons.py)
+- **Session Builder**: [`SimulationSessionBuilder`](../conversation_simulator/simulation/session_builder.py) - Uses opinionated RAG/zero-shot defaults
+- **RAG Utilities**: [`conversations_to_langchain_documents`](../conversation_simulator/rag/indexing_and_retrieval.py)
+
+**Note**: The new SimulationSessionBuilder automatically creates RAG-based participants and zero-shot components, eliminating the need for manual factory construction.
 
 #### Example Data
 
