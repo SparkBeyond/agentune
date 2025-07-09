@@ -34,8 +34,6 @@ from conversation_simulator.models import (
     Outcomes,
 )
 from conversation_simulator.models.results import SimulationSessionResult
-from conversation_simulator.participants.agent.rag import RagAgentFactory
-from conversation_simulator.participants.customer.rag import RagCustomerFactory
 from conversation_simulator.rag import conversations_to_langchain_documents
 from conversation_simulator.simulation.session_builder import SimulationSessionBuilder
 from conversation_simulator.util.structure import converter
@@ -130,27 +128,16 @@ async def run_rag_simulation(
     documents = conversations_to_langchain_documents(reference_conversations)
     logger.info(f"Created {len(documents)} documents with role metadata")
     
-    # Create a single in-memory vector store
+    # Create a single in-memory vector store for all components
     vector_store = InMemoryVectorStore.from_documents(documents, embeddings_model)
     logger.info("In-memory vector store created successfully")
     
-    # Create participant factories
-    agent_factory = RagAgentFactory(
-        model=chat_model,
-        agent_vector_store=vector_store
-    )
-    
-    customer_factory = RagCustomerFactory(
-        model=chat_model,
-        customer_vector_store=vector_store
-    )
-    
-    # Build simulation session
+    # Build simulation session using the opinionated builder
+    # All RAG components (agent, customer, outcome detection) use the same vector store
     session = SimulationSessionBuilder(
-        chat_model=chat_model,
-        agent_factory=agent_factory,
-        customer_factory=customer_factory,
+        default_chat_model=chat_model,
         outcomes=outcomes,
+        vector_store=vector_store,
         session_name="RAG Simulation",
         session_description=f"RAG-based simulation using {chat_model_name} with {len(reference_conversations)} reference conversations",
         max_messages=20,  # Reasonable limit for the example
@@ -267,4 +254,8 @@ if __name__ == "__main__":
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
+
+    # Silence verbose loggers
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     asyncio.run(main())

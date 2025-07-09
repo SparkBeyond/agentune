@@ -9,15 +9,13 @@ from datetime import timedelta
 
 import attrs
 from langchain_core.language_models import BaseChatModel
+from langchain_core.vectorstores import VectorStore
 
-from conversation_simulator.intent_extraction.base import IntentExtractor
 from conversation_simulator.intent_extraction.zeroshot import ZeroshotIntentExtractor
 from conversation_simulator.models.outcome import Outcomes
-from conversation_simulator.outcome_detection.base import OutcomeDetector  
-from conversation_simulator.outcome_detection.zeroshot import ZeroshotOutcomeDetector
-from conversation_simulator.participants.agent.base import AgentFactory
-from conversation_simulator.participants.customer.base import CustomerFactory
-from conversation_simulator.simulation.adversarial.base import AdversarialTester
+from conversation_simulator.outcome_detection.rag.rag import RAGOutcomeDetector
+from conversation_simulator.participants.agent.rag.rag import RagAgentFactory
+from conversation_simulator.participants.customer.rag.rag import RagCustomerFactory
 from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
 from conversation_simulator.simulation.progress import ProgressCallback
 from conversation_simulator.simulation.simulation_session import SimulationSession
@@ -28,86 +26,164 @@ class SimulationSessionBuilder:
     """Builder for configuring and creating SimulationSession instances.
     
     This class provides a fluent interface for constructing SimulationSession objects
-    with optional components and sensible defaults.
+    with opinionated component choices and flexible model configurations:
     
+    **Opinionated Components:**
+    - Agent/Customer participants: Always uses RAG-based factories
+    - Outcome detection: Always uses RAG-based detector
+    - Intent extraction: Always uses zero-shot extractor
+    - Adversarial testing: Always uses zero-shot tester
+    
+    **Flexible Models:**
+    - Each component can use a different language model
+    - Falls back to default_chat_model when specific models aren't specified
+
     Example:
         ```python
-        session = (SimulationSessionBuilder(chat_model, agent_factory, customer_factory, outcomes)
-                  .with_intent_extractor(custom_extractor)
-                  .with_outcome_detector(custom_detector)
+        session = (SimulationSessionBuilder(
+                      default_chat_model=default_model,
+                      outcomes=outcomes,
+                      vector_store=vector_store
+                  )
+                  .with_customer_model(claude_model)
+                  .with_outcome_detection_model(gemini_model)
                   .build())
         ```
     """
     
-    chat_model: BaseChatModel
+    default_chat_model: BaseChatModel
     outcomes: Outcomes
-    agent_factory: AgentFactory
-    customer_factory: CustomerFactory
+    vector_store: VectorStore
+
+    # Optional model configurations - default to default_chat_model if not set
+    agent_model: BaseChatModel | None = None
+    customer_model: BaseChatModel | None = None
+    outcome_detection_model: BaseChatModel | None = None
+    intent_extraction_model: BaseChatModel | None = None
+    adversarial_model: BaseChatModel | None = None
+
+    # Session configuration
     session_name: str = "Simulation Session"
     session_description: str = "Automated conversation simulation"
     max_messages: int = 100
-    max_concurrent_conversations: int = 10
+    max_concurrent_conversations: int = 20
     return_exceptions: bool = True
-    _intent_extractor: IntentExtractor | None = None
-    _outcome_detector: OutcomeDetector | None = None
-    _adversarial_tester: AdversarialTester | None = None
+
+    # Progress tracking
     progress_callback: ProgressCallback = attrs.field(factory=ProgressCallback)
     progress_log_interval: timedelta = timedelta(seconds=5)
     
-    def with_intent_extractor(self, intent_extractor: IntentExtractor) -> Self:
-        """Sets a custom intent extractor for the simulation session.
-        
+    def with_agent_model(self, model: BaseChatModel) -> Self:
+        """Sets the language model to use for agent participants.
+
         Args:
-            intent_extractor: The intent extractor implementation to use
-            
+            model: The language model for agent responses
+
         Returns:
             Self: The builder instance for method chaining
         """
-        self._intent_extractor = intent_extractor
+        self.agent_model = model
         return self
-    
-    def with_outcome_detector(self, outcome_detector: OutcomeDetector) -> Self:
-        """Sets a custom outcome detector for the simulation session.
-        
+
+    def with_customer_model(self, model: BaseChatModel) -> Self:
+        """Sets the language model to use for customer participants.
+
         Args:
-            outcome_detector: The outcome detector implementation to use
-            
+            model: The language model for customer responses
+
         Returns:
             Self: The builder instance for method chaining
         """
-        self._outcome_detector = outcome_detector
+        self.customer_model = model
         return self
-    
-    def with_adversarial_tester(self, adversarial_tester: AdversarialTester) -> Self:
-        """Sets a custom adversarial tester for the simulation session.
-        
+
+    def with_outcome_detection_model(self, model: BaseChatModel) -> Self:
+        """Sets the language model to use for outcome detection.
+
         Args:
-            adversarial_tester: The adversarial tester implementation to use
-            
+            model: The language model for outcome detection
+
         Returns:
             Self: The builder instance for method chaining
         """
-        self._adversarial_tester = adversarial_tester
+        self.outcome_detection_model = model
         return self
     
+    def with_intent_extraction_model(self, model: BaseChatModel) -> Self:
+        """Sets the language model to use for intent extraction.
+
+        Args:
+            model: The language model for intent extraction
+
+        Returns:
+            Self: The builder instance for method chaining
+        """
+        self.intent_extraction_model = model
+        return self
+    
+    def with_adversarial_model(self, model: BaseChatModel) -> Self:
+        """Sets the language model to use for adversarial testing.
+
+        Args:
+            model: The language model for adversarial testing
+
+        Returns:
+            Self: The builder instance for method chaining
+        """
+        self.adversarial_model = model
+        return self
+
+    def with_participant_models(self, model: BaseChatModel) -> Self:
+        """Sets the same model for both agent and customer participants.
+
+        Args:
+            model: The language model for participant responses
+
+        Returns:
+            Self: The builder instance for method chaining
+        """
+        self.agent_model = model
+        self.customer_model = model
+        return self
+
     def build(self) -> SimulationSession:
-        """Creates a SimulationSession with the configured components.
+        """Creates a SimulationSession with opinionated component choices.
         
-        This method instantiates default components if they weren't explicitly set:
-        - ZeroshotIntentExtractor for intent extraction
-        - ZeroshotOutcomeDetector for outcome detection
-        - ZeroShotAdversarialTester for adversarial testing
+        **Fixed Components (opinionated):**
+        - RAG-based agent and customer factories
+        - RAG-based outcome detector  
+        - Zero-shot intent extractor and adversarial tester
         
+        **Flexible Models:**
+        - Each component uses its specified model or falls back to default_chat_model
+
         Returns:
             SimulationSession: A fully configured simulation session
         """
+        max_concurrent_requests_in_batch = self.max_concurrent_conversations
+
         return SimulationSession(
             outcomes=self.outcomes,
-            agent_factory=self.agent_factory,
-            customer_factory=self.customer_factory,
-            intent_extractor=self._intent_extractor or ZeroshotIntentExtractor(self.chat_model),
-            outcome_detector=self._outcome_detector or ZeroshotOutcomeDetector(self.chat_model),
-            adversarial_tester=self._adversarial_tester or ZeroShotAdversarialTester(self.chat_model, max_concurrency=50),
+            agent_factory=RagAgentFactory(
+                model=self.agent_model or self.default_chat_model,
+                agent_vector_store=self.vector_store
+            ),
+            customer_factory=RagCustomerFactory(
+                model=self.customer_model or self.default_chat_model,
+                customer_vector_store=self.vector_store
+            ),
+            intent_extractor=ZeroshotIntentExtractor(
+                self.intent_extraction_model or self.default_chat_model,
+                max_concurrency=max_concurrent_requests_in_batch
+            ),
+            outcome_detector=RAGOutcomeDetector(
+                model=self.outcome_detection_model or self.default_chat_model,
+                vector_store=self.vector_store
+            ),
+            adversarial_tester=ZeroShotAdversarialTester(
+                self.adversarial_model or self.default_chat_model,
+                max_concurrency=max_concurrent_requests_in_batch
+            ),
             session_name=self.session_name,
             session_description=self.session_description,
             max_messages=self.max_messages,

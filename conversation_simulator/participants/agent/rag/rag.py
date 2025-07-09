@@ -106,14 +106,14 @@ class RagAgent(Agent):
                 # Example agent response from metadata
                 metadata = doc.metadata
                 # Validate essential keys before creating Message object
-                if not all(key in metadata for key in ["role", "content", "timestamp"]):
+                if not all(key in metadata for key in ["next_message_role", "next_message_content", "next_message_timestamp"]):
                     logger.warning(f"Skipping few-shot example due to missing essential metadata: {metadata} in RagAgent.")
                     continue
                 
                 agent_message = Message(
-                    sender=ParticipantRole(metadata["role"]),
-                    content="Agent response: " + str(metadata["content"]),
-                    timestamp=datetime.fromisoformat(str(metadata["timestamp"])),
+                    sender=ParticipantRole(metadata["next_message_role"]),
+                    content="Agent response: " + str(metadata["next_message_content"]),
+                    timestamp=datetime.fromisoformat(str(metadata["next_message_timestamp"])),
                 )
 
                 if agent_message.sender != ParticipantRole.AGENT:
