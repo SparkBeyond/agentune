@@ -16,9 +16,8 @@ from conversation_simulator.participants.agent.rag import RagAgentFactory
 from conversation_simulator.participants.customer.rag import RagCustomerFactory
 from conversation_simulator.simulation.progress import ProgressCallback
 from conversation_simulator.rag import conversations_to_langchain_documents
-from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.intent_extraction.zeroshot import ZeroshotIntentExtractor
-from conversation_simulator.outcome_detection.zeroshot import ZeroshotOutcomeDetector
+from conversation_simulator.outcome_detection.rag.rag import RAGOutcomeDetector
 from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
 
 from langchain_core.vectorstores import InMemoryVectorStore
@@ -169,6 +168,8 @@ def initialize_sidebar():
     # Default adversarial model (reasoning model)
     reasoning_models = models.get("Reasoning Models", [])
     default_adversarial: str = reasoning_models[-1] if reasoning_models else default_model
+
+    default_embedding: str = "text-embedding-3-small"
     
     # Settings mode toggle
     use_advanced = st.sidebar.toggle(
@@ -254,10 +255,11 @@ def initialize_sidebar():
         outcome_model_kwargs = basic_model_kwargs.copy()
         
     # Embedding model (always shown)
-    embedding_models = models.get("Embedding Models", ["text-embedding-3-small"])
+    embedding_models = models.get("Embedding Models", [default_embedding])
     embedding_model = st.sidebar.selectbox(
         "Embedding Model",
         embedding_models,
+        index=embedding_models.index(default_embedding),
         help="Model for generating embeddings for RAG",
         key="embedding_model"
     )
@@ -301,34 +303,22 @@ def initialize_sidebar():
     }
 
 
-async def build_vector_stores(
+async def build_vector_store(
     reference_conversations: list[Conversation],
     embeddings_model: OpenAIEmbeddings
-) -> tuple[InMemoryVectorStore, InMemoryVectorStore]:
-    """Build vector stores for agent and customer messages."""
+) -> InMemoryVectorStore:
+    """Build a single vector store from reference conversations."""
     
-    # Convert conversations to documents for each role
-    agent_documents = conversations_to_langchain_documents(
-        reference_conversations,
-        role=ParticipantRole.AGENT
-    )
-    customer_documents = conversations_to_langchain_documents(
-        reference_conversations,
-        role=ParticipantRole.CUSTOMER
-    )
+    # Convert conversations to documents (without role filtering for shared vector store)
+    documents = conversations_to_langchain_documents(reference_conversations)
     
-    # Create in-memory vector stores
-    agent_vector_store = InMemoryVectorStore.from_documents(
-        documents=agent_documents,
+    # Create a single in-memory vector store for all components
+    vector_store = InMemoryVectorStore.from_documents(
+        documents=documents,
         embedding=embeddings_model
     )
     
-    customer_vector_store = InMemoryVectorStore.from_documents(
-        documents=customer_documents,
-        embedding=embeddings_model
-    )
-    
-    return agent_vector_store, customer_vector_store
+    return vector_store
 
 
 async def run_simulation(
@@ -350,25 +340,28 @@ async def run_simulation(
     adversarial_model = ChatOpenAI(**config['adversarial_model_kwargs'], callbacks=callbacks)
     embeddings_model = OpenAIEmbeddings(model=config['embedding_model'])
     
-    # Build vector stores (using all conversations for context)
-    agent_vector_store, customer_vector_store = await build_vector_stores(
+    # Build single vector store (using all conversations for context)
+    vector_store = await build_vector_store(
         all_conversations,
         embeddings_model
     )
     
-    # Create participant factories
+    # Create participant factories using the single shared vector store
     agent_factory = RagAgentFactory(
         model=agent_model,
-        agent_vector_store=agent_vector_store
+        agent_vector_store=vector_store
     )
     
     customer_factory = RagCustomerFactory(
         model=customer_model,
-        customer_vector_store=customer_vector_store
+        customer_vector_store=vector_store
     )
 
     intent_extractor = ZeroshotIntentExtractor(intent_model, max_concurrency=config['max_concurrent_conversations'])
-    outcome_detector = ZeroshotOutcomeDetector(outcome_model, max_concurrency=config['max_concurrent_conversations'])
+    outcome_detector = RAGOutcomeDetector(
+        model=outcome_model,
+        vector_store=vector_store
+    )
     adversarial_tester = ZeroShotAdversarialTester(adversarial_model, max_concurrency=config['max_concurrent_conversations'])
     
     # Extract outcomes
