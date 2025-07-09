@@ -98,7 +98,8 @@ async def get_similar_finished_conversations(
     retrieved_docs: list[tuple[Document, float]] = await vector_store.asimilarity_search_with_score(
         query=query,
         k=k,
-        filter=filter_by_finished_conversation
+        # filter=filter_by_finished_conversation
+        filter = {"has_next_message": False}
     )
 
     # Sort by similarity score (highest first)
@@ -142,7 +143,8 @@ async def get_similar_examples_for_next_message_role(
     retrieved_docs: list[Document] = await vector_store.asimilarity_search(
         query=query,
         k=k,  # Use the exact k value requested
-        filter=filter_by_matching_next_speaker
+        # filter=filter_by_matching_next_speaker
+        filter={"next_message_role": target_role.value}  # Use a dictionary filter for LangChain
     )
     
     # Filter documents to ensure they have all required metadata
@@ -153,3 +155,65 @@ async def get_similar_examples_for_next_message_role(
     
     return valid_docs
 
+
+async def get_few_shot_examples(
+    conversation_history: Sequence[Message],
+    vector_store: VectorStore,
+    k: int
+) -> list[tuple[Document, float]]:
+    """Retrieves k relevant documents for a given role of the current last message."""
+
+    current_message_role = conversation_history[-1].sender
+    
+    query = _format_conversation_history(conversation_history)
+
+    retrieved_docs: list[tuple[Document, float]] = await vector_store.asimilarity_search_with_score(
+        query=query, k=k,
+        filter={"current_message_role": current_message_role.value}
+    )
+
+    # Sort retrieved docs by score
+    retrieved_docs.sort(key=lambda x: x[1], reverse=True)
+
+    # Deduplicate documents coming from the same conversation, by comparing the full_conversation metadata
+    unique_docs = []
+    seen_conversations = set()
+    for doc, score in retrieved_docs:
+        if doc.metadata.get("full_conversation") not in seen_conversations:
+            unique_docs.append((doc, score))
+            seen_conversations.add(doc.metadata.get("full_conversation"))
+
+    logger.debug(f"Retrieved {len(retrieved_docs)} documents, deduplicated to {len(unique_docs)}.")
+
+    return unique_docs
+
+
+async def probability_of_next_message_for(role: ParticipantRole, similar_docs: list[tuple[Document, float]]) -> float:
+    """Estimates the probability of a next message for a given role based on similar documents.
+    
+    This function uses a weighted approach where each document's contribution is
+    weighted by its similarity score, giving more influence to documents that are
+    more similar to the query.
+    
+    Args:
+        role: The participant role to calculate probability for.
+        similar_docs: List of (document, similarity_score) tuples.
+        
+    Returns:
+        A float between 0 and 1 representing the probability.
+    """
+    if not similar_docs:
+        return 0.0
+    
+    total_weight = sum(score for _, score in similar_docs)
+    if total_weight == 0:
+        return 0.0
+    
+    # Sum the weights of documents where the next message's role matches our target
+    weighted_matches = sum(
+        score for doc, score in similar_docs
+        if doc.metadata.get("has_next_message", False) and 
+           doc.metadata.get("next_message_role") == role.value
+    )
+    
+    return float(weighted_matches / total_weight)

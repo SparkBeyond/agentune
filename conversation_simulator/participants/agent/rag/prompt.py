@@ -1,35 +1,77 @@
 """Prompts for the RAG agent participant."""
 
+from pydantic import BaseModel, Field
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 
+
+class AgentResponse(BaseModel):
+    """Agent's response (if relevant) with reasoning."""
+    
+    reasoning: str = Field(
+        description="Detailed reasoning for why the agent would respond or not, and what the response would be"
+    )
+    should_respond: bool = Field(
+        description="Whether the agent should respond at this point"
+    )
+    response: str | None = Field(
+        default=None,
+        description="Response content, or null if should_respond is false"
+    )
+
+
 # System prompt for the agent
-AGENT_SYSTEM_PROMPT = """You are simulating a customer service assistant in a text-based conversation."""
+AGENT_SYSTEM_PROMPT = f"""You goal is to simulate an Agent in a text-based conversation.
+You'll be given a conversation history and a few examples of similar conversation states and their responses.
+Your task is to generate a response that is similar in both style and content, based on the examples.
+
+You will also be provided with a probability value which indicates the likelihood that the agent would respond at this point based on historical data.
+Use this probability to inform your decision about whether the agent should respond or not.
+
+---
+
+Reasoning directions
+
+Based on the examples, the current conversation, and the probability, answer the following questions:
+1. Would a real agent respond next?
+2. If so, what would the response be?
+3. If not, why not?
+
+---
+
+### Output format
+
+The output should be formatted as a JSON instance that conforms to the JSON schema below. **The `reasoning` field must be the first key in the object.**
+
+{PydanticOutputParser(pydantic_object=AgentResponse).get_format_instructions()}
+
+"""
 
 # Human message template for the agent
-AGENT_HUMAN_TEMPLATE = """Below are examples of similar conversation states and their responses:
+AGENT_HUMAN_TEMPLATE = """Instructions: follow the System Guidance above when deciding if the agent should answer at this point, and what they would answer.
+
+Below are examples of similar conversation states and their responses:
 
 {examples}
+
+---
 
 Current conversation:
 {current_conversation}
 
-Generate a response as a customer service assistant that is natural and informative. Your response should reflect how real customer service agents communicate.
+---
 
-CRITICAL REQUIREMENTS:
+Additional information about the current conversation:
 
-1. APPROPRIATE LENGTH: Use 1-3 sentences that provide sufficient information
-2. CONVERSATIONAL STYLE: Use contractions (I'm, don't, can't) and natural language
-3. MEANINGFUL CONTENT: Include enough detail to advance the conversation
+{goal_line}
 
-As a customer service assistant:
-- Provide clear, helpful information that directly addresses the customer's question
-- Include specific details when answering product or service questions
-- Maintain a friendly but professional tone
-- Use simple, clear language ("We'll ship your order tomorrow" not "Your item will be dispatched on the next business day")
-- Include product details, pricing, or policy information when relevant
+The probability that the customer would respond at this point (based on similar conversation patterns in the historical data) is estimated at: {probability}
 
-Your response should be realistic and contain enough substance to maintain a meaningful conversation."""
+---
+
+Output only the JSON object, following the workflow described in the System Guidance.
+"""
 
 # Create the prompt with both system and human messages
 AGENT_PROMPT = ChatPromptTemplate.from_messages([
