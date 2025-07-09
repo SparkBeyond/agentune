@@ -76,19 +76,36 @@ class FullSimulationRunner(Runner):
         max_messages: Maximum number of messages in conversation
     """
     
-    customer: Participant
-    agent: Participant
+    # Input participants (will be replaced with intent-aware versions)
+    _customer_input: Participant = field(alias='customer')
+    _agent_input: Participant = field(alias='agent')
     initial_message: MessageDraft
     intent: Intent
     outcomes: Outcomes
     outcome_detector: OutcomeDetector
     max_messages: int = 100
 
+    # Intent-aware participants (computed from inputs and intent)
+    customer: Participant = field(init=False)
+    agent: Participant = field(init=False)
+    
     # Private state - managed internally
     # Initialize with empty conversation - initial message will be added in run()
     _conversation: Conversation = field(init=False, factory=lambda: Conversation(messages=()))
     _is_complete: bool = field(init=False, default=False)
     
+    @customer.default
+    def _create_customer(self) -> Participant:
+        """Create the customer participant with intent."""
+        return self._customer_input.with_intent(self.intent.description) \
+            if self.intent.role == ParticipantRole.CUSTOMER else self._customer_input
+    
+    @agent.default
+    def _create_agent(self) -> Participant:
+        """Create the agent participant with intent."""
+        return self._agent_input.with_intent(self.intent.description) \
+            if self.intent.role == ParticipantRole.AGENT else self._agent_input
+
     async def run(self) -> ConversationResult:
         """Execute the full simulation conversation using a turn-based approach.
         
