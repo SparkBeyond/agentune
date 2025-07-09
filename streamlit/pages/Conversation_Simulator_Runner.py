@@ -6,7 +6,7 @@ A Streamlit page for running RAG-based conversation simulations.
 
 import streamlit as st
 import asyncio
-from typing import List, Dict, Any
+from typing import Any
 
 # Import conversation simulator components
 from conversation_simulator.models import Conversation, Outcomes
@@ -96,12 +96,12 @@ class StreamlitProgressCallback(ProgressCallback):
 
 def select_model_with_temperature(
     label: str,
-    chat_models: List[str],
+    chat_models: list[str],
     default_model: str,
-    reasoning_models: List[str],
+    reasoning_models: list[str],
     help_text: str,
     key_prefix: str = ""
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Select a model and optionally its temperature, returning model kwargs.
     
     Args:
@@ -124,7 +124,7 @@ def select_model_with_temperature(
         key=f"{key_prefix}_model" if key_prefix else None
     )
 
-    model_kwargs: Dict[str, Any] = {'model': model}
+    model_kwargs: dict[str, Any] = {'model': model}
 
     if model not in reasoning_models:
         temp = col2.number_input(
@@ -302,7 +302,7 @@ def initialize_sidebar():
 
 
 async def build_vector_stores(
-    reference_conversations: List[Conversation],
+    reference_conversations: list[Conversation],
     embeddings_model: OpenAIEmbeddings
 ) -> tuple[InMemoryVectorStore, InMemoryVectorStore]:
     """Build vector stores for agent and customer messages."""
@@ -332,9 +332,9 @@ async def build_vector_stores(
 
 
 async def run_simulation(
-    selected_conversations: List[Conversation],
-    all_conversations: List[Conversation],
-    config: Dict[str, Any],
+    selected_conversations: list[Conversation],
+    all_conversations: list[Conversation],
+    config: dict[str, Any],
     progress_callback: ProgressCallback
 ) -> SimulationSessionResult:
     """Run the conversation simulation."""
