@@ -23,11 +23,11 @@ Transform original conversations into realistic simulated ones by
   - For each scenario, create participants (agents and customers)
   - Run the conversation simulation using the `FullSimulationRunner`
   - Flow
-    - Runner iteratively asks both participants for their next message
-    - Participants generate messages and a timestamp of the next message
-    - Runner selects the next message based on the timestamps
-    - Outcome detector checks if the conversation has reached an outcome
-  - The conversation ends when each participant has nothing to say, or if the outcome detector detects an outcome (several messages can still be exchanged afterwards)
+    - Runner strictly alternates turns between participants
+    - Each participant can answer (generate a message) or pass (return None)
+    - Participants take turns in sequence, with the next participant based on who sent the previous message
+    - Outcome detector checks if the conversation has reached an outcome after each message
+  - The conversation ends when both participants pass consecutively (decide not to answer), or if the outcome detector detects an outcome (several messages can still be exchanged afterwards)
 - **Output**: List of simulated conversations
 #### Outcome Detection
 - **Input**: Conversation state

@@ -203,11 +203,11 @@ class FullSimulationRunner(Runner):
         Returns:
             ConversationResult with conversation history and metadata
         """
-        # Implementation: timestamp-based concurrent message generation
-        # - Both participants generate messages simultaneously
-        # - Runner selects message with earlier timestamp
-        # - Discards other message (first would influence second in real life)  
-        # - Uses outcome_detector to check for conversation completion
+        # Implementation: turn-based sequential message generation
+        # - Participants strictly alternate turns
+        # - Each participant in turn can respond with a message or pass (None)
+        # - Conversation ends when both participants pass consecutively
+        # - Uses outcome_detector to check for conversation completion after each message
         # - Supports configurable post-outcome message handling
     
     @property
@@ -235,9 +235,10 @@ class FullSimulationRunner(Runner):
 ```
 
 **Key characteristics:**
-- Timestamp-based concurrent message generation - both participants generate messages simultaneously
-- Runner selects message with earlier timestamp and discards the other (realistic conflict resolution)
-- Deterministic message ordering based on simulated timestamps
+- Turn-based sequential message generation - simulation runner strictly alternate between customer and agent
+- Each participant can either respond with a message or pass (return None)
+- Conversation ends when both participants pass consecutively
+- Deterministic message ordering based on strict turn order
 - No real-time constraints - can run at maximum speed
 - Both participants are AI-driven
 

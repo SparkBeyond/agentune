@@ -11,7 +11,7 @@ documentation = "https://github.com/SparkBeyond/conversation-simulator"
 
 
 [tool.poetry.dependencies]
-python = ">=3.12.6,<4.0"
+python = ">=3.12.3,<4.0"
 # Core dependencies
 attrs = "^25.3.0"
 cattrs = "^25.1.1"
@@ -51,7 +51,7 @@ line-length = 100                   # matches your guideline
 
 [tool.ruff.lint]
 # Linter configuration
-select = ["E", "F"]  # Only the essentials
+select = ["E", "F", "UP006", "UP007", "UP045", "UP035"]  # Add modern type hint rules
 ignore = ["E203", "E266", "E501"]  # Relax whitespace & long-line rules
 
 [tool.mypy]

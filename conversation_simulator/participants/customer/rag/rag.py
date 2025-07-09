@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-import random
-from datetime import datetime, timedelta
-from typing import List, Sequence
+from datetime import datetime
+from collections.abc import Sequence
 
 from attrs import frozen
 import attrs
@@ -17,7 +16,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 
 from ....models import Conversation, Message, ParticipantRole
-from ....rag import get_few_shot_examples
+from ....rag import indexing_and_retrieval
 from ..base import Customer, CustomerFactory
 from .prompt import CUSTOMER_PROMPT
 
@@ -50,7 +49,7 @@ class RagCustomer(Customer):
             return None
 
         # 1. Retrieval
-        few_shot_examples: List[Document] = await self._get_few_shot_examples(
+        few_shot_examples: list[Document] = await self._get_few_shot_examples(
             conversation.messages,
             k=3,
             vector_store=self.customer_vector_store
@@ -58,7 +57,7 @@ class RagCustomer(Customer):
 
         # 2. Augmentation
         formatted_examples = self._format_examples(few_shot_examples)
-        chat_history_langchain: List[BaseMessage] = conversation.to_langchain_messages()
+        chat_history_langchain: list[BaseMessage] = conversation.to_langchain_messages()
 
         # 3. Generation
         chain = self._create_llm_chain(model=self.model)
@@ -79,26 +78,22 @@ class RagCustomer(Customer):
         if not response_content.strip():
             return None
 
-        if conversation.messages:
-            last_timestamp = conversation.messages[-1].timestamp
-            delay_seconds = random.randint(5, 30)  # Customers take longer
-            response_timestamp = last_timestamp + timedelta(seconds=delay_seconds)
-        else:
-            response_timestamp = datetime.now()
+        # Use current timestamp for all messages
+        response_timestamp = datetime.now()
 
         return Message(
             sender=self.role, content=response_content, timestamp=response_timestamp
         )
 
     def _format_examples(
-        self, examples: List[Document]
-    ) -> List[BaseMessage]:
+        self, examples: list[Document]
+    ) -> list[BaseMessage]:
         """
         Formats the retrieved few-shot example Documents into a list of LangChain messages.
         Each Document's page_content (history, typically agent's turn) becomes an AIMessage,
         and the metadata (next customer message) becomes a HumanMessage.
         """
-        formatted_messages: List[BaseMessage] = []
+        formatted_messages: list[BaseMessage] = []
         for doc in examples:
             try:
                 # History (agent's turn or context)
@@ -142,8 +137,8 @@ class RagCustomer(Customer):
         return formatted_messages
 
     @staticmethod
-    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> List[Document]:
-        return await get_few_shot_examples(
+    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
+        return await indexing_and_retrieval.get_similar_examples_for_next_message_role(
             conversation_history=conversation_history,
             vector_store=vector_store,
             k=k,

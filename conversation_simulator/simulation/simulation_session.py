@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 import logging
 
 from attrs import field, frozen

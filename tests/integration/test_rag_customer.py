@@ -81,7 +81,9 @@ class TestRagCustomerIntegration:
             pytest.skip("OPENAI_API_KEY not set, skipping RAG integration test.")
         
         # Create vector stores directly in memory
-        customer_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS, ParticipantRole.CUSTOMER)
+        customer_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS)
+        # Filter documents where next_message_role is CUSTOMER
+        customer_documents = [doc for doc in customer_documents if doc.metadata.get('next_message_role') == ParticipantRole.CUSTOMER.value]
         customer_store = await FAISS.afrom_documents(customer_documents, embedding_model)
         
         assert isinstance(customer_store, VectorStore)

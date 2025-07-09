@@ -149,18 +149,22 @@ def mock_rag_conversations(base_timestamp):
 
 
 @pytest.fixture
-def agent_vector_store(embedding_model, mock_rag_conversations):
-    """Create a vector store with agent message examples."""
-    documents = conversations_to_langchain_documents(mock_rag_conversations, ParticipantRole.AGENT)
+def vector_store(embedding_model, mock_rag_conversations):
+    """Create a vector store with both agent and customer message examples."""
+    documents = conversations_to_langchain_documents(mock_rag_conversations)
     return FAISS.from_documents(documents, embedding_model)
+
+@pytest.fixture
+def agent_vector_store(vector_store):
+    """Return the shared vector store for agent."""
+    return vector_store
 
 
 @pytest.fixture
-def customer_vector_store(embedding_model, mock_rag_conversations):
-    """Create a vector store with customer message examples."""
-    documents = conversations_to_langchain_documents(mock_rag_conversations, ParticipantRole.CUSTOMER)
-    return FAISS.from_documents(documents, embedding_model)
-
+def customer_vector_store(vector_store):
+    """Return the shared vector store for customer."""
+    return vector_store
+    
 
 class TestRagAgentFactory:
     """Test the RAG agent factory."""

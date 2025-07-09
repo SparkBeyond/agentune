@@ -19,7 +19,7 @@ from conversation_simulator.rag import conversations_to_langchain_documents
 
 from conversation_simulator.runners.full_simulation import FullSimulationRunner
 from tests.runners.test_full_simulation import (
-    MockParticipant, 
+    MockTurnBasedParticipant, 
     MessageWithTimestamp, 
     MockOutcomeDetector 
 )
@@ -94,7 +94,9 @@ class TestRagAgentIntegration:
             pytest.skip("OPENAI_API_KEY not set, skipping RAG integration test.")
         
         # Create vector stores directly in memory
-        agent_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS, ParticipantRole.AGENT)
+        agent_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS)
+        # Filter documents where next_message_role is AGENT
+        agent_documents = [doc for doc in agent_documents if doc.metadata.get('next_message_role') == ParticipantRole.AGENT.value]
         agent_store = await FAISS.afrom_documents(agent_documents, embedding_model)        
         assert isinstance(agent_store, VectorStore)
         
@@ -226,7 +228,7 @@ class TestRagAgentIntegration:
                 timestamp=base_timestamp + timedelta(seconds=10),
             ),
         )
-        customer = MockParticipant(ParticipantRole.CUSTOMER, customer_messages)
+        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
 
         # 3. Setup runner
         initial_message = MessageDraft(

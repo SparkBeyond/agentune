@@ -5,7 +5,7 @@ This file contains fixtures and configurations used by pytest.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
@@ -49,9 +49,9 @@ def sample_chats_path(test_data_dir: Path) -> Path:
 
 
 @pytest.fixture(scope="session")
-def sample_chats_data(sample_chats_path: Path) -> List[Dict[str, Any]]:
+def sample_chats_data(sample_chats_path: Path) -> list[dict[str, Any]]:
     """Load and return the sample chats data."""
-    with open(sample_chats_path, 'r', encoding='utf-8') as f:
+    with open(sample_chats_path, encoding='utf-8') as f:
         data = json.load(f)
     if not isinstance(data, list):
         raise ValueError("Expected a list of conversations")

@@ -25,7 +25,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List
 
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -33,7 +32,6 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from conversation_simulator.models import (
     Conversation,
     Outcomes,
-    ParticipantRole,
 )
 from conversation_simulator.models.results import SimulationSessionResult
 from conversation_simulator.participants.agent.rag import RagAgentFactory
@@ -45,7 +43,7 @@ from conversation_simulator.util.structure import converter
 # Get module logger
 logger = logging.getLogger(__name__)
 
-def load_sample_conversations() -> List[Conversation]:
+def load_sample_conversations() -> list[Conversation]:
     """Load sample conversations from the test data file using cattrs.
     
     Returns:
@@ -63,14 +61,14 @@ def load_sample_conversations() -> List[Conversation]:
         with data_file.open('r', encoding='utf-8') as f:
             data = json.load(f)
         # Convert JSON data to Conversation objects using cattrs
-        conversations: List[Conversation] = converter.structure(data['conversations'], List[Conversation])
+        conversations: list[Conversation] = converter.structure(data['conversations'], list[Conversation])
         logger.info(f"Loaded {len(conversations)} sample conversations")
         return conversations
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         raise ValueError(f"Failed to parse conversation data: {e}") from e
 
 
-def extract_outcomes_from_conversations(conversations: List[Conversation]) -> Outcomes:
+def extract_outcomes_from_conversations(conversations: list[Conversation]) -> Outcomes:
     """Extract unique outcomes from conversations.
     
     Args:
@@ -95,53 +93,14 @@ def extract_outcomes_from_conversations(conversations: List[Conversation]) -> Ou
     return Outcomes(outcomes=outcomes_tuple)
 
 
-async def build_simple_vector_stores(
-    reference_conversations: List[Conversation],
-    embeddings_model: OpenAIEmbeddings
-) -> tuple[InMemoryVectorStore, InMemoryVectorStore]:
-    """Build simple in-memory vector stores for agent and customer messages.
-    
-    Args:
-        reference_conversations: List of reference conversations
-        embeddings_model: OpenAI embeddings model instance
-        
-    Returns:
-        Tuple of (agent_vector_store, customer_vector_store)
-    """
-    logger.info("Building in-memory vector stores from reference conversations")
-    
-    # Convert conversations to documents for each role
-    agent_documents = conversations_to_langchain_documents(
-        reference_conversations, 
-        role=ParticipantRole.AGENT
-    )
-    customer_documents = conversations_to_langchain_documents(
-        reference_conversations, 
-        role=ParticipantRole.CUSTOMER
-    )
-    
-    logger.info(f"Created {len(agent_documents)} agent documents and {len(customer_documents)} customer documents")
-    
-    # Create in-memory vector stores
-    agent_vector_store = InMemoryVectorStore.from_documents(
-        documents=agent_documents,
-        embedding=embeddings_model
-    )
-    
-    customer_vector_store = InMemoryVectorStore.from_documents(
-        documents=customer_documents,
-        embedding=embeddings_model
-    )
-    
-    logger.info("In-memory vector stores created successfully")
-    return agent_vector_store, customer_vector_store
+
 
 
 async def run_rag_simulation(
     embeddings_model_name: str,
     chat_model_name: str,
     outcomes: Outcomes,
-    reference_conversations: List[Conversation],
+    reference_conversations: list[Conversation],
     number_of_simulations: int = 20,
 ) -> SimulationSessionResult:
     """Run RAG-based simulation with specified parameters.
@@ -164,21 +123,26 @@ async def run_rag_simulation(
     chat_model = ChatOpenAI(model=chat_model_name, temperature=0.0)
     embeddings_model = OpenAIEmbeddings(model=embeddings_model_name)
     
-    # Build vector stores
-    agent_vector_store, customer_vector_store = await build_simple_vector_stores(
-        reference_conversations, 
-        embeddings_model
-    )
+    # Build a single vector store
+    logger.info("Building in-memory vector store from reference conversations")
+    
+    # Convert conversations to documents
+    documents = conversations_to_langchain_documents(reference_conversations)
+    logger.info(f"Created {len(documents)} documents with role metadata")
+    
+    # Create a single in-memory vector store
+    vector_store = InMemoryVectorStore.from_documents(documents, embeddings_model)
+    logger.info("In-memory vector store created successfully")
     
     # Create participant factories
     agent_factory = RagAgentFactory(
         model=chat_model,
-        agent_vector_store=agent_vector_store
+        agent_vector_store=vector_store
     )
     
     customer_factory = RagCustomerFactory(
         model=chat_model,
-        customer_vector_store=customer_vector_store
+        customer_vector_store=vector_store
     )
     
     # Build simulation session
