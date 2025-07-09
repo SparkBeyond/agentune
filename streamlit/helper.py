@@ -12,20 +12,27 @@ import random
 import os
 import re
 from datetime import datetime
-from typing import Dict, Optional, Tuple, Any, List
+from typing import Any
 
 from conversation_simulator.models.conversation import Conversation
 from conversation_simulator.models.results import SimulationSessionResult
 from conversation_simulator.util.structure import converter
 
 
-def load_simulation_results(uploaded_file) -> Optional[Dict]:
+def get_llm_callbacks() -> list:
+    """Get a list of callback handlers for LLM operations."""
+    return []
+
+
+def load_simulation_results(uploaded_file) -> SimulationSessionResult | None:
     """Load simulation results from uploaded JSON file."""
     try:
         content = uploaded_file.read()
         if isinstance(content, bytes):
             content = content.decode('utf-8')
-        return dict(json.loads(content))
+        json_content = json.loads(content)
+        result: SimulationSessionResult = converter.structure(json_content, SimulationSessionResult)
+        return result
     except json.JSONDecodeError as e:
         st.error(f"Error parsing JSON file: {e}")
         return None
@@ -35,7 +42,7 @@ def load_simulation_results(uploaded_file) -> Optional[Dict]:
 
 
 def load_conversation_data(uploaded_file) -> list[Conversation]:
-    """Load sample conversations from the test data file using cattrs.
+    """Load conversation data from uploaded JSON file.
     
     Returns:
         List of sample Conversation objects
@@ -53,21 +60,19 @@ def load_conversation_data(uploaded_file) -> list[Conversation]:
         return []
 
 
-def extract_conversation_data(results: Dict) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def extract_conversation_data(results: SimulationSessionResult) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Extract conversation data into DataFrames for analysis."""
     
     # Extract original conversations
     original_data = []
-    for conv in results.get('original_conversations', []):
-        conv_dict = conv['conversation']
-        # Convert dictionary to Conversation object
-        conversation = converter.structure(conv_dict, Conversation)
+    for orig_conv in results.original_conversations:
+        conversation = orig_conv.conversation
         
         # Handle outcome safely
         outcome_name = conversation.outcome.name if conversation.outcome else 'unknown'
         
         original_data.append({
-            'id': conv['id'],
+            'id': orig_conv.id,
             'type': 'Original',
             'num_messages': len(conversation.messages),
             'outcome': outcome_name,
@@ -77,19 +82,17 @@ def extract_conversation_data(results: Dict) -> Tuple[pd.DataFrame, pd.DataFrame
     
     # Extract simulated conversations
     simulated_data = []
-    for conv in results.get('simulated_conversations', []):
-        conv_dict = conv['conversation']
-        # Convert dictionary to Conversation object
-        conversation = converter.structure(conv_dict, Conversation)
+    for sim_conv in results.simulated_conversations:
+        conversation = sim_conv.conversation
         
         # Handle outcome safely
         outcome_name = conversation.outcome.name if conversation.outcome else 'unknown'
         
         simulated_data.append({
-            'id': conv['id'],
+            'id': sim_conv.id,
             'type': 'Simulated',
-            'scenario_id': conv.get('scenario_id', 'unknown'),
-            'original_id': conv.get('original_conversation_id', 'unknown'),
+            'scenario_id': sim_conv.scenario_id,
+            'original_id': sim_conv.original_conversation_id,
             'num_messages': len(conversation.messages),
             'outcome': outcome_name,
             'first_message': conversation.messages[0].content[:100] + "..." if conversation.messages else "",
@@ -102,7 +105,7 @@ def extract_conversation_data(results: Dict) -> Tuple[pd.DataFrame, pd.DataFrame
     return original_df, simulated_df
 
 
-def conversations_to_dataframe(conversations: List[Conversation]) -> pd.DataFrame:
+def conversations_to_dataframe(conversations: list[Conversation]) -> pd.DataFrame:
     """Convert conversation data to DataFrame for display and selection."""
     data = []
     for i, conv in enumerate(conversations):
@@ -135,13 +138,19 @@ def show_conversation_filters(df: pd.DataFrame, table_name: str) -> pd.DataFrame
     with col2:
         # Message count filter
         min_messages, max_messages = int(df['num_messages'].min()), int(df['num_messages'].max())
-        message_range = st.slider(
-            "Filter by message count",
-            min_messages,
-            max_messages,
-            (min_messages, max_messages),
-            key=f"messages_{table_name}"
-        )
+        
+        # Handle case where all conversations have the same number of messages
+        if min_messages == max_messages:
+            st.write(f"All conversations have {min_messages} messages")
+            message_range = (min_messages, max_messages)
+        else:
+            message_range = st.slider(
+                "Filter by message count",
+                min_messages,
+                max_messages,
+                (min_messages, max_messages),
+                key=f"messages_{table_name}"
+            )
     
     # Text search filter row
     search_col1, search_col2, search_col3 = st.columns([3, 1, 1])
@@ -232,7 +241,7 @@ def show_conversation_filters(df: pd.DataFrame, table_name: str) -> pd.DataFrame
     return filtered_df
 
 
-def show_random_selection_controls(length: int, table_name: str) -> Optional[List[int]]:
+def show_random_selection_controls(length: int, table_name: str) -> list[int] | None:
     """Show random selection controls and return selected indices for the given length."""
     
     st.subheader("🎲 Random Selection")
@@ -288,7 +297,7 @@ def select_from_dataframe(
     table_name: str,
     multi_rows: bool = False,
     random_select: bool = False
-) -> Tuple[Any, Any]:
+) -> tuple[Any, Any]:
     """Select conversations from dataframe with filtering."""
     
     if df.empty:
@@ -444,14 +453,14 @@ def display_conversation(conversation: Conversation, title: str = "Conversation"
 
 def create_outcome_pie_chart(outcome_distribution, outcome_colors, title):
     """Create a pie chart for outcome distribution."""
-    if outcome_distribution.get('outcome_counts') or outcome_distribution.get('conversations_without_outcome', 0) > 0:
+    if outcome_distribution.outcome_counts or outcome_distribution.conversations_without_outcome > 0:
         outcome_data = [
             {'outcome': outcome, 'count': count}
-            for outcome, count in outcome_distribution.get('outcome_counts', {}).items()
+            for outcome, count in outcome_distribution.outcome_counts.items()
         ]
         outcome_data.append({
-            'outcome': 'No Outcome',
-            'count': outcome_distribution['conversations_without_outcome']
+            'outcome': 'unknown',
+            'count': outcome_distribution.conversations_without_outcome
         })
 
         outcomes_df = pd.DataFrame(outcome_data)
@@ -461,7 +470,7 @@ def create_outcome_pie_chart(outcome_distribution, outcome_colors, title):
         st.plotly_chart(fig_orig, use_container_width=True)
 
 
-def get_openai_models() -> Dict[str, List[str]]:
+def get_openai_models() -> dict[str, list[str]]:
     """Get available OpenAI models organized by category."""
     return {
         "GPT Models": [
@@ -489,7 +498,7 @@ def get_openai_models() -> Dict[str, List[str]]:
     }
 
 
-def format_results_for_download(result: SimulationSessionResult, filename_prefix: str = "simulation_results") -> Tuple[str, str]:
+def format_results_for_download(result: SimulationSessionResult, filename_prefix: str = "simulation_results") -> tuple[str, str]:
     """Format simulation results for download."""
     # Create filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -525,7 +534,7 @@ def show_simulation_progress(current: int, total: int, description: str = "Runni
     st.progress(progress, text=f"{description}... ({current}/{total})")
 
 
-def extract_unique_outcomes(conversations: List[Conversation]) -> List[Dict]:
+def extract_unique_outcomes(conversations: list[Conversation]) -> list[dict]:
     """Extract unique outcomes from conversations."""
     unique_outcomes = {}
     

@@ -29,7 +29,7 @@ from conversation_simulator.simulation.simulation_session import SimulationSessi
 from helper import (
     load_conversation_data, conversations_to_dataframe, select_from_dataframe,
     display_conversation, get_openai_models, format_results_for_download,
-    validate_api_key, extract_unique_outcomes
+    validate_api_key, extract_unique_outcomes, get_llm_callbacks
 )
 
 
@@ -339,12 +339,15 @@ async def run_simulation(
 ) -> SimulationSessionResult:
     """Run the conversation simulation."""
     
-    # Initialize models
-    agent_model = ChatOpenAI(**config['agent_model_kwargs'])
-    customer_model = ChatOpenAI(**config['customer_model_kwargs'])
-    intent_model = ChatOpenAI(**config['intent_model_kwargs'])
-    outcome_model = ChatOpenAI(**config['outcome_model_kwargs'])
-    adversarial_model = ChatOpenAI(**config['adversarial_model_kwargs'])
+    # Get logging callback tracer
+    callbacks = get_llm_callbacks()
+    
+    # Initialize models with logging callbacks
+    agent_model = ChatOpenAI(**config['agent_model_kwargs'], callbacks=callbacks)
+    customer_model = ChatOpenAI(**config['customer_model_kwargs'], callbacks=callbacks)
+    intent_model = ChatOpenAI(**config['intent_model_kwargs'], callbacks=callbacks)
+    outcome_model = ChatOpenAI(**config['outcome_model_kwargs'], callbacks=callbacks)
+    adversarial_model = ChatOpenAI(**config['adversarial_model_kwargs'], callbacks=callbacks)
     embeddings_model = OpenAIEmbeddings(model=config['embedding_model'])
     
     # Build vector stores (using all conversations for context)

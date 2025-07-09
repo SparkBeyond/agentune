@@ -8,8 +8,10 @@ This is the main page of the Conversation Simulator Streamlit application.
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
 import numpy as np
+
+# Import simulation result model
+from conversation_simulator.models.results import SimulationSessionResult
 
 # Import helper functions
 from helper import (
@@ -26,12 +28,12 @@ st.set_page_config(
 )
 
 
-def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.DataFrame, results: dict):
+def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.DataFrame, results: SimulationSessionResult):
     """Create comprehensive statistics dashboard."""
     st.header("📊 Simulation Statistics")
     
     # Extract analysis results
-    analysis_result = results.get('analysis_result', {})
+    analysis_result = results.analysis_result
     
     # Session overview
     col1, col2, col3, col4 = st.columns(4)
@@ -39,15 +41,15 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
     with col1:
         st.metric(
             "Session Name",
-            results.get('session_name', 'Unknown'),
+            results.session_name,
         )
     
     with col2:
         duration = "Unknown"
-        if results.get('started_at') and results.get('completed_at'):
+        if results.started_at and results.completed_at:
             try:
-                start = datetime.fromisoformat(results['started_at'].replace('Z', '+00:00'))
-                end = datetime.fromisoformat(results['completed_at'].replace('Z', '+00:00'))
+                start = results.started_at
+                end = results.completed_at
                 duration = str(end - start).split('.')[0]  # Remove microseconds
             except (ValueError, TypeError):
                 duration = "Unknown"
@@ -61,35 +63,39 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
 
     # Description
     st.subheader("📝 Session Description")
-    st.write(results.get('session_description', 'No description provided'))
+    st.write(results.session_description)
 
     # Outcome distribution comparison
     st.subheader("🎯 Outcome Distribution Comparison")
     
     # Use pre-calculated outcome distributions from analysis_result
-    outcome_comparison = analysis_result.get('outcome_comparison', {})
+    outcome_comparison = analysis_result.outcome_comparison
     
-    if outcome_comparison and len(outcome_comparison) > 0:
+    if outcome_comparison:
         # Create consistent color mapping for outcomes across all distributions
-        all_outcomes = set(['No Outcome'])  # Ensure 'No Outcome' is always included
-        for dist_name, dist_data in outcome_comparison.items():
-            if dist_data.get('outcome_counts'):
-                all_outcomes.update(dist_data['outcome_counts'].keys())
+        all_outcomes = set(['unknown'])  # Ensure 'unknown' is always included
+        
+        # Collect outcomes from all distributions
+        distributions = [
+            ('Original Distribution', outcome_comparison.original_distribution),
+            ('Simulated Distribution', outcome_comparison.simulated_distribution),
+            ('Original With Predicted Outcomes', outcome_comparison.original_with_predicted_outcomes)
+        ]
+        
+        for dist_name, dist_data in distributions:
+            if dist_data.outcome_counts:
+                all_outcomes.update(dist_data.outcome_counts.keys())
         
         colors = px.colors.qualitative.Light24
         outcome_colors = {outcome: colors[i % len(colors)] for i, outcome in enumerate(sorted(all_outcomes))}
         
-        # Dynamically create columns based on number of distributions
-        distributions = list(outcome_comparison.items())
+        # Create columns for the distributions
         num_distributions = len(distributions)
-        
         cols = st.columns(num_distributions)
+        
         for i, (dist_name, dist_data) in enumerate(distributions):
-            # Create a readable title from the distribution name
-            title = dist_name.replace('_', ' ').title() + " Outcomes"
-            
             with cols[i]:
-                create_outcome_pie_chart(dist_data, outcome_colors, title)
+                create_outcome_pie_chart(dist_data, outcome_colors, dist_name)
     else:
         st.info("No outcome comparison data available.")
     
@@ -97,18 +103,20 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
     st.subheader("📏 Message Length Distribution")
     
     # Use pre-calculated message distribution statistics from analysis_result
-    message_comparison = analysis_result.get('message_distribution_comparison', {})
+    message_comparison = analysis_result.message_distribution_comparison
     
-    # Create data for histogram using pre-calculated distributions - dynamically handle all types
+    # Create data for histogram using pre-calculated distributions
     histogram_data = []
     
-    # Dynamically process all stats types
-    for stats_key, stats_data in message_comparison.items():
-        if stats_key.endswith('_stats') and stats_data.get('message_count_distribution'):
-            # Extract type name from stats key (e.g., 'original_stats' -> 'Original')
-            type_name = stats_key.replace('_stats', '').replace('_', ' ').title()
-            
-            for msg_count, frequency in stats_data['message_count_distribution'].items():
+    # Process original and simulated stats
+    stats_mapping = [
+        ('Original', message_comparison.original_stats),
+        ('Simulated', message_comparison.simulated_stats)
+    ]
+    
+    for type_name, msg_stats in stats_mapping:
+        if msg_stats.message_count_distribution:
+            for msg_count, frequency in msg_stats.message_count_distribution.items():
                 for _ in range(frequency):
                     histogram_data.append({'num_messages': int(msg_count), 'type': type_name})
     
@@ -138,29 +146,32 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
     # Summary statistics table
     st.subheader("📈 Summary Statistics")
     
-    # Use pre-calculated statistics - dynamically handle all distribution types
+    # Use pre-calculated statistics
     stats_data = []
     
     if outcome_comparison and message_comparison:
-        # Loop through all distribution types dynamically
-        for dist_name in outcome_comparison.keys():
-            # Get corresponding stats data
-            stats_key = f"{dist_name.replace('_distribution', '')}_stats"
-            dist_stats = message_comparison.get(stats_key, {})
-            dist_data = outcome_comparison[dist_name]
-            
-            if dist_stats:
-                # Create readable type name
-                type_name = dist_name.replace('_distribution', '').replace('_', ' ').title()
+        # Create statistics for original and simulated conversations
+        summary_stats_mapping = [
+            ('Original', outcome_comparison.original_distribution, message_comparison.original_stats),
+            ('Simulated', outcome_comparison.simulated_distribution, message_comparison.simulated_stats),
+            ('Original With Predicted Outcomes', outcome_comparison.original_with_predicted_outcomes, message_comparison.original_stats)
+        ]
+        
+        for type_name, dist_data, msg_stats in summary_stats_mapping:
+            if dist_data and msg_stats:
+                # Find most common outcome
+                most_common_outcome = 'N/A'
+                if dist_data.outcome_counts:
+                    most_common_outcome = max(dist_data.outcome_counts.items(), key=lambda x: x[1])[0]
                 
                 stats_data.append({
                     'Type': type_name,
-                    'Count': dist_data.get('total_conversations', 0),
-                    'Avg Messages': f"{dist_stats.get('mean_messages', 0):.1f}",
-                    'Min Messages': dist_stats.get('min_messages', 0),
-                    'Max Messages': dist_stats.get('max_messages', 0),
-                    'Std Dev Messages': f"{dist_stats.get('std_dev_messages', 0):.1f}",
-                    'Most Common Outcome': max(dist_data.get('outcome_counts', {}), key=dist_data.get('outcome_counts', {}).get, default='N/A')
+                    'Count': dist_data.total_conversations,
+                    'Avg Messages': f"{msg_stats.mean_messages:.1f}",
+                    'Min Messages': msg_stats.min_messages,
+                    'Max Messages': msg_stats.max_messages,
+                    'Std Dev Messages': f"{msg_stats.std_dev_messages:.1f}",
+                    'Most Common Outcome': most_common_outcome
                 })
     
     if stats_data:
@@ -173,13 +184,13 @@ def create_statistics_dashboard(original_df: pd.DataFrame, simulated_df: pd.Data
     st.subheader("🎭 Adversarial Evaluation")
     
     # Use pre-calculated adversarial evaluation from analysis_result
-    adversarial_eval = analysis_result.get('adversarial_evaluation', {})
+    adversarial_eval = analysis_result.adversarial_evaluation
     
-    if adversarial_eval and adversarial_eval.get('total_pairs_evaluated', 0) > 0:
+    if adversarial_eval and adversarial_eval.total_pairs_evaluated > 0:
         col1, col2, col3 = st.columns(3)
         
-        total_pairs = adversarial_eval.get('total_pairs_evaluated', 0)
-        correct_identifications = adversarial_eval.get('correct_identifications', 0)
+        total_pairs = adversarial_eval.total_pairs_evaluated
+        correct_identifications = adversarial_eval.correct_identifications
         accuracy = (correct_identifications / total_pairs * 100) if total_pairs > 0 else 0
         
         with col1:
@@ -367,16 +378,16 @@ def main():
                     st.metric(
                         "Outcome Comparison",
                         outcome_match,
-                        delta=f"{sim_outcome} vs {orig_outcome}"
+                        delta=f"{orig_outcome} vs {sim_outcome}"
                     )
                 
                 with comparison_col3:
                     # Calculate average message length for both conversations
-                    orig_msgs = selected_orig['conversation_data']['messages']
-                    sim_msgs = selected_sim['conversation_data']['messages']
-                    
-                    orig_avg_len = np.mean([len(msg['content']) for msg in orig_msgs]) if orig_msgs else 0
-                    sim_avg_len = np.mean([len(msg['content']) for msg in sim_msgs]) if sim_msgs else 0
+                    orig_msgs = selected_orig['conversation_data'].messages
+                    sim_msgs = selected_sim['conversation_data'].messages
+
+                    orig_avg_len = np.mean([len(msg.content) for msg in orig_msgs]) if orig_msgs else 0
+                    sim_avg_len = np.mean([len(msg.content) for msg in sim_msgs]) if sim_msgs else 0
                     
                     st.metric(
                         "Avg Message Length",
