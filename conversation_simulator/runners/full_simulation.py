@@ -2,6 +2,7 @@
 
 import abc
 from datetime import datetime
+import logging
 
 from attrs import define, field
 
@@ -14,6 +15,9 @@ from ..models.results import ConversationResult
 from ..models.roles import ParticipantRole
 from ..outcome_detection.base import OutcomeDetector
 from ..participants.base import Participant
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProgressHandler(abc.ABC):
@@ -55,6 +59,12 @@ class FullSimulationRunner(Runner):
     
     Single-use runner that manages conversation state internally.
     Provides progress tracking capabilities for conversations.
+    
+    The conversation flow:
+    1. Participants alternate turns (customer -> agent -> customer -> ...)
+    2. Each participant can respond with a message or pass (return None)
+    3. Conversation ends when both participants pass consecutively
+    4. Outcome detection is performed once at the end of the conversation
 
     Args:
         customer: Customer participant
@@ -64,7 +74,6 @@ class FullSimulationRunner(Runner):
         outcomes: Possible outcomes to detect
         outcome_detector: Strategy for detecting conversation outcomes
         max_messages: Maximum number of messages in conversation
-        max_messages_after_outcome: Max additional messages after outcome detected (0 = stop immediately)
     """
     
     customer: Participant
@@ -74,14 +83,11 @@ class FullSimulationRunner(Runner):
     outcomes: Outcomes
     outcome_detector: OutcomeDetector
     max_messages: int = 100
-    max_messages_after_outcome: int = 5  # Allow goodbye messages after outcome
 
     # Private state - managed internally
     # Initialize with empty conversation - initial message will be added in run()
     _conversation: Conversation = field(init=False, factory=lambda: Conversation(messages=()))
     _is_complete: bool = field(init=False, default=False)
-    _outcome_detected: bool = field(init=False, default=False)
-    _messages_after_outcome: int = field(init=False, default=0)
     
     async def run(self) -> ConversationResult:
         """Execute the full simulation conversation using a turn-based approach.
@@ -93,9 +99,8 @@ class FullSimulationRunner(Runner):
         Returns:
             ConversationResult with conversation history and metadata
         """
-        # Initialize timing
         start_time = datetime.now()
-        
+
         # Add initial message to conversation
         initial_msg = self.initial_message.to_message(start_time)
         self._conversation = self._conversation.add_message(initial_msg)
@@ -113,10 +118,11 @@ class FullSimulationRunner(Runner):
             # Ask the current participant for their next message
             try:
                 message = await current_participant.get_next_message(self._conversation)
-            except Exception:
-                # If the participant had an error, end the conversation
+            except Exception as e:
+                # If the participant had an error, log it and end the conversation
+                logger.error(f"Error from {current_participant_role}: {e}")
                 self._is_complete = True
-                break
+                raise e
             
             # Check if the current participant passed (returned None)
             if message is None:
@@ -138,35 +144,21 @@ class FullSimulationRunner(Runner):
             
             # Update the current participant role for next turn alternation
             current_participant_role = self._alternate_turns(current_participant_role)
-            
-            # Check for outcome detection (only if not already detected)
-            if not self._outcome_detected:
-                detected_outcome = await self.outcome_detector.detect_outcome(
-                    self._conversation,
-                    self.intent,
-                    self.outcomes
-                )
-                if detected_outcome:
-                    self._conversation = self._conversation.set_outcome(detected_outcome)
-                    self._outcome_detected = True
-                    
-                    # If max_messages_after_outcome is 0, end immediately
-                    if self.max_messages_after_outcome == 0:
-                        self._is_complete = True
-                        break
-            
-            # Track messages after outcome detection
-            elif self._outcome_detected:
-                self._messages_after_outcome += 1
-                if self._messages_after_outcome >= self.max_messages_after_outcome:
-                    self._is_complete = True
-                    break
         
         # Check if we reached max messages
         if len(self._conversation.messages) >= self.max_messages and not self._is_complete:
             self._is_complete = True
         
-        # Calculate duration and return result
+        # Detect outcome after conversation ends
+        detected_outcome = await self.outcome_detector.detect_outcome(
+            self._conversation,
+            self.intent,
+            self.outcomes
+        )
+        
+        if detected_outcome:
+            self._conversation = self._conversation.set_outcome(detected_outcome)
+        
         duration = datetime.now() - start_time
         return ConversationResult(
             conversation=self._conversation,

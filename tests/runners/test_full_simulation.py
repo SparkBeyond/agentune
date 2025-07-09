@@ -145,14 +145,14 @@ class TestFullSimulationRunner:
         assert runner.is_complete
     
     @pytest.mark.asyncio
-    async def test_outcome_detection_with_followup_messages(
+    async def test_outcome_detection_after_full_conversation(
         self,
         base_timestamp: datetime,
         sample_intent: Intent,
         sample_outcomes: Outcomes,
         initial_message: MessageDraft
     ) -> None:
-        """Test outcome detection with configurable follow-up messages."""
+        """Test outcome detection at end of conversation."""
         
         # Create participants with enough messages
         customer_messages = (
@@ -168,6 +168,7 @@ class TestFullSimulationRunner:
                 content="Goodbye!",
                 timestamp=base_timestamp + timedelta(seconds=25)
             ),
+            None
         )
         agent_messages = (
             MessageWithTimestamp(
@@ -182,86 +183,30 @@ class TestFullSimulationRunner:
                 content="You're welcome!",
                 timestamp=base_timestamp + timedelta(seconds=30)
             ),
+            None
         )
 
         customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
         agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
         
-        # Test with 2 follow-up messages allowed
-        outcome_detector = MockOutcomeDetector(detect_after_messages=3)  # Detect after initial + 2 messages
+        # Outcome detector will detect outcome when conversation ends
+        outcome_detector = MockOutcomeDetector(detect_after_messages=0)  # Always detect outcome
         runner = FullSimulationRunner(
             customer=customer,
             agent=agent,
             initial_message=initial_message,
             intent=sample_intent,
             outcomes=sample_outcomes,
-            outcome_detector=outcome_detector,
-            max_messages_after_outcome=2
+            outcome_detector=outcome_detector
         )
         
         # Run simulation
         result = await runner.run()
         
-        # Verify outcome was detected and conversation continued for follow-up
+        # Verify outcome was detected at the end
         assert result.conversation.outcome is not None
         assert result.conversation.outcome.name == "resolved"
-        assert len(result.conversation.messages) == 5  # initial + 2 + 2 follow-up
-        assert runner.is_complete
-    
-
-    @pytest.mark.asyncio
-    async def test_immediate_termination_on_outcome(
-        self,
-        base_timestamp: datetime,
-        sample_intent: Intent,
-        sample_outcomes: Outcomes,
-        initial_message: MessageDraft
-    ) -> None:
-        """Test immediate termination when max_messages_after_outcome is 0."""
-        
-        customer_messages = (
-            MessageWithTimestamp(
-                content="Quick question",
-                timestamp=base_timestamp + timedelta(seconds=5)
-            ),
-            MessageWithTimestamp(
-                content="Should not appear",
-                timestamp=base_timestamp + timedelta(seconds=15)
-            ),
-        )
-        agent_messages = (
-            MessageWithTimestamp(
-                content="Quick answer",
-                timestamp=base_timestamp + timedelta(seconds=10)
-            ),
-            MessageWithTimestamp(
-                content="Should not appear",
-                timestamp=base_timestamp + timedelta(seconds=20)
-            ),
-        )
-
-        customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
-        agent = MockTurnBasedParticipant(ParticipantRole.AGENT, agent_messages)
-        
-        # Test with immediate termination
-        outcome_detector = MockOutcomeDetector(detect_after_messages=2, outcome=Outcome(name="quick_resolution", description="Quick resolution achieved"))  # Detect after initial + 1 message
-        runner = FullSimulationRunner(
-            customer=customer,
-            agent=agent,
-            initial_message=initial_message,
-            intent=sample_intent,
-            outcomes=sample_outcomes,
-            outcome_detector=outcome_detector,
-            max_messages_after_outcome=0  # Immediate termination
-        )
-        
-        # Run simulation
-        result = await runner.run()
-        
-        # Verify immediate termination
-        assert result.conversation.outcome is not None
-        assert result.conversation.outcome.name == "quick_resolution"
-        assert len(result.conversation.messages) == 2  # initial + 1 message that triggered outcome
+        assert len(result.conversation.messages) == 7  # initial + 3 customer + 3 agent
         assert runner.is_complete
 
     @pytest.mark.asyncio
@@ -269,15 +214,13 @@ class TestFullSimulationRunner:
         self,
         conversation_customer_starts_with_passes: Conversation,
         sample_intent: Intent,
-        sample_outcomes: Outcomes,
-        base_timestamp: datetime
+        sample_outcomes: Outcomes
     ) -> None:
         """Test round-trip reconstruction of a conversation where customer starts and includes passes."""
         await _assert_round_trip_conversation(
             conversation_customer_starts_with_passes,
             sample_intent,
-            sample_outcomes,
-            base_timestamp
+            sample_outcomes
         )
 
     @pytest.mark.asyncio
@@ -285,15 +228,13 @@ class TestFullSimulationRunner:
         self,
         conversation_agent_starts_with_passes: Conversation,
         sample_intent: Intent,
-        sample_outcomes: Outcomes,
-        base_timestamp: datetime
+        sample_outcomes: Outcomes
     ) -> None:
         """Test round-trip reconstruction of a conversation where agent starts and includes passes."""
         await _assert_round_trip_conversation(
             conversation_agent_starts_with_passes,
             sample_intent,
-            sample_outcomes,
-            base_timestamp
+            sample_outcomes
         )
 
     @pytest.mark.asyncio
@@ -301,15 +242,13 @@ class TestFullSimulationRunner:
         self,
         conversation_simple_back_and_forth: Conversation,
         sample_intent: Intent,
-        sample_outcomes: Outcomes,
-        base_timestamp: datetime
+        sample_outcomes: Outcomes
     ) -> None:
         """Test round-trip reconstruction of a simple conversation with perfect alternation."""
         await _assert_round_trip_conversation(
             conversation_simple_back_and_forth,
             sample_intent,
-            sample_outcomes,
-            base_timestamp
+            sample_outcomes
         )
 
     @pytest.mark.asyncio
@@ -324,8 +263,7 @@ class TestFullSimulationRunner:
         await _assert_round_trip_conversation(
             conversation_multiple_consecutive_passes,
             sample_intent,
-            sample_outcomes,
-            base_timestamp
+            sample_outcomes
         )
 
     @pytest.mark.asyncio
@@ -340,8 +278,7 @@ class TestFullSimulationRunner:
         await _assert_round_trip_conversation(
             conversation_agent_starts_simple,
             sample_intent,
-            sample_outcomes,
-            base_timestamp
+            sample_outcomes
         )
 
     @pytest.mark.asyncio
@@ -349,15 +286,13 @@ class TestFullSimulationRunner:
         self,
         conversation_single_message: Conversation,
         sample_intent: Intent,
-        sample_outcomes: Outcomes,
-        base_timestamp: datetime
+        sample_outcomes: Outcomes
     ) -> None:
         """Test round-trip reconstruction of a conversation with just one message."""
         await _assert_round_trip_conversation(
             conversation_single_message,
             sample_intent,
-            sample_outcomes,
-            base_timestamp
+            sample_outcomes
         )
 
     @pytest.mark.asyncio
@@ -372,8 +307,7 @@ class TestFullSimulationRunner:
         await _assert_round_trip_conversation(
             conversation_alternating_passes_pattern,
             sample_intent,
-            sample_outcomes,
-            base_timestamp
+            sample_outcomes
         )
 
     @pytest.mark.asyncio
@@ -391,7 +325,6 @@ class TestFullSimulationRunner:
         conversation_fixture_name: str,
         sample_intent: Intent,
         sample_outcomes: Outcomes,
-        base_timestamp: datetime,
         request: pytest.FixtureRequest
     ) -> None:
         """Parametrized test that runs round-trip on all conversation fixtures."""
@@ -401,16 +334,14 @@ class TestFullSimulationRunner:
         await _assert_round_trip_conversation(
             conversation,
             sample_intent,
-            sample_outcomes,
-            base_timestamp
+            sample_outcomes
         )
     
 
 async def _assert_round_trip_conversation(
     conversation: Conversation,
     sample_intent: Intent,
-    sample_outcomes: Outcomes,
-    base_timestamp: datetime
+    sample_outcomes: Outcomes
 ) -> None:
     """Assert that a conversation can be reconstructed via round-trip through participants.
     
