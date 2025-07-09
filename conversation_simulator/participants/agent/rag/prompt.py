@@ -47,7 +47,7 @@ Based on the examples, the current conversation, and the probability, answer the
 
 ---
 
-### Output format
+Output format
 
 The output should be formatted as a JSON instance that conforms to the JSON schema below. **The `reasoning` field must be the first key in the object.**
 
