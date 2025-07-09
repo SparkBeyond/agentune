@@ -106,14 +106,14 @@ class RagCustomer(Customer):
                 # Example customer response from metadata
                 metadata = doc.metadata
                 # Validate essential keys before creating Message object
-                if not all(key in metadata for key in ["role", "content", "timestamp"]):
+                if not all(key in metadata for key in ["next_message_role", "next_message_content", "next_message_timestamp"]):
                     logger.warning(f"Skipping few-shot example due to missing essential metadata: {metadata} in RagCustomer.")
                     continue
                 
                 customer_message = Message(
-                    sender=ParticipantRole(metadata["role"]),
-                    content='Customer response: ' + str(metadata["content"]),
-                    timestamp=datetime.fromisoformat(str(metadata["timestamp"])),
+                    sender=ParticipantRole(metadata["next_message_role"]),
+                    content='Customer response: ' + str(metadata["next_message_content"]),
+                    timestamp=datetime.fromisoformat(str(metadata["next_message_timestamp"])),
                 )
 
                 if customer_message.sender != ParticipantRole.CUSTOMER:
