@@ -26,8 +26,15 @@ AGENT_SYSTEM_PROMPT = f"""You goal is to simulate an Agent in a text-based conve
 You'll be given a conversation history and a few examples of similar conversation states and their responses.
 Your task is to generate a response that is similar in both style and content, based on the examples.
 
+Important! Following the same style is **mandatory**!
+
+---
+
+Decision-making guidance
+
 You will also be provided with a probability value which indicates the likelihood that the agent would respond at this point based on historical data.
 Use this probability to inform your decision about whether the agent should respond or not.
+Additionally, consider the content of the current conversation and the examples provided, to determine if the agent should respond.
 
 ---
 
@@ -66,7 +73,7 @@ Additional information about the current conversation:
 
 {goal_line}
 
-The probability that the customer would respond at this point (based on similar conversation patterns in the historical data) is estimated at: {probability}
+The probability that the agent would respond at this point (based on similar conversation patterns in the historical data) is estimated at: {probability}
 
 ---
 

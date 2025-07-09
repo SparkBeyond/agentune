@@ -67,18 +67,16 @@ class RagAgent(Agent):
             vector_store=self.agent_vector_store,
             k=20
         )
-        logger.debug(f"Role: {self.role}, Retrieved {len(few_shot_examples)} few-shot examples")
 
         # 2. Calculate probability of returning a message for the target role
         probability = await indexing_and_retrieval.probability_of_next_message_for(
             role=self.role,
             similar_docs=few_shot_examples
         )
-        logger.debug(f"Role: {self.role}, Probability of next message: {probability}")
 
         # 3. Examples selection and formatting
-        # Select few-shot examples randomly, to avoid bias
-        few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
+        # Select up to 5 most relevant examples
+        few_shot_examples = few_shot_examples[:5]
 
         # Format few-shot examples and history for the prompt template
         formatted_examples = self._format_examples(few_shot_examples)
@@ -100,17 +98,19 @@ class RagAgent(Agent):
         }
         response: AgentResponse = await self.llm_chain.ainvoke(chain_input)
 
+        log_message = f"{self.role.value} - retrieved {len(few_shot_examples)} examples, probability : {probability}, decided to respond: {response.should_respond}"
+        if response.should_respond:
+            log_message = log_message + f"\n==> {response.response}"
+        logger.debug(log_message)
+
         # 6. Process response
         # Check if the agent should respond
         if not response.should_respond:
-            logger.debug(f"Role: {self.role}: decided not to respond at this point.")
             return None
         
         if response.response is None:
             logger.error("Agent response is None, even though should_respond is True!")
             return None
-
-        logger.debug(f"Role: {self.role}: decided to respond: {response.reasoning}. Response: {response.response}")
 
         # Use current timestamp for all messages
         response_timestamp = datetime.now()
@@ -127,9 +127,11 @@ class RagAgent(Agent):
         Each Document's page_content (history, typically customer's turn) becomes a HumanMessage,
         and the metadata (next agent message) becomes an AIMessage.
         """
+        def _format_example(doc: Document, num: int) -> str:
+            return f"Example conversation {num}:\n{doc.metadata['full_conversation']}"
+
         conversations = [
-            f"Example conversation {i+1}:\n{doc.metadata['full_conversation']}" 
-            for i, (doc, _) in enumerate(examples)
+            _format_example(doc, i) for i, (doc, _) in enumerate(examples)
         ]
 
         return "\n\n".join(conversations)
