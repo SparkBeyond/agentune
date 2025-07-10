@@ -131,7 +131,7 @@ class RagAgent(Agent):
             return f"Example conversation {num}:\n{doc.metadata['full_conversation']}"
 
         conversations = [
-            _format_example(doc, i) for i, (doc, _) in enumerate(examples)
+            _format_example(doc, i+1) for i, (doc, _) in enumerate(examples)
         ]
 
         return "\n\n".join(conversations)

@@ -1,16 +1,10 @@
 """Prompts for the RAG customer participant."""
 
-from pydantic import BaseModel, Field
+from ._customer_response import CustomerResponse
+
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
-
-
-class CustomerResponse(BaseModel):
-    """Customer's response (if relevant) with reasoning."""
-    reasoning: str = Field(description="Detailed reasoning for the customer's decision")
-    should_respond: bool = Field(description="Whether the customer should respond at this point")
-    response: str | None = Field(description="The customer's response if they choose to respond", default=None)
 
 
 # System prompt for the customer
@@ -52,18 +46,27 @@ The output should be formatted as a JSON instance that conforms to the JSON sche
 # Human message template for the customer
 CUSTOMER_HUMAN_TEMPLATE = """Instructions: follow the System Guidance above when deciding if the customer should answer at this point, and what they would answer.
 
+---
+
 Below are examples of similar conversation states and their responses:
 
 {examples}
 
-Current conversation:
-{current_conversation}
+---
 
 Additional information about the current conversation:
 
 {goal_line}
 
 {probability_description}
+
+---
+
+Current conversation:
+
+{current_conversation}
+
+---
 
 Output only the JSON object, following the workflow described in the System Guidance.
 """

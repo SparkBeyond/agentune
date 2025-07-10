@@ -18,6 +18,7 @@ from ....models import Conversation, Message
 from ....rag import indexing_and_retrieval
 from ..base import Customer, CustomerFactory
 from .prompt import CUSTOMER_PROMPT, CustomerResponse
+from .first_message_prompt import CUSTOMER_FIRST_MESSAGE_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,12 @@ class RagCustomer(Customer):
     model: BaseChatModel
     seed: int = 0
     intent_description: str | None = None
-    llm_chain: Runnable = field(init=False)
+    _llm_chain: Runnable = field(init=False)
+    _first_message_chain: Runnable = field(init=False)
+
     _random: Random = field(init=False, repr=False)
 
-    @llm_chain.default
+    @_llm_chain.default
     def _create_llm_chain(self) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the customer."""
         # Use the imported CUSTOMER_PROMPT from prompt.py
@@ -40,6 +43,16 @@ class RagCustomer(Customer):
         
         # Return the runnable chain with the imported prompt
         return prompt | self.model | PydanticOutputParser(pydantic_object=CustomerResponse)
+    
+    @_first_message_chain.default
+    def _create_first_message_chain(self) -> Runnable:
+        """Creates the chain for the first customer message."""
+        # Use the imported CUSTOMER_PROMPT from prompt.py
+        # This is a special case for the first message, which has a different prompt
+        first_message_prompt = CUSTOMER_FIRST_MESSAGE_PROMPT
+        
+        # Return the runnable chain with the imported prompt
+        return first_message_prompt | self.model | PydanticOutputParser(pydantic_object=CustomerResponse)
     
     @_random.default
     def _create_random(self) -> Random:
@@ -54,10 +67,12 @@ class RagCustomer(Customer):
         """Generate next customer message using RAG LLM approach."""
         
         # 1. Retrieval
+        k = 20 if not conversation.customer_messages else 50 # Use more examples for the first message, for diversity
+
         few_shot_examples: list[tuple[Document, float]] = await indexing_and_retrieval.get_few_shot_examples(
             conversation_history=conversation.messages,
             vector_store=self.customer_vector_store,
-            k=20
+            k=k
         )
 
         # 2. Calculate probability of returning a message for the target role
@@ -66,10 +81,7 @@ class RagCustomer(Customer):
             similar_docs=few_shot_examples
         )
 
-        if not conversation.customer_messages:
-            probability_description = ""
-        else:
-            probability_description = f"The probability that the customer would respond at this point (based on similar conversation patterns in the historical data) is estimated at: {probability:.2f}"
+        probability_description = f"The probability that the customer would respond at this point (based on similar conversation patterns in the historical data) is estimated at: {probability:.2f}"
 
         # 3. Examples selection and formatting
         if not conversation.customer_messages:
@@ -91,13 +103,20 @@ class RagCustomer(Customer):
             goal_line = ""
 
         # 5. Chain execution
+        if not conversation.customer_messages:
+            # If this is the first message by the customer, use the first message chain
+            chain = self._first_message_chain
+        else:
+            # Otherwise, use the regular chain
+            chain = self._llm_chain
+
         chain_input = {
             "examples": formatted_examples,
             "current_conversation": formatted_current_conversation,
             "probability_description": probability_description,
             "goal_line": goal_line
         }
-        response: CustomerResponse = await self.llm_chain.ainvoke(chain_input)
+        response: CustomerResponse = await chain.ainvoke(chain_input)
 
         log_message = f"{self.role.value} - retrieved {len(few_shot_examples)} examples, probability : {probability}, decided to respond: {response.should_respond}"
         if response.should_respond:
@@ -131,7 +150,7 @@ class RagCustomer(Customer):
             return f"Example conversation {num}:\n{doc.metadata['full_conversation']}"
 
         conversations = [
-            _format_example(doc, i) for i, (doc, _) in enumerate(examples)
+            _format_example(doc, i+1) for i, (doc, _) in enumerate(examples)
         ]
 
         return "\n\n".join(conversations)
