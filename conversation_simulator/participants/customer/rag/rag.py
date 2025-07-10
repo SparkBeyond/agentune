@@ -144,10 +144,10 @@ class RagCustomer(Customer):
     def _format_examples(self, examples: list[tuple[Document, float]]) -> str:
         """
         Formats the retrieved few-shot example Documents into a string format.
-        Each Document's metadata contains the full conversation example.
+        Uses focused conversation extraction to show only relevant context.
         """
         def _format_example(doc: Document, num: int) -> str:
-            return f"Example conversation {num}:\n{doc.metadata['full_conversation']}"
+            return f"Example conversation {num}:\n{doc.metadata['focused_conversation_part']}"
 
         conversations = [
             _format_example(doc, i+1) for i, (doc, _) in enumerate(examples)

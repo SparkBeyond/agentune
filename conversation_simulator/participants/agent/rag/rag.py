@@ -123,12 +123,11 @@ class RagAgent(Agent):
     
     def _format_examples(self, examples: list[tuple[Document, float]]) -> str:
         """
-        Formats the retrieved few-shot example Document into a LangChain message.
-        Each Document's page_content (history, typically customer's turn) becomes a HumanMessage,
-        and the metadata (next agent message) becomes an AIMessage.
+        Formats the retrieved few-shot example Documents into focused conversation examples.
+        Uses focused conversation extraction to show only relevant context around the current message.
         """
         def _format_example(doc: Document, num: int) -> str:
-            return f"Example conversation {num}:\n{doc.metadata['full_conversation']}"
+            return f"Example conversation {num}:\n{doc.metadata['focused_conversation_part']}"
 
         conversations = [
             _format_example(doc, i+1) for i, (doc, _) in enumerate(examples)

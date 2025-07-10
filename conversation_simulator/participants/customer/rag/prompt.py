@@ -16,9 +16,7 @@ Your task is to generate a response that is similar in both style and content, b
 
 Decision-making guidance
 
-You will also be provided with a probability value which indicates the likelihood that the customer would respond at this point based on historical data.
-Use this probability to inform your decision about whether the customer should respond or not.
-Additionally, consider the content of the current conversation and the examples provided, to determine if the agent should respond.
+Consider the content of the current conversation and the examples provided, especially of the example most similar to current conversation, to determine if the customer should respond.
 
 --- 
 
@@ -30,10 +28,10 @@ Reasoning flow:
 
 1. Pick an example with a customer most similar in style to the current customer. Explain your choice.
 2. Use that customer as a main source of inspiration for your decision.
-3. Act as that customer.
-4. Given the current state of the conversation would that customer answer?
-5. If not - prefer not to answer. If yes - what style would they choose?
-6. What would they answer? Remember to keep it consistent with the current conversation, by both style and content!
+3. Act as that customer. Check what is the next message in the conversation (marked by "next message" in the example).
+4. Whose turn was it to respond next? If it was the agent's turn, then the customer should not respond at this point.
+5. If it was the customer's turn, then generate a response based on the example and the current conversation.
+6. You can use other conversation history messages as context, but do not use them as examples.
 
 ---
 
@@ -57,8 +55,6 @@ Below are examples of similar conversation states and their responses:
 Additional information about the current conversation:
 
 {goal_line}
-
-{probability_description}
 
 ---
 

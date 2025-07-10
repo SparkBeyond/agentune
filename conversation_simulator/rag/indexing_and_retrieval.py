@@ -1,4 +1,3 @@
-
 import logging
 from collections.abc import Sequence
 
@@ -13,6 +12,96 @@ logger = logging.getLogger(__name__)
 def _format_conversation_history(messages: Sequence[Message]) -> str:
     """Formats a list of messages into a single string."""
     return "\n".join([f"{msg.sender.value.capitalize()}: {msg.content}" for msg in messages])
+
+def _extract_focused_part_of_conversation(
+    messages: Sequence[Message],
+    current_index: int,
+    focus_size: int,
+) -> str:
+    """Return a formatted view on a conversation centred on ``current_index``.
+
+    The window includes ``focus_size`` messages *before* and *after* the current
+    message (clamped to the conversation bounds). The format shows the conversation
+    context, who should respond next, and what the actual response was.
+
+    Examples:
+
+        Example 1:
+        *Last few messages until the latest message*
+        ...
+        CUSTOMER: Music
+        AGENT: What kind of music do you like?
+        CUSTOMER: I like rock music, especially classic rock.
+
+        *Next to respond*: AGENT
+        *Response*: "That's great! Classic rock has some amazing bands. Do you have a favorite band?"
+
+        Example 2:
+        *Last few messages until the latest message*
+        AGENT: Hi there! How can I help you today?
+        CUSTOMER: Looking to buy a thing.
+
+        *Next to respond*: AGENT
+        *Response*: "Sure, I can help with that. What kind of thing are you looking for?"
+
+        Example 3:
+        *Last few messages until the latest message*
+        ...
+        AGENT: Is there anything else I can assist you with?
+        CUSTOMER: No, that's all for now. Thank you!
+
+        *Next to respond*: AGENT
+        *Response*: "You're welcome! Have a great day!"
+
+        Example 4:
+        AGENT: Hi, how can I help you today?  
+
+        *Next to respond*: None, the conversation has ended without additional messages.
+    """
+
+    # ---- Input validation -------------------------------------------------
+    if not messages:
+        raise ValueError("messages is empty")
+
+    if focus_size < 0:
+        raise ValueError("focus_size must be non‑negative")
+
+    if current_index < 0 or current_index >= len(messages):
+        raise ValueError("current_index is out of range")
+
+    # ---- Determine window for context messages -----------------------------
+    start_index = max(0, current_index - focus_size)
+    end_index = current_index + 1  # Include up to current message
+
+    context_messages: Sequence[Message] = messages[start_index:end_index]
+
+    # ---- Build formatted output -------------------------------------------
+    lines: list[str] = []
+    
+    # Add header
+    lines.append("*Last few messages until the latest message*")
+    
+    # Add ellipsis if we're not showing from the beginning
+    if start_index > 0:
+        lines.append("...")
+    
+    # Add context messages
+    for msg in context_messages:
+        lines.append(f"{msg.sender.value.upper()}: {msg.content}")
+    
+    # Add empty line before next to respond
+    lines.append("")
+    
+    # Determine who should respond next and what the response was
+    next_message_index = current_index + 1
+    if next_message_index < len(messages):
+        next_message = messages[next_message_index]
+        lines.append(f"*Next to respond*: {next_message.sender.value.upper()}")
+        lines.append(f'*Response*: "{next_message.content}"')
+    else:
+        lines.append("*Next to respond*: None, the conversation has ended without additional messages.")
+
+    return "\n".join(lines)
 
 
 def _get_metadata(metadata_or_doc: dict | Document) -> dict:
@@ -46,6 +135,9 @@ def conversations_to_langchain_documents(
             page_content = _format_conversation_history(history_messages)
 
             full_conversation = _format_conversation_history(conversation.messages)
+            focused_conversation_part = _extract_focused_part_of_conversation(
+                conversation.messages, i, focus_size=2
+            )
 
             outcome = conversation.outcome.name if conversation.outcome else None
 
@@ -56,6 +148,7 @@ def conversations_to_langchain_documents(
                 "current_message_role": current_message.sender.value,
                 "current_message_timestamp": current_message.timestamp.isoformat(),
                 "full_conversation": full_conversation,
+                "focused_conversation_part": focused_conversation_part,
                 "outcome": outcome
             }
 
@@ -217,3 +310,68 @@ async def probability_of_next_message_for(role: ParticipantRole, similar_docs: l
     )
     
     return float(weighted_matches / total_weight)
+
+def _parse_conversation_from_full_text(full_conversation: str) -> list[Message]:
+    """Parse a full conversation string back into Message objects.
+    
+    Args:
+        full_conversation: String formatted as "ROLE: content\nROLE: content\n..."
+        
+    Returns:
+        List of Message objects
+    """
+    from datetime import datetime
+    
+    messages = []
+    lines = full_conversation.strip().split('\n')
+    
+    for line in lines:
+        if ':' not in line:
+            continue
+            
+        role_str, content = line.split(':', 1)
+        role_str = role_str.strip().upper()
+        content = content.strip()
+        
+        try:
+            role = ParticipantRole(role_str.lower())
+            message = Message(
+                sender=role,
+                content=content,
+                timestamp=datetime.now()  # Placeholder timestamp
+            )
+            messages.append(message)
+        except ValueError:
+            # Skip invalid role lines
+            continue
+    
+    return messages
+
+
+def format_focused_example(doc: Document, example_num: int, focus_size: int = 2) -> str:
+    """Format a document as a focused example conversation.
+    
+    Args:
+        doc: Document containing conversation metadata
+        example_num: Number for labeling the example
+        focus_size: Number of messages to include before and after current message
+        
+    Returns:
+        Formatted focused conversation example
+    """
+    current_index = doc.metadata.get('current_message_index', 0)
+    full_conversation = doc.metadata.get('full_conversation', '')
+    
+    if not full_conversation:
+        return f"Example conversation {example_num}:\n[No conversation data available]"
+    
+    # Parse the conversation back into Message objects
+    messages = _parse_conversation_from_full_text(full_conversation)
+    
+    if not messages or current_index >= len(messages):
+        return f"Example conversation {example_num}:\n{full_conversation}"
+    
+    # Extract focused part
+    focused_part = _extract_focused_part_of_conversation(messages, current_index, focus_size)
+    
+    return f"Example conversation {example_num}:\n{focused_part}"
