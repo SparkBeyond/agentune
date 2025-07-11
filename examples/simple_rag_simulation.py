@@ -37,6 +37,9 @@ from conversation_simulator.models.results import SimulationSessionResult
 from conversation_simulator.rag import conversations_to_langchain_documents
 from conversation_simulator.simulation.session_builder import SimulationSessionBuilder
 from conversation_simulator.util.structure import converter
+from opik.integrations.langchain import OpikTracer
+
+os.environ["OPIK_URL_OVERRIDE"] = "http://localhost:5173/api"
 
 # Get module logger
 logger = logging.getLogger(__name__)
@@ -48,8 +51,9 @@ def load_sample_conversations() -> list[Conversation]:
         List of sample Conversation objects
     """
     # Path to the sample data file
-    data_file = Path(__file__).parent.parent / "tests" / "data" / "dch2_sampled_dataset.json"
-    
+    # data_file = Path(__file__).parent.parent / "tests" / "data" / "dch2_sampled_dataset.json"
+    data_file = Path(__file__).parent.parent / "tests" / "data" / "company_a_conversations_converted.json"
+
     logger.info(f"Loading sample conversations from {data_file}")
     
     if not data_file.exists():
@@ -91,9 +95,6 @@ def extract_outcomes_from_conversations(conversations: list[Conversation]) -> Ou
     return Outcomes(outcomes=outcomes_tuple)
 
 
-
-
-
 async def run_rag_simulation(
     embeddings_model_name: str,
     chat_model_name: str,
@@ -116,9 +117,10 @@ async def run_rag_simulation(
         SimulationSessionResult containing the simulation outcomes
     """
     logger.info(f"Starting RAG simulation with model: {chat_model_name}")
+    opik_tracer = OpikTracer(project_name=f'rag_simulation_{chat_model_name}_mimic_prompt_1440')
     
     # Initialize OpenAI components
-    chat_model = ChatOpenAI(model=chat_model_name, temperature=0.0)
+    chat_model = ChatOpenAI(model=chat_model_name, temperature=0.0, callbacks=[opik_tracer])
     embeddings_model = OpenAIEmbeddings(model=embeddings_model_name)
     
     # Build a single vector store
@@ -225,7 +227,7 @@ async def main() -> None:
         # Run the simulation with the core function
         result = await run_rag_simulation(
             embeddings_model_name="text-embedding-3-small",
-            chat_model_name="gpt-4o-mini",
+            chat_model_name="gpt-4o",
             outcomes=outcomes,
             reference_conversations=reference_conversations,
             number_of_simulations=20,  # Limit to 20 for this example
