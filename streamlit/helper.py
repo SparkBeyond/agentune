@@ -19,9 +19,22 @@ from conversation_simulator.models.results import SimulationSessionResult
 from conversation_simulator.util.structure import converter
 
 
-def get_llm_callbacks() -> list:
-    """Get a list of callback handlers for LLM operations."""
-    return []
+def get_llm_callbacks(project_name: str) -> list:
+    """
+    Configure and return callback handlers for LLM logging and tracking.
+    
+    Returns:
+        list: List containing LangChain logging callback and Opik tracer
+    """
+    from opik.integrations.langchain import OpikTracer
+    
+    # Configure Opik for local instance
+    os.environ["OPIK_URL_OVERRIDE"] = "http://localhost:5173/api"
+    
+    # Initialize Opik tracer for conversation tracking with project name
+    opik_tracer = OpikTracer(project_name=project_name)
+    
+    return [opik_tracer]
 
 
 def load_simulation_results(uploaded_file) -> SimulationSessionResult | None:
@@ -480,6 +493,7 @@ def get_openai_models() -> dict[str, list[str]]:
             "gpt-4.5-preview-2025-02-27",
             "gpt-4o-2024-08-06",
             "gpt-4o-mini-2024-07-18",
+            "gpt-4o-2024-11-20",
         ],
         "Reasoning Models": [
             "o1-2024-12-17",
