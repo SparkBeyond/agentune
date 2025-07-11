@@ -8,9 +8,10 @@ from collections.abc import Sequence
 
 from attrs import field, frozen
 import attrs
+from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
@@ -23,6 +24,20 @@ from .prompt import AGENT_PROMPT
 
 logger = logging.getLogger(__name__)
 
+
+class AgentResponse(BaseModel):
+    """Agent's response with reasoning."""
+
+    reasoning: str = Field(
+        description="Detailed reasoning for why the agent would respond or not, and what the response would be"
+    )
+    should_respond: bool = Field(
+        description="Whether the agent should respond at this point"
+    )
+    response: str | None = Field(
+        default=None,
+        description="Response content, or null if should_respond is false"
+    )
 
 @frozen
 class RagAgent(Agent):
@@ -46,7 +61,7 @@ class RagAgent(Agent):
         prompt = AGENT_PROMPT
         
         # Return the runnable chain with the imported prompt
-        return prompt | self.model | StrOutputParser()
+        return prompt | self.model | PydanticOutputParser(pydantic_object=AgentResponse)
 
     def with_intent(self, intent_description: str) -> RagAgent:
         """Return a new RagAgent instance with the specified intent."""
@@ -54,84 +69,89 @@ class RagAgent(Agent):
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next agent message using RAG LLM approach."""
-        if not conversation.messages or conversation.messages[-1].sender != ParticipantRole.CUSTOMER:
-            return None
+        #if not conversation.messages or conversation.messages[-1].sender != ParticipantRole.CUSTOMER:
+        #    return None
 
         # 1. Retrieval
         few_shot_examples: list[Document] = await self._get_few_shot_examples(
-            conversation.messages,
-            k=3,
-            vector_store=self.agent_vector_store
+            conversation.messages, k=3, vector_store=self.agent_vector_store
         )
 
         # 2. Augmentation
         # Format few-shot examples and history for the prompt template
         formatted_examples = self._format_examples(few_shot_examples)
-        chat_history: list[BaseMessage] = conversation.to_langchain_messages()
 
         # 3. Generation
-        response_content = await self.llm_chain.ainvoke({
+        formatted_current_convo = "\n".join(
+            [f"{msg.sender.value.capitalize()}: {msg.content}" for msg in conversation.messages]
+        )
+        response_content: AgentResponse = await self.llm_chain.ainvoke({
             "examples": "\n\n".join([str(msg.content) for msg in formatted_examples]),
-            "current_conversation": "\n".join([str(msg.content) for msg in chat_history]),
+            "current_conversation": formatted_current_convo,
         })
 
-        if not response_content.strip():
+        if not response_content.should_respond or not response_content.response:
             return None
+
+        # Guardrail: Check for repeated messages
+        if conversation.messages:
+            last_message = conversation.messages[-1]
+            if (
+                last_message.sender == self.role
+                and last_message.content == response_content.response
+            ):
+                logger.warning(
+                    f"Guardrail triggered: Agent attempted to repeat the last message: '{response_content.response}'"
+                )
+                return None
 
         # Use current timestamp for all messages
         response_timestamp = datetime.now()
 
         return Message(
-            sender=self.role,
-            content=response_content,
-            timestamp=response_timestamp,
+            sender=self.role, content=response_content.response, timestamp=response_timestamp
         )
 
     def _format_examples(self, examples: list[Document]) -> list[BaseMessage]:
         """
         Formats the retrieved few-shot example Documents into a list of LangChain messages.
         Each Document's page_content (history, typically customer's turn) becomes a HumanMessage,
-        and the metadata (next agent message) becomes an AIMessage.
+        and the metadata (next agent message) becomes an embedded agent response in the conversation history.
         """
         formatted_messages: list[BaseMessage] = []
-        for doc in examples:
+        for index, doc in enumerate(examples):
             try:
-                # History (customer's turn or context)
-                history_content = doc.page_content
-                if not history_content.strip(): # Ensure history is not empty
-                    logger.warning("Skipping few-shot example with empty history (page_content) in RagAgent.")
-                    continue
-                formatted_messages.append(HumanMessage(content=history_content))
-
                 # Example agent response from metadata
                 metadata = doc.metadata
                 # Validate essential keys before creating Message object
-                if not all(key in metadata for key in ["next_message_role", "next_message_content", "next_message_timestamp"]):
+                if not all(
+                    key in metadata
+                    for key in ["next_message_content", "full_conversation"]
+                ):
                     logger.warning(f"Skipping few-shot example due to missing essential metadata: {metadata} in RagAgent.")
                     continue
-                
-                agent_message = Message(
-                    sender=ParticipantRole(metadata["next_message_role"]),
-                    content="Agent response: " + str(metadata["next_message_content"]),
-                    timestamp=datetime.fromisoformat(str(metadata["next_message_timestamp"])),
-                )
 
-                if agent_message.sender != ParticipantRole.AGENT:
-                    logger.warning(
-                        f"Skipping example with unexpected role '{agent_message.sender}' in RagAgent._format_examples. Expected AGENT."
+                full_conversation = str(metadata["full_conversation"])
+                agent_response = str(metadata["next_message_content"])
+
+                # Replace the agent's turn in the conversation with the desired format
+                agent_turn_str = f"Agent: {agent_response}"
+                if agent_turn_str in full_conversation:
+                    modified_conversation = full_conversation.replace(
+                        agent_turn_str, f"**Current agent response**: {agent_response}"
                     )
-                    continue
-                
-                # Ensure content is not empty before adding
-                if not agent_message.content.strip():
-                    logger.warning("Skipping few-shot example with empty content for AIMessage in RagAgent.")
-                    continue
+                else:
+                    logger.warning(
+                        f"Could not find agent turn '{agent_turn_str}' in full conversation. Using original."
+                    )
+                    modified_conversation = full_conversation
 
-                agent_message_langchain = agent_message.to_langchain()
-                agent_message_langchain.content = 'Agent response: ' + str(agent_message.content)
-                formatted_messages.append(agent_message_langchain)
-            except (KeyError, ValueError, TypeError) as e:
-                logger.warning(f"Error processing document for few-shot example in RagAgent: {doc}. Error: {e}. Skipping.")
+                # Add indexing for the examples
+                formatted_messages.append(HumanMessage(content=f"Example {index + 1}:"))
+                formatted_messages.append(HumanMessage(content=modified_conversation))
+                
+            except Exception as e:
+                logger.error(f"Error processing few-shot example in RagAgent: {e}")
                 continue
         return formatted_messages
 
