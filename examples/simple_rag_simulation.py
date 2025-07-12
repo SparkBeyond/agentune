@@ -129,7 +129,8 @@ async def run_rag_simulation(
     logger.info(f"Created {len(documents)} documents with role metadata")
     
     # Create a single in-memory vector store for all components
-    vector_store = InMemoryVectorStore.from_documents(documents, embeddings_model)
+    vector_store = InMemoryVectorStore(embedding=embeddings_model)
+    vector_store.add_documents(documents)
     logger.info("In-memory vector store created successfully")
     
     # Build simulation session using the opinionated builder
