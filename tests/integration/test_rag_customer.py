@@ -10,8 +10,7 @@ from conversation_simulator.participants.customer.rag import RagCustomer
 from conversation_simulator.models.conversation import Conversation
 from conversation_simulator.models.message import Message
 from conversation_simulator.models.roles import ParticipantRole
-from langchain_core.vectorstores import VectorStore
-from langchain_community.vectorstores import FAISS
+from langchain_core.vectorstores import VectorStore, InMemoryVectorStore
 from conversation_simulator.rag import conversations_to_langchain_documents
 
 logger = logging.getLogger(__name__)
@@ -84,13 +83,14 @@ class TestRagCustomerIntegration:
         customer_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS)
         # Filter documents where next_message_role is CUSTOMER
         customer_documents = [doc for doc in customer_documents if doc.metadata.get('next_message_role') == ParticipantRole.CUSTOMER.value]
-        customer_store = await FAISS.afrom_documents(customer_documents, embedding_model)
+        customer_store = InMemoryVectorStore(embedding=embedding_model)
+        await customer_store.aadd_documents(customer_documents)
         
         assert isinstance(customer_store, VectorStore)
         
         # Add cleanup to ensure no files are left behind
         def cleanup():
-            # FAISS in-memory stores don't need cleanup, but this is a safeguard
+            # InMemoryVectorStore doesn't need cleanup, but this is a safeguard
             if hasattr(customer_store, 'delete'):
                 try:
                     customer_store.delete()

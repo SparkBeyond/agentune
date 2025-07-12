@@ -9,7 +9,7 @@ from conversation_simulator.models.conversation import Conversation
 from conversation_simulator.models.message import Message
 from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.rag import conversations_to_langchain_documents
-from langchain_community.vectorstores import FAISS
+from langchain_core.vectorstores import InMemoryVectorStore
 
 
 @pytest.fixture
@@ -152,7 +152,9 @@ def mock_rag_conversations(base_timestamp):
 def vector_store(embedding_model, mock_rag_conversations):
     """Create a vector store with both agent and customer message examples."""
     documents = conversations_to_langchain_documents(mock_rag_conversations)
-    return FAISS.from_documents(documents, embedding_model)
+    vector_store = InMemoryVectorStore(embedding=embedding_model)
+    vector_store.add_documents(documents)
+    return vector_store
 
 @pytest.fixture
 def agent_vector_store(vector_store):

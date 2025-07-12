@@ -1,8 +1,7 @@
 """Integration tests for RAG processing functionality."""
 
 import pytest
-from langchain_community.vectorstores import FAISS
-from langchain_core.vectorstores import VectorStore
+from langchain_core.vectorstores import VectorStore, InMemoryVectorStore
 from langchain_core.documents import Document
 from datetime import datetime
 import os
@@ -44,7 +43,8 @@ async def test_create_vector_stores_integration():
     documents = conversations_to_langchain_documents(MOCK_INTEGRATION_CONVERSATIONS)
     
     # Create a single vector store
-    vector_store = await FAISS.afrom_documents(documents, OpenAIEmbeddings(model="text-embedding-ada-002"))
+    vector_store = InMemoryVectorStore(embedding=OpenAIEmbeddings(model="text-embedding-ada-002"))
+    await vector_store.aadd_documents(documents)
     
     assert vector_store is not None, "Vector store creation failed"
 

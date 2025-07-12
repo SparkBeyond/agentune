@@ -11,7 +11,6 @@ from datetime import datetime
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore, InMemoryVectorStore
 from langchain_core.embeddings import DeterministicFakeEmbedding
-from langchain_community.vectorstores import FAISS
 
 from conversation_simulator.models import Conversation, Message, ParticipantRole
 from conversation_simulator.rag.indexing_and_retrieval import (
@@ -199,14 +198,3 @@ class TestInMemoryVectorStore(BaseIndexingRetrievalTests):
         vector_store = InMemoryVectorStore(embedding=embedding_function)
         vector_store.add_documents(test_documents)
         return vector_store
-
-
-class TestFaissVectorStore(BaseIndexingRetrievalTests):
-    """Test suite for FaissVectorStore implementation."""
-
-    def init_vector_store(self, embedding_function, test_documents: list[Document]) -> VectorStore:
-        """Create an empty FaissVectorStore instance."""
-        return FAISS.from_documents(
-            documents=test_documents,
-            embedding=embedding_function
-        )

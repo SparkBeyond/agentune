@@ -12,8 +12,7 @@ from conversation_simulator.models.message import Message, MessageDraft
 from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.models.intent import Intent
 from conversation_simulator.models.outcome import Outcome, Outcomes
-from langchain_core.vectorstores import VectorStore
-from langchain_community.vectorstores import FAISS
+from langchain_core.vectorstores import VectorStore, InMemoryVectorStore
 from conversation_simulator.rag import conversations_to_langchain_documents
 
 
@@ -97,12 +96,13 @@ class TestRagAgentIntegration:
         agent_documents = conversations_to_langchain_documents(MOCK_RAG_CONVERSATIONS)
         # Filter documents where next_message_role is AGENT
         agent_documents = [doc for doc in agent_documents if doc.metadata.get('next_message_role') == ParticipantRole.AGENT.value]
-        agent_store = await FAISS.afrom_documents(agent_documents, embedding_model)        
+        agent_store = InMemoryVectorStore(embedding=embedding_model)
+        await agent_store.aadd_documents(agent_documents)        
         assert isinstance(agent_store, VectorStore)
         
         # Add cleanup to ensure no files are left behind
         def cleanup():
-            # FAISS in-memory stores don't need cleanup, but this is a safeguard
+            # InMemoryVectorStore doesn't need cleanup, but this is a safeguard
             if hasattr(agent_store, 'delete'):
                 try:
                     agent_store.delete()
