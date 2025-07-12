@@ -99,17 +99,6 @@ class TestRagAgentIntegration:
         agent_store = InMemoryVectorStore(embedding=embedding_model)
         await agent_store.aadd_documents(agent_documents)        
         assert isinstance(agent_store, VectorStore)
-        
-        # Add cleanup to ensure no files are left behind
-        def cleanup():
-            # InMemoryVectorStore doesn't need cleanup, but this is a safeguard
-            if hasattr(agent_store, 'delete'):
-                try:
-                    agent_store.delete()
-                except Exception as e:
-                    logger.warning(f"Error cleaning up agent store: {e}")
-        
-        request.addfinalizer(cleanup)
         return agent_store
 
     @pytest.fixture(scope="class")

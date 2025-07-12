@@ -87,17 +87,6 @@ class TestRagCustomerIntegration:
         await customer_store.aadd_documents(customer_documents)
         
         assert isinstance(customer_store, VectorStore)
-        
-        # Add cleanup to ensure no files are left behind
-        def cleanup():
-            # InMemoryVectorStore doesn't need cleanup, but this is a safeguard
-            if hasattr(customer_store, 'delete'):
-                try:
-                    customer_store.delete()
-                except Exception as e:
-                    logger.warning(f"Error cleaning up customer store: {e}")
-        
-        request.addfinalizer(cleanup)
         return customer_store
 
     # This test is flaky, we should address this in the future
