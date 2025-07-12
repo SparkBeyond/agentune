@@ -22,7 +22,7 @@ from langchain_openai import ChatOpenAI
 
 from conversation_simulator.util.structure import converter
 from conversation_simulator import SimulationSession
-from conversation_simulator.intent_extraction.dummy import DummyIntentExtractor
+from tests.fixtures.dummy import DummyIntentExtractor
 from conversation_simulator.models import Conversation, Message, Outcome, Outcomes
 from conversation_simulator.models.roles import ParticipantRole
 from conversation_simulator.outcome_detection.base import OutcomeDetectionTest, OutcomeDetector
