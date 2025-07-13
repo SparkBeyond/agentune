@@ -32,7 +32,7 @@ class IntentExtractionResult(BaseModel):
                   "or None if no intent was detected"
     )
     description: str | None = Field(
-        description="Description of the extracted intent, or None if no intent was detected"
+        description="Detailed and precise description of the extracted intent, or None if no intent was detected"
     )
     
     def to_intent(self) -> Intent | None:

@@ -50,7 +50,7 @@ Common intent categories include but are not limited to:
 - Proactive Offer (e.g., agent making a special offer or upgrade)
 
 Be specific in describing the intent. For example, instead of just "IT issue",
-specify the nature of the issue (e.g., "cannot access email account").
+specify the nature of the issue in detail (e.g., "cannot access email account since last week, using Outlook on Windows 10").
 
 Examples:
 - If an AGENT says "I'm calling about your car's extended warranty", the intent is from the AGENT
