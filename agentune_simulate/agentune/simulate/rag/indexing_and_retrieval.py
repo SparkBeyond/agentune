@@ -155,10 +155,6 @@ async def get_similar_finished_conversations(
     """
     query = format_conversation(conversation.messages)
 
-    def filter_by_finished_conversation(metadata_or_doc: dict | Document) -> bool:
-        """Filter function to check if the conversation is finished."""
-        return _get_metadata(metadata_or_doc).get("has_next_message", False) is False
-
     # Use the new searcher for consistent filtering across vector stores
     searcher = VectorStoreSearcher.create(vector_store)
     retrieved_docs = await searcher.similarity_search_with_filter(
@@ -179,6 +175,8 @@ async def get_few_shot_examples(
     k: int
 ) -> list[tuple[Document, float]]:
     """Retrieves k relevant documents for a given role of the current last message."""
+    if not conversation_history:
+        return []
 
     current_message_role = conversation_history[-1].sender
     query = format_conversation(conversation_history)
