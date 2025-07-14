@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore
 from ..models import Conversation, Message
 from ..util.structure import converter
+from .filtered_retriever import VectorStoreSearcher
 
 logger = logging.getLogger(__name__)
 
@@ -158,11 +159,12 @@ async def get_similar_finished_conversations(
         """Filter function to check if the conversation is finished."""
         return _get_metadata(metadata_or_doc).get("has_next_message", False) is False
 
-    # Retrieve similar conversations, filtering for finished conversations only
-    retrieved_docs: list[tuple[Document, float]] = await vector_store.asimilarity_search_with_score(
+    # Use the new searcher for consistent filtering across vector stores
+    searcher = VectorStoreSearcher.create(vector_store)
+    retrieved_docs = await searcher.similarity_search_with_filter(
         query=query,
         k=k,
-        filter=filter_by_finished_conversation
+        filter_dict={"has_next_message": False}
     )
 
     # Sort by similarity score (highest first)
