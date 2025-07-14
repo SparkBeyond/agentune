@@ -216,6 +216,7 @@ class TestRagAgentIntegration:
                 content="My TV is flickering, what should I do?",
                 timestamp=base_timestamp + timedelta(seconds=10),
             ),
+            None
         )
         customer = MockTurnBasedParticipant(ParticipantRole.CUSTOMER, customer_messages)
 

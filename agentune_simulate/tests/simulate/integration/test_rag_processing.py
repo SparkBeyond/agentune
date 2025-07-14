@@ -9,7 +9,7 @@ from langchain_openai import OpenAIEmbeddings
 
 from agentune.simulate.models import Conversation, Message, ParticipantRole
 from agentune.simulate.rag import conversations_to_langchain_documents
-from agentune.simulate.rag.filtered_retriever import VectorStoreSearcher
+from agentune.simulate.rag.indexing_and_retrieval import get_similar_examples_for_next_message_role
 
 
 # Mock conversation data for integration tests
@@ -52,29 +52,26 @@ async def test_create_vector_stores_integration():
     # Assertions
     assert isinstance(vector_store, VectorStore), "Vector store is not a VectorStore instance."
 
-    # Check if vector_store has content by performing customer-related search using VectorStoreSearcher
-    searcher = VectorStoreSearcher.create(vector_store)
-    customer_results_with_scores = await searcher.similarity_search_with_filter(
-        query="customer query",
+    # Check if vector_store has content by performing customer-related search using indexing_and_retrieval
+    customer_results = await get_similar_examples_for_next_message_role(
+        conversation_history=[Message(sender=ParticipantRole.CUSTOMER, content="customer query", timestamp=datetime.now())],
+        vector_store=vector_store,
         k=1,
-        filter_dict={"next_message_role": ParticipantRole.CUSTOMER.value}
+        target_role=ParticipantRole.CUSTOMER
     )
     # MOCK_INTEGRATION_CONVERSATIONS has customer messages, so we expect results
-    assert len(customer_results_with_scores) > 0, "Vector store similarity search for customer messages returned no results when it should have."
-    customer_doc, customer_score = customer_results_with_scores[0]
-    assert isinstance(customer_doc, Document), "Customer search result is not a Document."
-    assert isinstance(customer_score, float), "Customer search score is not a float."
-    print(f"Customer search result: {customer_doc.page_content} (score: {customer_score})")
+    assert len(customer_results) > 0, "Vector store similarity search for customer messages returned no results when it should have."
+    assert isinstance(customer_results[0], Document), "Customer search result is not a Document."
+    print(f"Customer search result: {customer_results[0].page_content}")
 
-    # Check if vector_store has content by performing agent-related search using VectorStoreSearcher
-    agent_results_with_scores = await searcher.similarity_search_with_filter(
-        query="agent response",
+    # Check if vector_store has content by performing agent-related search using indexing_and_retrieval
+    agent_results = await get_similar_examples_for_next_message_role(
+        conversation_history=[Message(sender=ParticipantRole.CUSTOMER, content="agent response", timestamp=datetime.now())],
+        vector_store=vector_store,
         k=1,
-        filter_dict={"next_message_role": ParticipantRole.AGENT.value}
+        target_role=ParticipantRole.AGENT
     )
     # MOCK_INTEGRATION_CONVERSATIONS has agent messages, so we expect results
-    assert len(agent_results_with_scores) > 0, "Vector store similarity search for agent messages returned no results when it should have."
-    agent_doc, agent_score = agent_results_with_scores[0]
-    assert isinstance(agent_doc, Document), "Agent search result is not a Document."
-    assert isinstance(agent_score, float), "Agent search score is not a float."
-    print(f"Agent search result: {agent_doc.page_content} (score: {agent_score})")
+    assert len(agent_results) > 0, "Vector store similarity search for agent messages returned no results when it should have."
+    assert isinstance(agent_results[0], Document), "Agent search result is not a Document."
+    print(f"Agent search result: {agent_results[0].page_content}")
