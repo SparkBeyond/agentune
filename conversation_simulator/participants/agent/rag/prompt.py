@@ -28,10 +28,15 @@ AGENT_HUMAN_TEMPLATE = """Below are examples of similar full conversations and t
 
 {examples}
 
-Current conversation:
-{current_conversation}
+---
 
-Remember to respond in the JSON format specified in the system prompt."""
+Additional context:
+{goal_line}
+
+---
+
+Current conversation:
+{current_conversation}"""
 
 # Create the prompt with both system and human messages
 AGENT_PROMPT = ChatPromptTemplate.from_messages([

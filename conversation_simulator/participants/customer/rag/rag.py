@@ -5,17 +5,17 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from collections.abc import Sequence
-
-from attrs import frozen
+from attrs import frozen, field
+from random import Random
 import attrs
 from pydantic import BaseModel, Field
 from langchain_core.documents import Document
-from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 
+from .first_message_prompt import CUSTOMER_FIRST_MESSAGE_PROMPT
 from ....models import Conversation, Message, ParticipantRole
 from ....rag import indexing_and_retrieval
 from ..base import Customer, CustomerFactory
@@ -36,6 +36,7 @@ class CustomerResponse(BaseModel):
         description="Response content, or null if should_respond is false"
     )
 
+
 logger = logging.getLogger(__name__)
 
 @frozen
@@ -44,16 +45,34 @@ class RagCustomer(Customer):
 
     customer_vector_store: VectorStore
     model: BaseChatModel
+    seed: int = 0
     intent_description: str | None = None
+    _llm_chain: Runnable = field(init=False)
+    _first_message_chain: Runnable = field(init=False)
+    _random: Random = field(init=False)
 
-    def _create_llm_chain(self, model: BaseChatModel) -> Runnable:
+    @_llm_chain.default
+    def _create_llm_chain(self) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the customer."""
         # Use the imported CUSTOMER_PROMPT from prompt.py
-        # The customer goal will be passed in the invoke parameters
         prompt = CUSTOMER_PROMPT
-        
-        # Prepare the chain with the prompt, model, and output parsing
-        return prompt | model | PydanticOutputParser(pydantic_object=CustomerResponse)
+
+        # Return the runnable chain with the imported prompt
+        return prompt | self.model | PydanticOutputParser(pydantic_object=CustomerResponse)
+
+    @_first_message_chain.default
+    def _create_first_message_chain(self) -> Runnable:
+        """Creates the chain for the first customer message."""
+        # Use the imported CUSTOMER_PROMPT from prompt.py
+        # This is a special case for the first message, which has a different prompt
+        first_message_prompt = CUSTOMER_FIRST_MESSAGE_PROMPT
+
+        # Return the runnable chain with the imported prompt
+        return first_message_prompt | self.model | PydanticOutputParser(pydantic_object=CustomerResponse)
+
+    @_random.default
+    def _random_default(self) -> Random:
+        return Random(self.seed)
 
     def with_intent(self, intent_description: str) -> RagCustomer:
         """Return a new RagCustomer instance with the specified intent."""
@@ -61,20 +80,29 @@ class RagCustomer(Customer):
 
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next customer message using RAG LLM approach."""
-        #if not conversation.messages or conversation.messages[-1].sender != ParticipantRole.AGENT:
-        #    return None
-
         # 1. Retrieval
-        few_shot_examples: list[Document] = await self._get_few_shot_examples(
-            conversation.messages, k=3, vector_store=self.customer_vector_store
+        k = 50 if not conversation.customer_messages else 20  # Use more examples for the first message, for diversity
+        few_shot_examples: list[tuple[Document, float]] = await indexing_and_retrieval.get_few_shot_examples(
+            conversation_history=conversation.messages,
+            vector_store=self.customer_vector_store,
+            k=k
         )
 
         # 2. Augmentation
-        formatted_examples = self._format_examples(few_shot_examples)
+        if not conversation.customer_messages:
+            # If this is the first message by the customer, select one random example to provide context, to allow diverse options for the start of the conversation
+            few_shot_examples = [self._random.choice(few_shot_examples)]
+        else:
+            # Select up to 5 randomly chosen examples
+            few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
 
-        # 3. Generation
-        chain = self._create_llm_chain(model=self.model)
+        # Format few-shot examples and history for the prompt template
+        formatted_examples = indexing_and_retrieval._format_examples(few_shot_examples, ParticipantRole.CUSTOMER)
 
+        # Format the current conversation in the same way as the examples
+        formatted_current_convo = "\n".join(
+            [f"{msg.sender.value.capitalize()}: {msg.content}" for msg in conversation.messages]
+        )
         # Add the goal line to the conversation if there's an intent
         goal_line = (
             f"- Your goal in this conversation is: {self.intent_description}"
@@ -82,14 +110,16 @@ class RagCustomer(Customer):
             else ""
         )
 
-        # Prepare the input for the chain
-        # Format the current conversation in the same way as the examples
-        formatted_current_convo = "\n".join(
-            [f"{msg.sender.value.capitalize()}: {msg.content}" for msg in conversation.messages]
-        )
+        # 3. Generation
+        if not conversation.customer_messages:
+            # If this is the first message by the customer, use the first message chain
+            chain = self._first_message_chain
+        else:
+            # Otherwise, use the regular chain
+            chain = self._llm_chain
 
         chain_input = {
-            "examples": "\n\n".join([str(msg.content) for msg in formatted_examples]),
+            "examples": formatted_examples,
             "current_conversation": formatted_current_convo,
             "goal_line": goal_line,
         }
@@ -105,52 +135,6 @@ class RagCustomer(Customer):
         return Message(
             sender=self.role, content=response_object.response, timestamp=response_timestamp
         )
-
-    def _format_examples(
-        self, examples: list[Document]
-    ) -> list[BaseMessage]:
-        """
-        Formats the retrieved few-shot example Documents into a list of LangChain messages.
-        Each Document's page_content (history, typically agent's turn) becomes an AIMessage,
-        and the metadata (next customer message) becomes an embedded customer response in the conversation history.
-        """
-        formatted_messages: list[BaseMessage] = []
-        for index, doc in enumerate(examples):
-            try:
-                # Example customer response from metadata
-                metadata = doc.metadata
-                # Validate essential keys
-                if not all(
-                    key in metadata
-                    for key in ["next_message_content", "full_conversation"]
-                ):
-                    logger.warning(f"Skipping few-shot example due to missing essential metadata: {metadata} in RagCustomer.")
-                    continue
-
-                full_conversation = str(metadata["full_conversation"])
-                customer_response = str(metadata["next_message_content"])
-
-                # Replace the customer's turn in the conversation with the desired format
-                customer_turn_str = f"Customer: {customer_response}"
-                if customer_turn_str in full_conversation:
-                    modified_conversation = full_conversation.replace(
-                        customer_turn_str, f"**Current customer response**: {customer_response}"
-                    )
-                else:
-                    logger.warning(
-                        f"Could not find customer turn '{customer_turn_str}' in full conversation. Using original."
-                    )
-                    modified_conversation = full_conversation
-
-                # Add indexing for the examples
-                # We use AIMessage here because the history is from the Agent's perspective
-                formatted_messages.append(AIMessage(content=f"Example {index + 1}:"))
-                formatted_messages.append(AIMessage(content=modified_conversation))
-
-            except Exception as e:
-                logger.error(f"Error processing few-shot example in RagCustomer: {e}")
-                continue
-        return formatted_messages
 
     @staticmethod
     async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:

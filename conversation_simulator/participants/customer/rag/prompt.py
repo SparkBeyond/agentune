@@ -1,5 +1,6 @@
 """Prompts for the RAG customer participant."""
 
+
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 
@@ -18,14 +19,20 @@ Your response MUST be a JSON object with the following structure, written from t
 """
 
 # Human message template for the customer
-CUSTOMER_HUMAN_TEMPLATE = """Below are examples of similar full conversations and the responses of the agent for the similar stage:
+CUSTOMER_HUMAN_TEMPLATE = """Below are examples of similar full conversations and the responses of the customer for the similar stage:
 
 {examples}
 
-# Current conversation:
-{current_conversation}
+---
 
-Remember to respond in the JSON format specified in the system prompt."""
+Additional context:
+{goal_line}
+
+---
+
+Current conversation:
+{current_conversation}
+"""
 
 # Create the prompt with both system and human messages
 CUSTOMER_PROMPT = ChatPromptTemplate.from_messages([
