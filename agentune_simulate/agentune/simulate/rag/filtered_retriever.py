@@ -36,7 +36,7 @@ class VectorStoreSearcher(ABC):
         
         if store_type == "InMemoryVectorStore":
             return InMemorySearcher(vector_store)
-        elif store_type in ["Chroma", "PineconeVectorStore"]:
+        elif store_type in ["Chroma"]:
             return DictionaryFilterSearcher(vector_store)
         else:
             logger.info(f"Using fallback filtering for unsupported vector store: {store_type}")
@@ -61,7 +61,7 @@ class InMemorySearcher(VectorStoreSearcher):
 
 
 class DictionaryFilterSearcher(VectorStoreSearcher):
-    """Searcher for vector stores that support dictionary-based filters (Chroma, Pinecone)."""
+    """Searcher for vector stores that support dictionary-based filters (Chroma)."""
 
     async def similarity_search_with_filter(
         self, query: str, k: int, filter_dict: dict[str, Any]
