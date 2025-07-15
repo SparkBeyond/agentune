@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Coroutine, Iterable
+from collections.abc import Callable, Coroutine, Sequence
 from typing import Any
 
 
@@ -24,7 +24,7 @@ class OneAtATime:
             await self.task
             self.task = None
     
-async def one_at_a_time(funcs: Iterable[Callable]) -> None:
+async def one_at_a_time(funcs: Sequence[Callable]) -> None:
     """Runs one sync callable at a time via asyncio.to_thread()."""
     one_sync_task = OneAtATime()
     for func in funcs:

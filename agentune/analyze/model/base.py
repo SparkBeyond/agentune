@@ -1,6 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Sequence
 from typing import override
 
 from agentune.analyze.core.dataset import Dataset, DatasetStream
@@ -21,7 +21,7 @@ class Classifier[T](ABC):
 
     @property
     @abstractmethod
-    def classes(self) -> Iterable[T]: ...
+    def classes(self) -> Sequence[T]: ...
     
     @property
     @abstractmethod
@@ -73,14 +73,14 @@ class ClassifierTrainer[T](ABC):
     def name(self) -> str: ...
 
     @abstractmethod
-    async def atrain(self, classes: Iterable[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: ...
+    async def atrain(self, classes: Sequence[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: ...
     
 class SyncClassifierTrainer[T](ClassifierTrainer[T]):
     @abstractmethod
-    def train(self, classes: Iterable[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: ...
+    def train(self, classes: Sequence[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: ...
 
     @override
-    async def atrain(self, classes: Iterable[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: 
+    async def atrain(self, classes: Sequence[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: 
         return await asyncio.to_thread(self.train, classes, data.copy_to_thread(), target_col, weight_col)
 
 class RegressorTrainer(ABC):

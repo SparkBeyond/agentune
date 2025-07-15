@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Sequence
 from typing import override
 
 from attrs import frozen
@@ -14,7 +14,7 @@ class KtsContextImpl[K](KtsContext[K]):
     definition: KtsContextDefinition
 
     @override
-    def get(self, key: K, window: TimeWindow, value_cols: Iterable[str]) -> TimeSeries | None: 
+    def get(self, key: K, window: TimeWindow, value_cols: Sequence[str]) -> TimeSeries | None: 
         start_op = '>=' if window.include_start else '>'
         end_op = '<=' if window.include_end else '<'
         sample_clause = f'USING SAMPLE {window.sample_maxsize} (reservoir, 42)' if window.sample_maxsize else ''

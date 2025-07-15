@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Sequence
 
 import numpy as np
 import polars as pl
@@ -51,11 +51,11 @@ class SimpleBoolFeature(BoolFeature):
         return Schema((Field(self._name, self.dtype),))
 
     @property
-    def context_tables(self) -> Iterable[DatabaseTable]:
+    def context_tables(self) -> Sequence[DatabaseTable]:
         return []
 
     @property
-    def context_objects(self) -> Iterable[ContextDefinition]:
+    def context_objects(self) -> Sequence[ContextDefinition]:
         return []
 
 

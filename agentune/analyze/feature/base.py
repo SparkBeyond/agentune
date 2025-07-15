@@ -1,6 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Any, Literal, override
 
 import polars as pl
@@ -63,7 +63,7 @@ class Feature[T](ABC):
     
     @property
     @abstractmethod
-    def context_tables(self) -> Iterable[DatabaseTable]: 
+    def context_tables(self) -> Sequence[DatabaseTable]: 
         """Context tables used by the feature.
         This affects the parameters to evaluate().
         Specifying a table with only the columns you will use may, in future, allow us
@@ -73,7 +73,7 @@ class Feature[T](ABC):
 
     @property
     @abstractmethod
-    def context_objects(self) -> Iterable[ContextDefinition]: 
+    def context_objects(self) -> Sequence[ContextDefinition]: 
         """Context object definitions used by the feature.
         This affects the parameters to evaluate().
         Specifying a context with only the value columns you will use may, in future, allow us
@@ -147,7 +147,7 @@ class BoolFeature(Feature[bool | None]):
 class CategoricalFeature(Feature[str | None]): 
     @property
     @abstractmethod
-    def categories(self) -> Iterable[str]: ...
+    def categories(self) -> Sequence[str]: ...
     
     @override
     def is_numeric(self) -> bool: return False

@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Sequence
 from typing import Self, override
 
 import polars as pl
@@ -30,11 +30,11 @@ class FeatureEvaluator[F: Feature](ABC):
 
     @classmethod
     @abstractmethod
-    def for_features(cls, features: Iterable[F]) -> Self: ...
+    def for_features(cls, features: Sequence[F]) -> Self: ...
 
     @property
     @abstractmethod
-    def features(self) -> Iterable[F]: 
+    def features(self) -> Sequence[F]: 
         ...
 
     @abstractmethod
@@ -127,7 +127,7 @@ class FeatureVariantEvalState:
 
 class EfficientEvaluatorProgressCallback:
    @abstractmethod
-   async def starting_states(self, states: Iterable[FeatureVariantEvalState]) -> None: 
+   async def starting_states(self, states: Sequence[FeatureVariantEvalState]) -> None: 
        """Called once at the beginning to inform you of the states we assign to all variants."""
        ...
 
@@ -179,7 +179,7 @@ class EfficientEvaluator(ABC):
     """
 
     @abstractmethod
-    async def choose(self, variants: Iterable[FeatureVariant], inputs: FeatureInputs, metric: EfficientEvaluatorMetric,
+    async def choose(self, variants: Sequence[FeatureVariant], inputs: FeatureInputs, metric: EfficientEvaluatorMetric,
                      params: EfficientEvaluatorParams, progress_callback: EfficientEvaluatorProgressCallback) -> EfficientEvaluatorResult: 
         """Returns the cheapest variant s.t. choosing the next more expensive one instead would not be worth the ROI.
         If no such variant exists, or no variant satisfies the other constraints, returns None.

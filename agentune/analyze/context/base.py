@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any, Literal, Self, override
 
 import polars as pl
@@ -72,7 +72,7 @@ class TablesWithContextDefinitions:
     tables: Mapping[str, TableWithContextDefinitions]
 
     @classmethod
-    def from_list(cls, tables: Iterable[TableWithContextDefinitions]) -> Self:
+    def from_list(cls, tables: Sequence[TableWithContextDefinitions]) -> Self:
         return cls({t.table.name: t for t in tables})
 
     def __getitem__(self, name: str) -> TableWithContextDefinitions:
@@ -95,7 +95,7 @@ class TablesWithContexts:
     tables: Mapping[str, TableWithContexts]
 
     @classmethod
-    def from_list(cls, tables: Iterable[TableWithContexts]) -> Self:
+    def from_list(cls, tables: Sequence[TableWithContexts]) -> Self:
         return cls({t.table.name: t for t in tables})
     
 
@@ -125,12 +125,12 @@ class LookupContext[K](ContextObject):
         ...
 
     @abstractmethod
-    def get_many(self, key: K, value_cols: Iterable[str]) -> tuple | None: 
+    def get_many(self, key: K, value_cols: Sequence[str]) -> tuple | None: 
         """Return a list of values corresponding to the value_cols, or None if not found."""
         ...
 
     @abstractmethod
-    def get_batch(self, keys: Iterable[K], value_cols: Iterable[str]) -> Dataset: 
+    def get_batch(self, keys: Sequence[K], value_cols: Sequence[str]) -> Dataset: 
         """Return a dataset with one row per key, in the order of the input keys. 
         
         If a key is not found, the matching output row will contain nulls for all value columns
@@ -145,7 +145,7 @@ class KtsContextDefinition(ContextDefinition):
     table: DatabaseTable
     key_col: Field
     date_col: Field # Should be of type timestamp
-    value_cols: Iterable[Field] # can be used to restrict the available value columns from what's in the table
+    value_cols: Sequence[Field] # can be used to restrict the available value columns from what's in the table
 
     @property
     @override
@@ -170,7 +170,7 @@ class TimeSeries:
     dataset: Dataset
     date_col_name: str
     date_col: Field = field(init=False)
-    value_cols: Iterable[Field] = field(init=False)
+    value_cols: Sequence[Field] = field(init=False)
 
     @date_col.default
     def _date_col_default(self) -> Field:
@@ -205,8 +205,8 @@ class KtsContext[K](ContextObject):
     def definition(self) -> KtsContextDefinition: ...
 
     @abstractmethod
-    def get(self, key: K, window: TimeWindow, value_cols: Iterable[str]) -> TimeSeries | None: ...
+    def get(self, key: K, window: TimeWindow, value_cols: Sequence[str]) -> TimeSeries | None: ...
 
-    # I wanted to implemented a get_batch, taking `keys: Iterable[K]` and returning `Iterable[Option[TimeSeries]]`,
+    # I wanted to implemented a get_batch, taking `keys: Sequence[K]` and returning `Sequence[Option[TimeSeries]]`,
     # but I don't know how to implement the downsampling in way that would be more efficient than calling it once per key.
     

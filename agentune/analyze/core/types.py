@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Sequence
 
 import duckdb
 import duckdb.typing as ddt
@@ -114,7 +114,7 @@ class EnumDtype(Dtype):
     values: tuple[str, ...]
 
     @staticmethod
-    def duckdb_enum_type(values: Iterable[str]) -> ddt.DuckDBPyType:
+    def duckdb_enum_type(values: Sequence[str]) -> ddt.DuckDBPyType:
         # Can't create it directly by calling duckdb.enum_type(), we get a NotImplementedException ("enum_type creation method is not implemented yet")
         # This isn't risking an actual SQL escape but if we don't format this properly, the type definition won't parse; TODO test
         escaped = ', '.join("'" + value.replace("'", "''") + "'" for value in values)

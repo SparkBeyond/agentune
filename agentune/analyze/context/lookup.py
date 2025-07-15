@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Sequence
 from typing import Any, override
 
 from attrs import frozen
@@ -25,7 +25,7 @@ class LookupContextImpl[K](LookupContext):
         return results[0][0] if results else None
 
     @override
-    def get_many(self, key: K, value_cols: Iterable[str]) -> tuple | None:
+    def get_many(self, key: K, value_cols: Sequence[str]) -> tuple | None:
         value_cols_query = ', '.join(f'"{col}"' for col in value_cols)
         results = self.conn.sql(f'select {value_cols_query} from "{self.relation_name}" where "{self.definition.key_col.name}" = ?',
                                 params=[key]).fetchall()
@@ -33,7 +33,7 @@ class LookupContextImpl[K](LookupContext):
         return results[0] if results else None
 
     @override
-    def get_batch(self, keys: Iterable[K], value_cols: Iterable[str]) -> Dataset:
+    def get_batch(self, keys: Sequence[K], value_cols: Sequence[str]) -> Dataset:
         value_cols_query = ', '.join(f't."{col}"' for col in value_cols)
         relation = self.conn.sql(f'''WITH key_list AS (
                                         SELECT 

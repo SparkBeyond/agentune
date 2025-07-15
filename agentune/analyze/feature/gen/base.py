@@ -1,6 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Iterable, Iterator
+from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import override
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
@@ -32,14 +32,14 @@ class FeatureTransformer[FA: Feature, FB: Feature](ABC):
     For example, a FeatureTransformer[float, bool] which fits cutoffs and ranges to a numeric feature.
     """
     @abstractmethod
-    async def atransform(self, input: Dataset, contexts: TablesWithContextDefinitions, feature: FA) -> Iterable[FB] : ...
+    async def atransform(self, input: Dataset, contexts: TablesWithContextDefinitions, feature: FA) -> Sequence[FB] : ...
 
 
 class SyncFeatureTransformer[FA: Feature, FB: Feature](FeatureTransformer[FA, FB]):
     @abstractmethod
-    def transform(self, input: Dataset, contexts: TablesWithContextDefinitions, feature: FA) -> Iterable[FB] : ...
+    def transform(self, input: Dataset, contexts: TablesWithContextDefinitions, feature: FA) -> Sequence[FB] : ...
 
     @override
-    async def atransform(self, input: Dataset, contexts: TablesWithContextDefinitions, feature: FA) -> Iterable[FB]:
+    async def atransform(self, input: Dataset, contexts: TablesWithContextDefinitions, feature: FA) -> Sequence[FB]:
         return await asyncio.to_thread(self.transform, input.copy_to_thread(), contexts, feature)
 

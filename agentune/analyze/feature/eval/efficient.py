@@ -5,7 +5,7 @@ import heapq
 import logging
 import math
 from abc import abstractmethod
-from collections.abc import Iterable
+from collections.abc import Sequence
 from typing import cast, override
 
 import numpy as np
@@ -189,7 +189,7 @@ class SimpleEfficientEvaluator(EfficientEvaluator):
 
     @override
     async def choose(self, 
-                     variants: Iterable[FeatureVariant], inputs: FeatureInputs, metric: EfficientEvaluatorMetric,
+                     variants: Sequence[FeatureVariant], inputs: FeatureInputs, metric: EfficientEvaluatorMetric,
                      params: EfficientEvaluatorParams, progress_callback: EfficientEvaluatorProgressCallback) -> EfficientEvaluatorResult:
 
         # TODO implement parallelization - evaluating several variants at once

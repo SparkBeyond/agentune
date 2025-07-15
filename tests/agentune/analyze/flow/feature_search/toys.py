@@ -2,7 +2,7 @@
 
 import asyncio
 import math
-from collections.abc import AsyncIterator, Iterable, Iterator
+from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any, Self, override
 
 import polars as pl
@@ -156,7 +156,7 @@ class ToySyncFeatureEvaluator(SyncFeatureEvaluator[SyncFeature]):
 
     @override 
     @classmethod
-    def for_features(cls, features: Iterable[SyncFeature]) -> Self:
+    def for_features(cls, features: Sequence[SyncFeature]) -> Self:
         return cls(tuple(features))
 
     @override
@@ -177,7 +177,7 @@ class ToyAsyncFeatureEvaluator(FeatureEvaluator[Feature]):
 
     @override 
     @classmethod
-    def for_features(cls, features: Iterable[Feature]) -> Self:
+    def for_features(cls, features: Sequence[Feature]) -> Self:
         return cls(tuple(features))
     
     @override

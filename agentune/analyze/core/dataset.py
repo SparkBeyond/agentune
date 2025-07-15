@@ -101,8 +101,7 @@ class DatasetStreamSource(Iterable[Dataset], CopyToThread):
 
     @override
     def copy_to_thread(self) -> DatasetStreamSource:
-        # TODO this is wrong because iter() does not return a reusable iterator. We should be using Sequence anyway.
-        return DatasetStreamSource(self.schema, iter(dataset.copy_to_thread() for dataset in self.iterable))
+        return DatasetStreamSource(self.schema, (dataset.copy_to_thread() for dataset in self.iterable))
 
     def open(self) -> DatasetStream:
         return DatasetStream(self.schema, iter(self.iterable))

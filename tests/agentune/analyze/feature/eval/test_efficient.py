@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import logging
 import random
-from collections.abc import Generator, Iterable, Sequence
+from collections.abc import Generator, Sequence
 from functools import reduce
 from typing import Any, cast, override
 
@@ -65,7 +65,7 @@ class CollectingCallback(EfficientEvaluatorProgressCallback):
     final_states: dict[FeatureVariant, FeatureVariantEvalState] = field(init=False, factory=dict)
 
     @override
-    async def starting_states(self, states: Iterable[FeatureVariantEvalState]) -> None: 
+    async def starting_states(self, states: Sequence[FeatureVariantEvalState]) -> None: 
        self.initial_states = list(states)
        self.final_states = { s.variant: s for s in states }
        if self.should_log:
