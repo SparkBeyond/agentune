@@ -1,0 +1,105 @@
+line-length = 100
+target-version = "py312"
+src = ["agentune", "tests"]
+
+[lint]
+
+select = [ 
+    "YTT",                              # flake8-2020 (mishandling sys.version)
+    "ANN",
+    "ASYNC",
+    "FAST",                             # FastAPI
+    "S",                                # flake8-bandit (misc ruleset)
+    "BLE",                              # Don't catch all exceptions
+    "B",                                # flake8-bugbear (misc ruleset)
+    "A",                                # flake8-builtins
+    "C4",                               # flake8-comprehensions
+    "T10",                              # flake8-debugger
+    "EXE",                              # flake8-executable
+    "FA",                               # flake8-future-annotations 
+    "ISC",                              # flake8-implicit-str-concat
+    "ICN",                              # flake8-import-conventions
+    "LOG",                              # flake8-logging 
+    "INP",                              # flake8-no-pep420
+    "PIE",                              # flake8-pie (misc)
+    "T20",                              # flake8-print 
+    "PYI",                              # flake8-pyi (reated to type hints)
+    "PT",                               # flake8-pytest-style
+    "Q",                                # flake8-quotes
+    "RSE",                              # flake8-raise
+    "SIM101", "SIM102", "SIM105", "SIM107", "SIM113", "SIM115", "SIM117", "SIM118", "SIM220", "SIM221", "SIM222", "SIM223", "SIM401", "SIM905", "SIM910", "SIM911", 
+    "SLOT",                             # flake8-slots
+    "TID",                              # flake8-tidy-imports
+    "ARG",                              # flake8-unused-arguments
+    "PTH",                              # flake8-use-pathlib
+    "I",                                # isort (sort imports)
+    "NPY",                              # numpy
+    "N",                                # PEP8 naming
+    "E", "W",                           # pycodestyle
+    "D",                                # pydocstyle
+    "F",                                # pyflakes
+    "PGH",                              # pygrep-hooks
+    "PL",                               # pylint
+    "UP",                               # pyupgrade
+    "FURB",                             # refurb
+    "RUF",                              # Ruff-original rules
+    "TRY",                              # Tryceratops
+]
+
+# We may later want to enable:
+# flake8-logging-format (G)
+# pydoclint (DOC)
+
+ignore = [
+    "E203", "E266", "E501",             # Relax whitespace & long-line rules
+    "W293",                             # Blank line contains whitespace
+    "W291",                             # Trailing whitespace
+    "TC001", "TC002", "TC003",          # Move imports used only for type hints into type-checking block
+    "TC006",                            # Use quoted type in cast
+    "D100", "D101", "D102", "D103", "D104", "D105", "D107",     # Missing docstring in public xxx
+    "D210",                             # No whitespaces allowed surrounding docstring text
+    "D203", "D204", "D205",             # Blank lines required before/after docstrings
+    "D213",                             # Non-standard, opposite of D212
+    "D400",                             # First line should end with a period
+    "D401",                             # First line of docstring should be in imperative mood
+    "D415",                             # First line should end with a period, question mark, or exclamation point
+    "RUF009",                           # Do not perform function call in dataclass defaults,
+    "RUF021",                           # Parenthesize and/or subexpressions
+    "ANN401",                           # Dynamically typed expressions (typing.Any) are disallowed,
+    "PYI034",                           # `__iter__` methods... usually return `self` at runtime
+    "B024",                             # ABC has no abstract methods (because it's empty)
+    "TRY003",                           # Avoid specifying long messages outside the exception class
+    "A002",                             # `input` is shadowing a Python builtin
+    "DTZ005",                           # `datetime.datetime.now()` called without a `tz` argument - it's fine to use naive dates and assume UTC
+    "C901", "PLR0904", "PLR0912", "PLR0913", "PLR0914", "PLR0915",                 # Too complex, too many branches, etc
+    "PIE808",                           # Unnecessary `start` argument in `range`
+    "S311",                             # Use of `random` module
+    "RUF002",                           # "Ambiguous" Unicode characters (like the scary lowercase sigma, σ)
+
+    # Rules we may want to enforce in the future but are ignored for now
+    "S101",                             # Use of assert
+    "S608",                             # Possible SQL injection
+    "RET505",                           # Unnecessary else after return statement
+]
+
+[lint.flake8-quotes]
+inline-quotes = "single"
+multiline-quotes = "single"
+
+[lint.flake8-annotations]
+mypy-init-return = true # Allow __init__ methods not to declare -> None
+
+
+[lint.isort]
+known-first-party = ["agentune"]
+
+[format]
+quote-style = "single"
+indent-style = "space"
+line-ending = "lf"
+
+[lint.per-file-ignores]
+"tests/**" = [
+    "PLR2004",                          # Magic value constant
+    "T201",                             # Use of print
+]
