@@ -77,7 +77,7 @@ class RagAgent(Agent):
 
         # 2. Augmentation
         # Format few-shot examples and history for the prompt template
-        formatted_examples = indexing_and_retrieval._format_examples(few_shot_examples, role=self.role)
+        formatted_examples = self._format_examples(few_shot_examples)
 
         # Intent statement
         # Add the goal line to the conversation if there's an intent
@@ -87,9 +87,7 @@ class RagAgent(Agent):
             goal_line = ""
 
         # 3. Generation
-        formatted_current_convo = "\n".join(
-            [f"{msg.sender.value.capitalize()}: {msg.content}" for msg in conversation.messages]
-        )
+        formatted_current_convo = indexing_and_retrieval.format_conversation(conversation.messages)
         response_content: AgentResponse = await self.llm_chain.ainvoke({
             "examples": formatted_examples,
             "current_conversation": formatted_current_convo,
@@ -118,6 +116,21 @@ class RagAgent(Agent):
             sender=self.role, content=response_content.response, timestamp=response_timestamp
         )
 
+    def _format_examples(self, examples: list[tuple[Document, float]]) -> str:
+        """Format few-shot examples for the agent prompt."""
+        if not examples:
+            return "No examples available."
+        
+        formatted_examples = []
+        
+        for index, (doc, score) in enumerate(examples):
+            formatted_conversation = indexing_and_retrieval.format_highlighted_example(doc)
+            formatted_examples.append(f"Example {index + 1}:")
+            formatted_examples.append(formatted_conversation)
+        
+        return "\n\n".join(formatted_examples)
+
+    # not in use
     @staticmethod
     async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
         return await indexing_and_retrieval.get_similar_examples_for_next_message_role(

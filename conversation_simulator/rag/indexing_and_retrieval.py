@@ -4,10 +4,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from langchain_core.documents import Document
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from langchain_core.vectorstores import VectorStore
 from ..models import Conversation, Message, ParticipantRole
+from ..util.structure import converter
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,57 @@ class ConversationTurn:
     is_target: bool = False
 
 
-def _format_conversation_history(messages: Sequence[Message]) -> str:
+def format_conversation(messages: Sequence[Message]) -> str:
     """Formats a list of messages into a single string."""
     return "\n".join([f"{msg.sender.value.capitalize()}: {msg.content}" for msg in messages])
+
+
+def format_conversation_with_highlight(messages: Sequence[Message], current_index: int) -> str:
+    """Formats a conversation with the next message after current_index highlighted.
+    
+    Args:
+        messages: Sequence of messages to format
+        current_index: Index of the current message (next message will be highlighted)
+        
+    Returns:
+        Formatted conversation string with next message highlighted
+    """
+    formatted_lines = []
+    highlight_index = current_index + 1
+    
+    for i, msg in enumerate(messages):
+        if i == highlight_index and highlight_index < len(messages):
+            highlight_label = f"Current {msg.sender.value.capitalize()} response"
+            formatted_lines.append(f"**{highlight_label}**: {msg.content}")
+        else:
+            formatted_lines.append(f"{msg.sender.value.capitalize()}: {msg.content}")
+    return "\n".join(formatted_lines)
+
+
+def format_highlighted_example(doc: Document) -> str:
+    """Format a single example document with proper highlighting.
+    
+    Args:
+        doc: Document containing conversation metadata
+        
+    Returns:
+        Formatted conversation string with the next message highlighted
+    """
+    metadata = doc.metadata
+    
+    # Deserialize the structured messages
+    messages_data = metadata["full_conversation"]
+    messages = converter.structure(messages_data, list[Message])
+    
+    # Get the current message index and use it to highlight the next message
+    current_index = metadata["current_message_index"]
+    
+    return format_conversation_with_highlight(messages, current_index)
+
+
+def _format_conversation_history(messages: Sequence[Message]) -> str:
+    """Deprecated: Use format_conversation instead."""
+    return format_conversation(messages)
 
 
 def _get_metadata(metadata_or_doc: dict | Document) -> dict:
@@ -43,7 +91,7 @@ def conversations_to_langchain_documents(
 ) -> list[Document]:
     """
     Converts a list of conversations into a list of LangChain documents,
-    where the content is the conversation history and the metadata is the current message index.
+    where the content is the conversation history and the metadata contains structured message data.
     """
     documents: list[Document] = []
     # Filter out empty conversations
@@ -56,19 +104,18 @@ def conversations_to_langchain_documents(
 
             history_messages: list[Message] = list(conversation.messages[:i+1])
             # The history becomes the content to be embedded
-            page_content = _format_conversation_history(history_messages)
-
-            full_conversation = _format_conversation_history(conversation.messages)
+            page_content = format_conversation(history_messages)
 
             outcome = conversation.outcome.name if conversation.outcome else None
 
             # The 'next message' becomes the metadata
             metadata = {
+                "conversation_hash": hash(conversation.messages),
                 "current_message_index": i,
                 "has_next_message": bool(next_message),
                 "current_message_role": current_message.sender.value,
                 "current_message_timestamp": current_message.timestamp.isoformat(),
-                "full_conversation": full_conversation,
+                "full_conversation": converter.unstructure(conversation.messages),
                 "outcome": outcome
             }
 
@@ -239,7 +286,7 @@ async def get_few_shot_examples(
     """Retrieves k relevant documents for a given role of the current last message."""
 
     current_message_role = conversation_history[-1].sender
-    query = _format_conversation_history(conversation_history)
+    query = format_conversation(conversation_history)
 
     def role_filter_function(doc):
         """
@@ -259,70 +306,18 @@ async def get_few_shot_examples(
     # Sort retrieved docs by score
     retrieved_docs.sort(key=lambda x: x[1], reverse=True)
 
-    # Deduplicate documents coming from the same conversation, by comparing the full_conversation metadata
+    # Deduplicate documents coming from the same conversation, by comparing the conversation_hash metadata
     unique_docs = []
     seen_conversations = set()
     for doc, score in retrieved_docs:
-        if doc.metadata.get("full_conversation") not in seen_conversations:
+        conversation_hash = doc.metadata.get("conversation_hash")
+        if conversation_hash not in seen_conversations:
             unique_docs.append((doc, score))
-            seen_conversations.add(doc.metadata.get("full_conversation"))
+            seen_conversations.add(conversation_hash)
 
     logger.debug(f"Retrieved {len(retrieved_docs)} documents, deduplicated to {len(unique_docs)}.")
 
     return unique_docs
 
 
-def _format_examples(
-        examples: list[tuple[Document, float]],
-        role: ParticipantRole
-) -> str:
-    """
-    Formats the retrieved few-shot example Documents into a list of LangChain messages.
-    Each Document's page_content (history, typically customer's turn) becomes a HumanMessage,
-    and the metadata (next agent message) becomes an embedded agent response in the conversation history.
-    """
-    conversations: list[Document] = [doc[0] for doc in examples]
-    formatted_messages: list[BaseMessage] = []
-
-    message_class: type[BaseMessage] = (
-        HumanMessage if role == ParticipantRole.AGENT else AIMessage
-    )  # This is the other way around since it refers to the answer
-
-    for index, doc in enumerate(conversations):
-        try:
-            # Example agent response from metadata
-            metadata = doc.metadata
-            # Validate essential keys before creating Message object
-            if "full_conversation" not in metadata:
-                logger.warning(f"Skipping example due to missing 'full_conversation' metadata: {metadata}")
-                continue
-
-            full_conversation = str(metadata["full_conversation"])
-            formatted_conversation = full_conversation  # Default to the original conversation
-
-            # 2. Conditional Logic: Only try to highlight the response if 'next_message_content' exists.
-            if "next_message_content" in metadata:
-                participant_response = str(metadata["next_message_content"])
-                role_name = metadata["next_message_role"].capitalize()
-                participant_turn_str = f"{role_name}: {participant_response}"
-
-                if participant_turn_str in full_conversation:
-                    # If the key exists, perform the replacement as before
-                    formatted_conversation = full_conversation.replace(
-                        participant_turn_str, f"**Current {role_name} response**: {participant_response}",
-                        0  # Only replace the first occurrence
-                    )
-                else:
-                    logger.warning(
-                        f"Could not find {role_name} turn '{participant_response}' in full conversation."
-                    )
-
-            # Add indexing for the examples
-            formatted_messages.append(message_class(content=f"Example {index + 1}:"))
-            formatted_messages.append(message_class(content=formatted_conversation))
-
-        except Exception as e:
-            logger.error(f"Error processing few-shot example in RagAgent: {e}")
-            continue
-
-    return "\n\n".join([str(msg.content) for msg in formatted_messages])
+# _format_examples function removed - participants now handle their own example formatting

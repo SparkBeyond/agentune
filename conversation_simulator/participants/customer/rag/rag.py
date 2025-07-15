@@ -18,10 +18,12 @@ from langchain_core.vectorstores import VectorStore
 from .first_message_prompt import CUSTOMER_FIRST_MESSAGE_PROMPT
 from ....models import Conversation, Message, ParticipantRole
 from ....rag import indexing_and_retrieval
+from ....util.structure import converter
 from ..base import Customer, CustomerFactory
 from .prompt import CUSTOMER_PROMPT
 
 
+# duplicate of the CustomerResponse  in ./_customer_response.py
 class CustomerResponse(BaseModel):
     """Customer's response with reasoning."""
 
@@ -81,6 +83,7 @@ class RagCustomer(Customer):
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next customer message using RAG LLM approach."""
         # 1. Retrieval
+        # Having second thoughts , maybe 20 is enough?
         k = 50 if not conversation.customer_messages else 20  # Use more examples for the first message, for diversity
         few_shot_examples: list[tuple[Document, float]] = await indexing_and_retrieval.get_few_shot_examples(
             conversation_history=conversation.messages,
@@ -97,14 +100,12 @@ class RagCustomer(Customer):
             few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
 
         # Format few-shot examples and history for the prompt template
-        formatted_examples = indexing_and_retrieval._format_examples(few_shot_examples, ParticipantRole.CUSTOMER)
+        formatted_examples = self._format_examples(few_shot_examples)
 
         # Format the current conversation in the same way as the examples
-        formatted_current_convo = "\n".join(
-            [f"{msg.sender.value.capitalize()}: {msg.content}" for msg in conversation.messages]
-        )
+        formatted_current_convo = indexing_and_retrieval.format_conversation(conversation.messages)
         # Add the goal line to the conversation if there's an intent
-        goal_line = (
+        goal_line = ( # differnt from the agent, on purpose?
             f"- Your goal in this conversation is: {self.intent_description}"
             if self.intent_description
             else ""
@@ -136,7 +137,22 @@ class RagCustomer(Customer):
             sender=self.role, content=response_object.response, timestamp=response_timestamp
         )
 
+    def _format_examples(self, examples: list[tuple[Document, float]]) -> str:
+        """Format few-shot examples for the customer prompt."""
+        if not examples:
+            return "No examples available."
+        
+        formatted_examples = []
+        
+        for index, (doc, score) in enumerate(examples):
+            formatted_conversation = indexing_and_retrieval.format_highlighted_example(doc)
+            formatted_examples.append(f"Example {index + 1}:")
+            formatted_examples.append(formatted_conversation)
+        
+        return "\n\n".join(formatted_examples)
+
     @staticmethod
+    # no used
     async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
         return await indexing_and_retrieval.get_similar_examples_for_next_message_role(
             conversation_history=conversation_history,
@@ -156,6 +172,8 @@ class RagCustomerFactory(CustomerFactory):
     
     model: BaseChatModel
     customer_vector_store: VectorStore
+
+    # I think the seed trick was important here
     
     def create_participant(self) -> RagCustomer:
         """Create a RAG customer participant.
