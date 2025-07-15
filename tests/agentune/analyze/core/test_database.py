@@ -6,7 +6,7 @@ import pytest
 from duckdb import BinderException, CatalogException
 
 from agentune.analyze.core.database import ArtIndex, DatabaseTable
-from agentune.analyze.flow.duckdb import DuckdbManager
+from agentune.analyze.core.duckdb import DuckdbManager
 
 
 def test_tables_indexes() -> None:

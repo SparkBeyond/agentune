@@ -6,7 +6,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from agentune.analyze.flow.duckdb import DuckdbFilesystemDatabase, DuckdbManager
+from agentune.analyze.core.duckdb import DuckdbFilesystemDatabase, DuckdbManager
 
 _logger = logging.getLogger(__name__)
 

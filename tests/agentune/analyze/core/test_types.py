@@ -1,8 +1,8 @@
 import contextlib
 
 from agentune.analyze.core import types
+from agentune.analyze.core.duckdb import DuckdbManager
 from agentune.analyze.core.schema import Field, Schema
-from agentune.analyze.flow.duckdb import DuckdbManager
 from agentune.analyze.util import dataconv
 
 

@@ -12,6 +12,7 @@ from agentune.analyze.context.base import TablesWithContextDefinitions, TableWit
 from agentune.analyze.core import setup
 from agentune.analyze.core.database import DatabaseTable
 from agentune.analyze.core.dataset import Dataset
+from agentune.analyze.core.duckdb import DuckdbManager
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.feature.base import Feature, Regression, SyncFeature
 from agentune.analyze.feature.describe.base import FeatureDescriber, SyncFeatureDescriber
@@ -33,7 +34,6 @@ from agentune.analyze.feature.stats.base import (
     SyncFeatureStatsCalculator,
     SyncRelationshipStatsCalculator,
 )
-from agentune.analyze.flow.duckdb import DuckdbManager
 from agentune.analyze.flow.feature_search.base import (
     FeatureSearchDatasets,
     FeatureSearchFlow,
