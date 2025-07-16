@@ -33,13 +33,13 @@ packages = [{include = "agentune"}]
 # Core dependencies
 attrs = "^25.3.0"
 cattrs = "^25.1.1"
+python-dotenv = "^1.1.0"
 
 # LLM Integration
 langchain = "^0.3.25"
 langchain-openai = "^0.3.21"
 langchain-community = "^0.3.21"
 pydantic = "^2.0"
-python-dotenv = "^1.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
