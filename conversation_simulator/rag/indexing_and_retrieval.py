@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from langchain_core.documents import Document
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from langchain_core.vectorstores import VectorStore
 from ..models import Conversation, Message, ParticipantRole
@@ -167,87 +166,25 @@ async def get_similar_examples_for_next_message_role(
     return valid_docs
 
 
-def parse_conversation_turns(
-    conversation: str, 
-    target_response: str, 
-    target_role: ParticipantRole
-) -> list[ConversationTurn]:
-    """Parse conversation into structured turns, highlighting target role's specific response.
-    
-    Args:
-        conversation: Full conversation string with "Role: content" format
-        target_response: The specific response to highlight as the target
-        target_role: The role whose response should be highlighted
-        
-    Returns:
-        List of ConversationTurn objects with target response marked
-    """
-    
-    # Define the expected role prefixes
-    CUSTOMER_PREFIX = "Customer: "
-    AGENT_PREFIX = "Agent: "
-    
-    # Map roles to their prefixes
-    role_prefixes = {
-        ParticipantRole.CUSTOMER: CUSTOMER_PREFIX,
-        ParticipantRole.AGENT: AGENT_PREFIX
-    }
-    
-    turns = []
-    target_found = False
-    
-    for line in conversation.split('\n'):  # This could separate existing messages.
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Try to parse the line for each known role
-        parsed_turn = None
-        
-        for role, prefix in role_prefixes.items():
-            if line.startswith(prefix):
-                content = line[len(prefix):]
-                
-                # Mark as target if: 1) it's the role we're looking for, 
-                # 2) the content exactly matches our target response, and 
-                # 3) we haven't already found a target (prevents duplicate highlighting)
-                is_target = (
-                    role == target_role and 
-                    content == target_response and 
-                    not target_found
-                )
-                if is_target:
-                    target_found = True
-                
-                parsed_turn = ConversationTurn(role.value.capitalize(), content, is_target)
-                break
-        
-        if parsed_turn:
-            turns.append(parsed_turn)
-        else:
-            # Handle unexpected format
-            logger.warning(f"Unexpected line format in conversation: {line}")
-    
-    return turns
-
-
 async def get_few_shot_examples(
     conversation_history: Sequence[Message],
     vector_store: VectorStore,
     k: int
 ) -> list[tuple[Document, float]]:
     """Retrieves k relevant documents for a given role of the current last message."""
+    if not conversation_history:
+        return []
 
     current_message_role = conversation_history[-1].sender
     query = _format_conversation_history(conversation_history)
 
-    def role_filter_function(doc):
+    def role_filter_function(document: Document) -> bool:
         """
         This function acts as the filter. It checks if a document's role
         matches the role of the current speaker.
         """
         # It uses your _get_metadata helper
-        metadata = _get_metadata(doc)
+        metadata = _get_metadata(document)
         # It has access to 'current_message_role' from the outer scope
         return metadata.get("current_message_role") == current_message_role.value
 
@@ -272,9 +209,8 @@ async def get_few_shot_examples(
     return unique_docs
 
 
-def _format_examples(
+def format_examples(
         examples: list[tuple[Document, float]],
-        role: ParticipantRole
 ) -> str:
     """
     Formats the retrieved few-shot example Documents into a list of LangChain messages.
@@ -282,23 +218,20 @@ def _format_examples(
     and the metadata (next agent message) becomes an embedded agent response in the conversation history.
     """
     conversations: list[Document] = [doc[0] for doc in examples]
-    formatted_messages: list[BaseMessage] = []
+    formatted_messages: list[str] = []
 
-    message_class: type[BaseMessage] = (
-        HumanMessage if role == ParticipantRole.AGENT else AIMessage
-    )  # This is the other way around since it refers to the answer
-
-    for index, doc in enumerate(conversations):
+    def format_single_conversation(ind, doc) -> str:
+        """Formats a single conversation Document into a LangChain message."""
         try:
-            # Example agent response from metadata
+            # Extract metadata from the document
             metadata = doc.metadata
             # Validate essential keys before creating Message object
             if "full_conversation" not in metadata:
                 logger.warning(f"Skipping example due to missing 'full_conversation' metadata: {metadata}")
-                continue
+                return ""
 
             full_conversation = str(metadata["full_conversation"])
-            formatted_conversation = full_conversation  # Default to the original conversation
+            formatted_conv = full_conversation  # Default to the original conversation
 
             # 2. Conditional Logic: Only try to highlight the response if 'next_message_content' exists.
             if "next_message_content" in metadata:
@@ -308,7 +241,7 @@ def _format_examples(
 
                 if participant_turn_str in full_conversation:
                     # If the key exists, perform the replacement as before
-                    formatted_conversation = full_conversation.replace(
+                    formatted_conv = full_conversation.replace(
                         participant_turn_str, f"**Current {role_name} response**: {participant_response}",
                         0  # Only replace the first occurrence
                     )
@@ -318,11 +251,12 @@ def _format_examples(
                     )
 
             # Add indexing for the examples
-            formatted_messages.append(message_class(content=f"Example {index + 1}:"))
-            formatted_messages.append(message_class(content=formatted_conversation))
-
+            return f"Example {ind + 1}:\n\n{formatted_conv}"
         except Exception as e:
-            logger.error(f"Error processing few-shot example in RagAgent: {e}")
-            continue
+            logger.error(f"Error formatting conversation example {ind + 1}: {e}")
+            return ""
 
-    return "\n\n".join([str(msg.content) for msg in formatted_messages])
+    for index, document in enumerate(conversations):
+        formatted_messages.append(format_single_conversation(index, document))
+
+    return "\n\n---".join(formatted_messages)

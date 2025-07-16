@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from collections.abc import Sequence
 from attrs import field, frozen
 import attrs
 from pydantic import BaseModel, Field
@@ -14,7 +13,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 
-from ....models import Conversation, Message, ParticipantRole
+from ....models import Conversation, Message
 from ....rag import indexing_and_retrieval
 from ..base import Agent, AgentFactory
 from ..config import AgentConfig
@@ -37,6 +36,7 @@ class AgentResponse(BaseModel):
         description="Response content, or null if should_respond is false"
     )
 
+
 @frozen
 class RagAgent(Agent):
     """RAG LLM-based agent participant.
@@ -47,7 +47,7 @@ class RagAgent(Agent):
 
     agent_vector_store: VectorStore
     model: BaseChatModel
-    intent_description: str | None = None # Store intent
+    intent_description: str | None = None  # Store intent
         
     llm_chain: Runnable = field(init=False)
     
@@ -77,7 +77,7 @@ class RagAgent(Agent):
 
         # 2. Augmentation
         # Format few-shot examples and history for the prompt template
-        formatted_examples = indexing_and_retrieval._format_examples(few_shot_examples, role=self.role)
+        formatted_examples = indexing_and_retrieval.format_examples(few_shot_examples)
 
         # Intent statement
         # Add the goal line to the conversation if there's an intent
@@ -116,15 +116,6 @@ class RagAgent(Agent):
 
         return Message(
             sender=self.role, content=response_content.response, timestamp=response_timestamp
-        )
-
-    @staticmethod
-    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
-        return await indexing_and_retrieval.get_similar_examples_for_next_message_role(
-            conversation_history=conversation_history,
-            vector_store=vector_store,
-            k=k,
-            target_role=ParticipantRole.AGENT
         )
 
 

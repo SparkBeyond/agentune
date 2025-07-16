@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from collections.abc import Sequence
 from attrs import frozen, field
 from random import Random
 import attrs
-from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import Runnable
@@ -16,25 +14,11 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 
 from .first_message_prompt import CUSTOMER_FIRST_MESSAGE_PROMPT
-from ....models import Conversation, Message, ParticipantRole
+from ._customer_response import CustomerResponse
+from ....models import Conversation, Message
 from ....rag import indexing_and_retrieval
 from ..base import Customer, CustomerFactory
 from .prompt import CUSTOMER_PROMPT
-
-
-class CustomerResponse(BaseModel):
-    """Customer's response with reasoning."""
-
-    reasoning: str = Field(
-        description="Detailed reasoning for why the customer would respond or not, and what the response would be"
-    )
-    should_respond: bool = Field(
-        description="Whether the customer should respond at this point"
-    )
-    response: str | None = Field(
-        default=None,
-        description="Response content, or null if should_respond is false"
-    )
 
 
 logger = logging.getLogger(__name__)
@@ -91,13 +75,13 @@ class RagCustomer(Customer):
         # 2. Augmentation
         if not conversation.customer_messages:
             # If this is the first message by the customer, select one random example to provide context, to allow diverse options for the start of the conversation
-            few_shot_examples = [self._random.choice(few_shot_examples)]
+            few_shot_examples = [self._random.choice(few_shot_examples)] if few_shot_examples else []
         else:
             # Select up to 5 randomly chosen examples
             few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
 
         # Format few-shot examples and history for the prompt template
-        formatted_examples = indexing_and_retrieval._format_examples(few_shot_examples, ParticipantRole.CUSTOMER)
+        formatted_examples = indexing_and_retrieval.format_examples(few_shot_examples)
 
         # Format the current conversation in the same way as the examples
         formatted_current_convo = "\n".join(
@@ -134,15 +118,6 @@ class RagCustomer(Customer):
 
         return Message(
             sender=self.role, content=response_object.response, timestamp=response_timestamp
-        )
-
-    @staticmethod
-    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
-        return await indexing_and_retrieval.get_similar_examples_for_next_message_role(
-            conversation_history=conversation_history,
-            vector_store=vector_store,
-            k=k,
-            target_role=ParticipantRole.CUSTOMER
         )
 
 @frozen
