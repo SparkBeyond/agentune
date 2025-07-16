@@ -2,8 +2,10 @@
 """Utility functions for conversation simulator examples."""
 
 import json
+import logging
 
 import pandas as pd
+import nest_asyncio
 
 from conversation_simulator.models import Conversation, Message, Outcome, ParticipantRole
 from conversation_simulator.util.structure import converter
@@ -130,3 +132,42 @@ def conversations_to_csv(conversations: list[Conversation], output_path: str) ->
     df = pd.DataFrame(rows)
     df.to_csv(output_path, index=False)
     print(f"Converted {len(conversations)} conversations to {output_path}")
+
+
+def setup_logging_and_asyncio() -> None:
+    """Configure logging and asyncio for Jupyter notebooks."""
+    # Configure basic logging to see simulation progress
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    
+    # Fix asyncio event loop for Jupyter notebooks
+    nest_asyncio.apply()
+    
+    print("✓ Logging configured")
+    print("✓ Asyncio event loop configured for Jupyter")
+
+
+def load_data_with_outcomes(csv_path: str) -> tuple[list[Conversation], tuple[Outcome, ...]]:
+    """Load conversations from CSV and extract outcomes in one step.
+    
+    Args:
+        csv_path: Path to the CSV file
+        
+    Returns:
+        Tuple of (conversations, outcomes) ready for simulation
+    """
+    print(f"Loading conversations from {csv_path}...")
+    conversations = load_conversations_from_csv(csv_path)
+    
+    print(f"✓ Loaded {len(conversations)} conversations")
+    print(f"✓ Sample conversation has {len(conversations[0].messages)} messages")
+    
+    # Extract outcomes
+    unique_outcomes = extract_outcomes_from_conversations(conversations)
+    outcomes_tuple = tuple(unique_outcomes)
+    
+    print(f"✓ Extracted {len(unique_outcomes)} unique outcomes")
+    for outcome in unique_outcomes:
+        print(f"  - {outcome.name}: {outcome.description}")
+    
+    return conversations, outcomes_tuple
