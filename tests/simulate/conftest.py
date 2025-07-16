@@ -33,7 +33,7 @@ def configure_logging() -> None:
     logging.getLogger("openai").setLevel(logging.WARNING)
     
     # Add debug logging for specific modules if needed during development
-    # logging.getLogger("from agentune.simulate.participants").setLevel(logging.DEBUG)
+    # logging.getLogger("agentune.simulate.participants").setLevel(logging.DEBUG)
 
 
 @pytest.fixture(scope="session")
