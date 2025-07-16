@@ -113,27 +113,35 @@ class SimulationSessionResult:
             f"Simulated conversations: {len(self.simulated_conversations)}"
         ]
 
-        if self.simulated_conversations:
-            # Count outcomes and messages
-            outcome_counts: dict[str, int] = {}
-            total_messages = 0
+        # Show side-by-side comparison using existing analysis data
+        if self.original_conversations and self.simulated_conversations:
+            # Message count comparison
+            orig_msgs = self.analysis_result.message_distribution_comparison.original_stats.mean_messages
+            sim_msgs = self.analysis_result.message_distribution_comparison.simulated_stats.mean_messages
+            lines.append("")
+            lines.append("Average messages per conversation:")
+            lines.append(f"  Original: {orig_msgs:.1f}")
+            lines.append(f"  Simulated: {sim_msgs:.1f}")
             
-            for sim_conv in self.simulated_conversations:
-                # Count outcome
-                outcome_name = sim_conv.conversation.outcome.name if sim_conv.conversation.outcome else "unknown"
-                outcome_counts[outcome_name] = outcome_counts.get(outcome_name, 0) + 1
-                
-                # Count messages
-                total_messages += len(sim_conv.conversation.messages)
+            # Outcome distribution comparison
+            orig_dist = self.analysis_result.outcome_comparison.original_distribution
+            sim_dist = self.analysis_result.outcome_comparison.simulated_distribution
             
-            avg_messages = total_messages / len(self.simulated_conversations)
-            lines.append(f"Average messages per conversation: {avg_messages:.1f}")
+            # Get all unique outcomes from both distributions
+            all_outcomes = sorted(set(orig_dist.outcome_counts.keys()) | set(sim_dist.outcome_counts.keys()))
             
             lines.append("")
-            lines.append("Outcome distribution:")
-            for outcome_name, count in sorted(outcome_counts.items()):
-                percentage = (count / len(self.simulated_conversations)) * 100
-                lines.append(f"  {outcome_name}: {count} ({percentage:.1f}%)")
+            lines.append("Outcome distribution comparison:")
+            lines.append(f"{'Outcome':<20} {'Original':<15} {'Simulated':<15}")
+            lines.append("-" * 50)
+            
+            for outcome in all_outcomes:
+                orig_count = orig_dist.outcome_counts.get(outcome, 0)
+                sim_count = sim_dist.outcome_counts.get(outcome, 0)
+                orig_pct = orig_dist.outcome_percentages.get(outcome, 0.0)
+                sim_pct = sim_dist.outcome_percentages.get(outcome, 0.0)
+                
+                lines.append(f"{outcome:<20} {orig_count:>3} ({orig_pct:>4.1f}%)   {sim_count:>3} ({sim_pct:>4.1f}%)")
             
             # Show a sample conversation
             if self.simulated_conversations:
