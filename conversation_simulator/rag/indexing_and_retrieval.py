@@ -242,8 +242,8 @@ def format_examples(
                 if participant_turn_str in full_conversation:
                     # If the key exists, perform the replacement as before
                     formatted_conv = full_conversation.replace(
-                        participant_turn_str, f"**Current {role_name} response**: {participant_response}",
-                        0  # Only replace the first occurrence
+                        participant_turn_str, f"**Next {role_name} response**: {participant_response}",
+                        1  # Only replace the first occurrence
                     )
                 else:
                     logger.warning(
@@ -259,4 +259,4 @@ def format_examples(
     for index, document in enumerate(conversations):
         formatted_messages.append(format_single_conversation(index, document))
 
-    return "\n\n---".join(formatted_messages)
+    return "\n\n".join(formatted_messages)

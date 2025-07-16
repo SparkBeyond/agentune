@@ -65,7 +65,7 @@ class RagCustomer(Customer):
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next customer message using RAG LLM approach."""
         # 1. Retrieval
-        k = 50 if not conversation.customer_messages else 20  # Use more examples for the first message, for diversity
+        k = 20
         few_shot_examples: list[tuple[Document, float]] = await indexing_and_retrieval.get_few_shot_examples(
             conversation_history=conversation.messages,
             vector_store=self.customer_vector_store,

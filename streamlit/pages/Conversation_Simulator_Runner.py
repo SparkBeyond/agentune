@@ -162,7 +162,10 @@ def initialize_sidebar():
         if "Embedding" not in category:
             chat_models.extend(model_list)
 
-    default_model: str = "gpt-4o-2024-08-06"  # Default chat model
+    default_model: str = "gpt-4o-2024-08-06"
+
+    if default_model not in chat_models:
+        raise Exception(f"Default model '{default_model}' is not on the list of available chat models.")
     
     # Default adversarial model (reasoning model)
     reasoning_models = models.get("Reasoning Models", [])
