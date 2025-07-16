@@ -29,18 +29,22 @@ jobs:
     
     - name: Install dependencies
       run: |
+        cd agentune_simulate
         poetry config virtualenvs.create false
         poetry config installer.max-workers 10
         poetry install
     
     - name: Run ruff
       run: |
+        cd agentune_simulate
         poetry run ruff check .
 
     - name: Run mypy
       run: |
+        cd agentune_simulate
         poetry run mypy .
 
     - name: Run tests
       run: |
+        cd agentune_simulate
         poetry run python -m pytest
