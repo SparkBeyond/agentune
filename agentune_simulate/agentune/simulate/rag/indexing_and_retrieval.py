@@ -181,19 +181,12 @@ async def get_few_shot_examples(
     current_message_role = conversation_history[-1].sender
     query = format_conversation(conversation_history)
 
-    def role_filter_function(doc):
-        """
-        This function acts as the filter. It checks if a document's role
-        matches the role of the current speaker.
-        """
-        # It uses your _get_metadata helper
-        metadata = _get_metadata(doc)
-        # It has access to 'current_message_role' from the outer scope
-        return metadata.get("current_message_role") == current_message_role.value
-
-    retrieved_docs: list[tuple[Document, float]] = await vector_store.asimilarity_search_with_score(
-        query=query, k=k,
-        filter=role_filter_function
+    # Use the new searcher for consistent filtering across vector stores
+    searcher = VectorStoreSearcher.create(vector_store)
+    retrieved_docs = await searcher.similarity_search_with_filter(
+        query=query,
+        k=k,
+        filter_dict={"current_message_role": current_message_role.value}
     )
 
     # Sort retrieved docs by score
