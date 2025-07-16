@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "agentune_simulate."
+name = "agentune_simulate"
 version = "0.1.0"
 description = "A tool for simulating Customer-Agent conversations based on real chat data"
 authors = ["SparkBeyond <info@sparkbeyond.com>"]
 readme = "README.md"
-packages = [{include = "agentune_simulate."}]
+packages = [{include = "agentune"}]
 license = "MIT"
 repository = "https://github.com/SparkBeyond/conversation-simulator"
 documentation = "https://github.com/SparkBeyond/conversation-simulator"
