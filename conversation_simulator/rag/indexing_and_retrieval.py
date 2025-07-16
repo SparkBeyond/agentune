@@ -1,7 +1,6 @@
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 from langchain_core.documents import Document
 
@@ -9,13 +8,6 @@ from langchain_core.vectorstores import VectorStore
 from ..models import Conversation, Message, ParticipantRole
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ConversationTurn:
-    role: str
-    content: str
-    is_target: bool = False
 
 
 def _format_conversation_history(messages: Sequence[Message]) -> str:

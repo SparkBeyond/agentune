@@ -19,22 +19,14 @@ from conversation_simulator.models.results import SimulationSessionResult
 from conversation_simulator.util.structure import converter
 
 
-def get_llm_callbacks(project_name: str) -> list:
+def get_llm_callbacks() -> list:
     """
     Configure and return callback handlers for LLM logging and tracking.
-    
+
     Returns:
         list: List containing LangChain logging callback and Opik tracer
     """
-    from opik.integrations.langchain import OpikTracer
-    
-    # Configure Opik for local instance
-    os.environ["OPIK_URL_OVERRIDE"] = "http://localhost:5173/api"
-    
-    # Initialize Opik tracer for conversation tracking with project name
-    opik_tracer = OpikTracer(project_name=project_name)
-    
-    return [opik_tracer]
+    return []
 
 
 def load_simulation_results(uploaded_file) -> SimulationSessionResult | None:
