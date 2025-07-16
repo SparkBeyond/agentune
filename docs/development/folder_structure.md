@@ -9,7 +9,7 @@ This document outlines the high-level folder structure for the Conversation Simu
 ├── pyproject.toml          # Project configuration and dependencies
 ├── README.md               # Project overview and setup instructions
 ├── CODING_STANDARDS.md     # Development guidelines
-├── conversation_simulator/ # Main package source code
+├── from agentune.simulate./ # Main package source code
 │   ├── models/            # Core data structures
 │   ├── participants/      # Customer and agent implementations
 │   │   ├── customer/      # Customer participant types
@@ -25,7 +25,7 @@ This document outlines the high-level folder structure for the Conversation Simu
 
 ## Key Components
 
-### `conversation_simulator/` - Main Package
+### `from agentune.simulate./` - Main Package
 - **`models/`** - Core data structures (Message, Conversation, Intent, Outcome, etc.)
 - **`participants/`** - Customer and agent implementations with abstract base classes
 - **`runners/`** - Simulation execution engines (full simulation, hybrid modes)

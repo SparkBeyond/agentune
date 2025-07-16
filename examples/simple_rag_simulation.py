@@ -29,14 +29,14 @@ from pathlib import Path
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from conversation_simulator.models import (
+from agentune.simulate.models import (
     Conversation,
     Outcomes,
 )
-from conversation_simulator.models.results import SimulationSessionResult
-from conversation_simulator.rag import conversations_to_langchain_documents
-from conversation_simulator.simulation.session_builder import SimulationSessionBuilder
-from conversation_simulator.util.structure import converter
+from agentune.simulate.models.results import SimulationSessionResult
+from agentune.simulate.rag import conversations_to_langchain_documents
+from agentune.simulate.simulation.session_builder import SimulationSessionBuilder
+from agentune.simulate.util.structure import converter
 
 # Get module logger
 logger = logging.getLogger(__name__)

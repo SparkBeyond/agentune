@@ -131,10 +131,10 @@ You can also run static type checking and linting manually:
 ```bash
 # Run ruff
 
-poetry run ruff check conversation_simulator/
+poetry run ruff check from agentune.simulate./
 
 # Run mypy
-poetry run mypy conversation_simulator/
+poetry run mypy from agentune.simulate./
 ```
 
 ### Applying Fixes Automatically (Ruff)
@@ -142,7 +142,7 @@ You can apply fixes automatically when possible:
 
 ```bash
 # Fix issues automatically when possible
-poetry run ruff check --fix conversation_simulator/
+poetry run ruff check --fix from agentune.simulate./
 ```
 
 Following automatic fixes, check the changes and make sure they are correct.

@@ -16,9 +16,9 @@ A tool for simulating Customer-Agent conversations based on real chat data.
 
 ## Project Structure
 
-- `conversation_simulator/` - Package source code
+- `agentune/simulate/` - Package source code
 - `examples/` - Usage examples and tutorials
-- `tests/` - Test files
+- `tests/simulate/` - Test files
 - `docs/` - Project documentation
 
 ## Development

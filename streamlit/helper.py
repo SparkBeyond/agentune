@@ -14,9 +14,9 @@ import re
 from datetime import datetime
 from typing import Any
 
-from conversation_simulator.models.conversation import Conversation
-from conversation_simulator.models.results import SimulationSessionResult
-from conversation_simulator.util.structure import converter
+from agentune.simulate.models.conversation import Conversation
+from agentune.simulate.models.results import SimulationSessionResult
+from agentune.simulate.util.structure import converter
 
 
 def get_llm_callbacks() -> list:

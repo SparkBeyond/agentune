@@ -11,7 +11,7 @@ import plotly.express as px
 import numpy as np
 
 # Import simulation result model
-from conversation_simulator.models.results import SimulationSessionResult
+from agentune.simulate.models.results import SimulationSessionResult
 
 # Import helper functions
 from helper import (

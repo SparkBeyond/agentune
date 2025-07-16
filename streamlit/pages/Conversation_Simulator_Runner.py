@@ -9,20 +9,20 @@ import asyncio
 from typing import Any
 
 # Import conversation simulator components
-from conversation_simulator.models import Conversation, Outcomes
-from conversation_simulator.models.results import SimulationSessionResult, ConversationResult
-from conversation_simulator.models.outcome import Outcome
-from conversation_simulator.participants.agent.rag import RagAgentFactory
-from conversation_simulator.participants.customer.rag import RagCustomerFactory
-from conversation_simulator.simulation.progress import ProgressCallback
-from conversation_simulator.rag import conversations_to_langchain_documents
-from conversation_simulator.intent_extraction.zeroshot import ZeroshotIntentExtractor
-from conversation_simulator.outcome_detection.rag.rag import RAGOutcomeDetector
-from conversation_simulator.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
+from agentune.simulate.models import Conversation, Outcomes
+from agentune.simulate.models.results import SimulationSessionResult, ConversationResult
+from agentune.simulate.models.outcome import Outcome
+from agentune.simulate.participants.agent.rag import RagAgentFactory
+from agentune.simulate.participants.customer.rag import RagCustomerFactory
+from agentune.simulate.simulation.progress import ProgressCallback
+from agentune.simulate.rag import conversations_to_langchain_documents
+from agentune.simulate.intent_extraction.zeroshot import ZeroshotIntentExtractor
+from agentune.simulate.outcome_detection.rag.rag import RAGOutcomeDetector
+from agentune.simulate.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
 
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from conversation_simulator.simulation.simulation_session import SimulationSession
+from agentune.simulate.simulation.simulation_session import SimulationSession
 
 # Import helper functions
 from helper import (

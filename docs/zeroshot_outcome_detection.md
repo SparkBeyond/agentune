@@ -5,7 +5,7 @@
 The `ZeroshotOutcomeDetector` analyzes conversations to determine if they've reached predefined outcomes using a language model with zero-shot capabilities.
 
 ```python
-from conversation_simulator.outcome_detection import ZeroshotOutcomeDetector
+from agentune.simulate.outcome_detection import ZeroshotOutcomeDetector
 
 # Create detector with any LangChain BaseChatModel
 detector = ZeroshotOutcomeDetector(model=chat_model)

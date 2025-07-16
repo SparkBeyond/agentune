@@ -35,10 +35,10 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
 
 ```bash
 # Using Poetry
-poetry run streamlit run streamlit/Conversation_Simulator_Results_Analyzer.py
+poetry run python -m streamlit run streamlit/Conversation_Simulator_Results_Analyzer.py
 
 # Or directly
-streamlit run streamlit/Conversation_Simulator_Results_Analyzer.py
+python -m streamlit run streamlit/Conversation_Simulator_Results_Analyzer.py
 ```
 
 ## Usage

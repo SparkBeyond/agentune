@@ -58,9 +58,9 @@ For developers who want to understand or modify the example:
 
 ### Key Library Components Used
 
-- **Models**: [`Conversation`](../conversation_simulator/models/conversation.py), [`Outcomes`](../conversation_simulator/models/outcome.py), [`SimulationSessionResult`](../conversation_simulator/models/results.py)
-- **Session Builder**: [`SimulationSessionBuilder`](../conversation_simulator/simulation/session_builder.py) - Uses opinionated RAG/zero-shot defaults
-- **RAG Utilities**: [`conversations_to_langchain_documents`](../conversation_simulator/rag/indexing_and_retrieval.py)
+- **Models**: [`Conversation`](../from agentune.simulate./models/conversation.py), [`Outcomes`](../from agentune.simulate./models/outcome.py), [`SimulationSessionResult`](../from agentune.simulate./models/results.py)
+- **Session Builder**: [`SimulationSessionBuilder`](../from agentune.simulate./simulation/session_builder.py) - Uses opinionated RAG/zero-shot defaults
+- **RAG Utilities**: [`conversations_to_langchain_documents`](../from agentune.simulate./rag/indexing_and_retrieval.py)
 
 **Note**: The new SimulationSessionBuilder automatically creates RAG-based participants and zero-shot components, eliminating the need for manual factory construction.
 
