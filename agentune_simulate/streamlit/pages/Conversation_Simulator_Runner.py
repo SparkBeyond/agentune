@@ -332,7 +332,7 @@ async def run_simulation(
     """Run the conversation simulation."""
     
     # Get logging callback tracer
-    callbacks = get_llm_callbacks(config['session_name'])
+    callbacks = get_llm_callbacks()
     
     # Initialize models with logging callbacks
     agent_model = ChatOpenAI(**config['agent_model_kwargs'], callbacks=callbacks)

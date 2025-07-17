@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from collections.abc import Sequence
 from attrs import frozen, field
 from random import Random
 import attrs
+from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import Runnable
@@ -14,11 +16,26 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 
 from .first_message_prompt import CUSTOMER_FIRST_MESSAGE_PROMPT
-from ._customer_response import CustomerResponse
-from ....models import Conversation, Message
+from ....models import Conversation, Message, ParticipantRole
 from ....rag import indexing_and_retrieval
 from ..base import Customer, CustomerFactory
 from .prompt import CUSTOMER_PROMPT
+
+
+# duplicate of the CustomerResponse  in ./_customer_response.py
+class CustomerResponse(BaseModel):
+    """Customer's response with reasoning."""
+
+    reasoning: str = Field(
+        description="Detailed reasoning for why the customer would respond or not, and what the response would be"
+    )
+    should_respond: bool = Field(
+        description="Whether the customer should respond at this point"
+    )
+    response: str | None = Field(
+        default=None,
+        description="Response content, or null if should_respond is false"
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -65,7 +82,8 @@ class RagCustomer(Customer):
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next customer message using RAG LLM approach."""
         # 1. Retrieval
-        k = 20
+        # Having second thoughts , maybe 20 is enough?
+        k = 50 if not conversation.customer_messages else 20  # Use more examples for the first message, for diversity
         few_shot_examples: list[tuple[Document, float]] = await indexing_and_retrieval.get_few_shot_examples(
             conversation_history=conversation.messages,
             vector_store=self.customer_vector_store,
@@ -75,7 +93,7 @@ class RagCustomer(Customer):
         # 2. Augmentation
         if not conversation.customer_messages:
             # If this is the first message by the customer, select one random example to provide context, to allow diverse options for the start of the conversation
-            few_shot_examples = [self._random.choice(few_shot_examples)] if few_shot_examples else []
+            few_shot_examples = [self._random.choice(few_shot_examples)]
         else:
             # Select up to 5 randomly chosen examples
             few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
@@ -84,11 +102,9 @@ class RagCustomer(Customer):
         formatted_examples = indexing_and_retrieval.format_examples(few_shot_examples)
 
         # Format the current conversation in the same way as the examples
-        formatted_current_convo = "\n".join(
-            [f"{msg.sender.value.capitalize()}: {msg.content}" for msg in conversation.messages]
-        )
+        formatted_current_convo = indexing_and_retrieval.format_conversation(conversation.messages)
         # Add the goal line to the conversation if there's an intent
-        goal_line = (
+        goal_line = ( # differnt from the agent, on purpose?
             f"- Your goal in this conversation is: {self.intent_description}"
             if self.intent_description
             else ""
@@ -120,17 +136,29 @@ class RagCustomer(Customer):
             sender=self.role, content=response_object.response, timestamp=response_timestamp
         )
 
+    @staticmethod
+    # no used
+    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
+        return await indexing_and_retrieval.get_similar_examples_for_next_message_role(
+            conversation_history=conversation_history,
+            vector_store=vector_store,
+            k=k,
+            target_role=ParticipantRole.CUSTOMER
+        )
+
 @frozen
 class RagCustomerFactory(CustomerFactory):
     """Factory for creating RAG-based customer participants.
-    
+
     Args:
         model: LangChain chat model for customer responses
         customer_vector_store: Vector store containing customer message examples
     """
-    
+
     model: BaseChatModel
     customer_vector_store: VectorStore
+
+    # I think the seed trick was important here
     
     def create_participant(self) -> RagCustomer:
         """Create a RAG customer participant.

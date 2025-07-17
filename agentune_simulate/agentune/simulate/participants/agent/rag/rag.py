@@ -36,28 +36,27 @@ class AgentResponse(BaseModel):
         description="Response content, or null if should_respond is false"
     )
 
-
 @frozen
 class RagAgent(Agent):
     """RAG LLM-based agent participant.
-    
+
     Uses a language model with Retrieval Augmented Generation
     to generate agent responses.
     """
 
     agent_vector_store: VectorStore
     model: BaseChatModel
-    intent_description: str | None = None  # Store intent
-        
+    intent_description: str | None = None # Store intent
+
     llm_chain: Runnable = field(init=False)
-    
+
     @llm_chain.default
     def _create_llm_chain(self) -> Runnable:
         """Creates the LangChain Expression Language (LCEL) chain for the agent."""
         # Use the imported AGENT_PROMPT from prompt.py
         # If there's an intent description, we can modify the system message
         prompt = AGENT_PROMPT
-        
+
         # Return the runnable chain with the imported prompt
         return prompt | self.model | PydanticOutputParser(pydantic_object=AgentResponse)
 
@@ -87,9 +86,7 @@ class RagAgent(Agent):
             goal_line = ""
 
         # 3. Generation
-        formatted_current_convo = "\n".join(
-            [f"{msg.sender.value.capitalize()}: {msg.content}" for msg in conversation.messages]
-        )
+        formatted_current_convo = indexing_and_retrieval.format_conversation(conversation.messages)
         response_content: AgentResponse = await self.llm_chain.ainvoke({
             "examples": formatted_examples,
             "current_conversation": formatted_current_convo,
