@@ -103,7 +103,7 @@ class RagAgent(Agent):
                 last_message.sender == self.role
                 and last_message.content == response_content.response
             ):
-                logger.warning(
+                logger.debug(
                     f"Guardrail triggered: Agent attempted to repeat the last message: '{response_content.response}'"
                 )
                 return None
