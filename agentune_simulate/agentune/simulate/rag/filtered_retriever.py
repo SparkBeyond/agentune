@@ -9,12 +9,21 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, override
 
 from langchain_core.documents import Document
-from langchain_core.vectorstores import VectorStore
+from langchain_core.vectorstores import VectorStore, InMemoryVectorStore
+
+try:
+    from langchain_chroma import Chroma
+    _IS_CHROMA_AVAILABLE = True
+except ImportError:
+    _IS_CHROMA_AVAILABLE = False
+
 
 logger = logging.getLogger(__name__)
+
+_MAX_TOTAL_FETCH = 2000  # Absolute limit for number of documents to fetch in fallback search
 
 
 class VectorStoreSearcher(ABC):
@@ -45,20 +54,19 @@ class VectorStoreSearcher(ABC):
     @staticmethod
     def create(vector_store: VectorStore) -> VectorStoreSearcher:
         """Factory method to create appropriate searcher for vector store type."""
-        store_type = type(vector_store).__name__
-        
-        if store_type == "InMemoryVectorStore":
+        if isinstance(vector_store, InMemoryVectorStore):
             return InMemorySearcher(vector_store)
-        elif store_type in ["Chroma"]:
+        elif _IS_CHROMA_AVAILABLE and isinstance(vector_store, Chroma):
             return DictionaryFilterSearcher(vector_store)
         else:
-            logger.info(f"Using fallback filtering for unsupported vector store: {store_type}")
+            logger.debug(f"Using fallback filtering for unsupported vector store: {type(vector_store).__name__}")
             return FallbackSearcher(vector_store)
 
 
 class InMemorySearcher(VectorStoreSearcher):
     """Searcher for InMemoryVectorStore using function-based filters."""
 
+    @override
     async def similarity_search_with_filter(
         self, query: str, k: int, filter_dict: dict[str, Any]
     ) -> list[tuple[Document, float]]:
@@ -76,6 +84,7 @@ class InMemorySearcher(VectorStoreSearcher):
 class DictionaryFilterSearcher(VectorStoreSearcher):
     """Searcher for vector stores that support dictionary-based filters (Chroma)."""
 
+    @override
     async def similarity_search_with_filter(
         self, query: str, k: int, filter_dict: dict[str, Any]
     ) -> list[tuple[Document, float]]:
@@ -87,60 +96,46 @@ class DictionaryFilterSearcher(VectorStoreSearcher):
         return results
 
 
-
 class FallbackSearcher(VectorStoreSearcher):
     """Client-side filtering fallback with adaptive sampling and absolute limits."""
 
+    @staticmethod
+    def _filter(
+            results: list[tuple[Document, float]],
+            filter_dict: dict[str, Any]
+    ) -> list[tuple[Document, float]]:
+        """Filter results based on metadata dictionary."""
+        return [
+            (doc, score) for doc, score in results
+            if all(doc.metadata.get(key) == value for key, value in filter_dict.items())
+        ]
+
+    @staticmethod
+    def _sort(
+        results: list[tuple[Document, float]]
+    ) -> list[tuple[Document, float]]:
+        """Sort results by score in descending order."""
+        return sorted(results, key=lambda x: x[1], reverse=True)
+
+    @override
     async def similarity_search_with_filter(
         self, query: str, k: int, filter_dict: dict[str, Any]
     ) -> list[tuple[Document, float]]:
-        base_oversample = 4
-        max_total_fetch = min(k * 20, 1000)  # Absolute maximum: 1000 documents
-        
-        current_fetch = k * base_oversample
-        
-        logger.debug(f"FallbackSearcher: starting adaptive search for {k} results with filter {filter_dict}")
-        
-        while current_fetch <= max_total_fetch:
-            fetch_size = min(current_fetch, max_total_fetch)
-            
-            try:
-                raw_results = await self.vector_store.asimilarity_search_with_score(
-                    query=query, k=fetch_size
-                )
-            except Exception as e:
-                logger.error(f"FallbackSearcher: vector store search failed: {e}")
-                return []
-            
-            total_fetched = len(raw_results)
-            
-            # Client-side filtering
-            filtered = [
-                (doc, score) for doc, score in raw_results 
-                if all(doc.metadata.get(key) == value for key, value in filter_dict.items())
-            ]
-            
-            filter_ratio = len(filtered) / len(raw_results) if raw_results else 0
-            logger.debug(
-                f"FallbackSearcher: fetched {len(raw_results)}, filtered to {len(filtered)} "
-                f"(ratio: {filter_ratio:.2f}), needed: {k}"
-            )
-            
-            # Success: we have enough results
-            if len(filtered) >= k:
-                logger.debug(f"FallbackSearcher: success, returning {k} results")
-                return filtered[:k]
-                
-            # No more documents available or hit absolute limit
-            if len(raw_results) < current_fetch or current_fetch >= max_total_fetch:
-                logger.warning(
-                    f"FallbackSearcher: reached limit, returning {len(filtered)} results "
-                    f"(requested: {k}, fetched: {total_fetched}, max: {max_total_fetch})"
-                )
-                return filtered
-                
-            # Double the fetch size for next attempt (but respect absolute max)
-            current_fetch = min(current_fetch * 2, max_total_fetch)
-        
-        logger.warning(f"FallbackSearcher: exhausted all attempts, returning {len(filtered)} results")
-        return filtered
+        first_fetch = min(k * 4, _MAX_TOTAL_FETCH)
+        second_fetch = min(k * 40, _MAX_TOTAL_FETCH)
+
+        raw_results = await self.vector_store.asimilarity_search_with_score(query=query, k=first_fetch)
+        filtered_results = self._filter(raw_results, filter_dict)
+
+        if len(raw_results) < first_fetch or len(filtered_results) >= k:
+            return  self._sort(filtered_results)
+
+        logger.debug(f"fetching second time with adaptive sampling: first fetch returned {len(raw_results)} results out of {first_fetch}, filtered {len(filtered_results)} results, requested {k}")
+
+        raw_results = await self.vector_store.asimilarity_search_with_score(query=query, k=second_fetch)
+        filtered_results = self._filter(raw_results, filter_dict)
+
+        if len(raw_results) >= second_fetch and len(filtered_results) < k:
+            logger.debug(f"FallbackSearcher: second fetch returned {len(raw_results)} results, after filtering {len(filtered_results)} results, requested {k}.")
+
+        return self._sort(filtered_results)
