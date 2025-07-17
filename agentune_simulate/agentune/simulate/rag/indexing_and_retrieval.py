@@ -204,7 +204,7 @@ async def get_few_shot_examples(
     seen_conversations = set()
     for doc, score in retrieved_docs:
         conversation_hash = doc.metadata.get("conversation_hash")
-        if conversation_hash not in seen_conversations:
+        if conversation_hash not in seen_conversations:  # Verified manually that the hash is consistent
             unique_docs.append((doc, score))
             seen_conversations.add(conversation_hash)
 

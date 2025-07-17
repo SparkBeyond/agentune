@@ -130,8 +130,13 @@ class RagCustomerFactory(CustomerFactory):
 
     model: BaseChatModel
     customer_vector_store: VectorStore
+    seed: int = 0
+    _random: Random = field(init=False, repr=False)
 
-    # I think the seed trick was important here
+    @_random.default
+    def _create_random(self) -> Random:
+        """Initialize random number generator with the specified seed."""
+        return Random(self.seed)
     
     def create_participant(self) -> RagCustomer:
         """Create a RAG customer participant.
@@ -141,5 +146,6 @@ class RagCustomerFactory(CustomerFactory):
         """
         return RagCustomer(
             customer_vector_store=self.customer_vector_store,
-            model=self.model
+            model=self.model,
+            seed=self._random.randint(0, 1000)
         )

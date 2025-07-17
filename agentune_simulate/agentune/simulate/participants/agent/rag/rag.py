@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import random
+from random import Random
 from datetime import datetime
 from attrs import field, frozen
 import attrs
@@ -51,7 +51,7 @@ class RagAgent(Agent):
     seed: int = 0
     intent_description: str | None = None  # Store intent
     llm_chain: Runnable = field(init=False)
-    _random: random.Random = field(init=False, repr=False)
+    _random: Random = field(init=False, repr=False)
 
     @llm_chain.default
     def _create_llm_chain(self) -> Runnable:
@@ -64,9 +64,9 @@ class RagAgent(Agent):
         return prompt | self.model | PydanticOutputParser(pydantic_object=AgentResponse)
 
     @_random.default
-    def _create_random(self) -> random.Random:
+    def _create_random(self) -> Random:
         """Create a random number generator with the specified seed."""
-        return random.Random(self.seed)
+        return Random(self.seed)
 
     def with_intent(self, intent_description: str) -> RagAgent:
         """Return a new RagAgent instance with the specified intent."""
@@ -137,6 +137,13 @@ class RagAgentFactory(AgentFactory):
     model: BaseChatModel
     agent_vector_store: VectorStore
     agent_config: AgentConfig | None = None
+    seed: int = 0
+    _random: Random = field(init=False, repr=False)
+
+    @_random.default
+    def _create_random(self) -> Random:
+        """Create a random number generator with the specified seed."""
+        return Random(self.seed)
     
     def create_participant(self) -> RagAgent:
         """Create a RAG agent participant.
@@ -146,5 +153,6 @@ class RagAgentFactory(AgentFactory):
         """
         return RagAgent(
             agent_vector_store=self.agent_vector_store,
-            model=self.model
+            model=self.model,
+            seed=self._random.randint(0, 1000)
         )
