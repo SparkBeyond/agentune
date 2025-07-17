@@ -5,6 +5,7 @@ This module provides a unified interface for searching vector stores with metada
 automatically choosing between native server-side filtering (when supported) and adaptive
 client-side filtering fallback for unsupported stores.
 """
+from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
@@ -26,11 +27,23 @@ class VectorStoreSearcher(ABC):
     async def similarity_search_with_filter(
         self, query: str, k: int, filter_dict: dict[str, Any]
     ) -> list[tuple[Document, float]]:
-        """Search with metadata filtering - native or fallback implementation."""
+        """Search with metadata filtering - native or fallback implementation.
+        
+        Args:
+            query: Text query for similarity search
+            k: Number of results to return
+            filter_dict: Dictionary of metadata key-value pairs for filtering.
+                        Documents are included only if ALL key-value pairs match
+                        their metadata exactly. Example:
+                        {"current_message_role": "agent", "has_next_message": False}
+                        
+        Returns:
+            List of (Document, similarity_score) tuples matching the filter criteria
+        """
         pass
 
     @staticmethod
-    def create(vector_store: VectorStore) -> "VectorStoreSearcher":
+    def create(vector_store: VectorStore) -> VectorStoreSearcher:
         """Factory method to create appropriate searcher for vector store type."""
         store_type = type(vector_store).__name__
         
