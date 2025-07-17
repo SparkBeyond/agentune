@@ -77,20 +77,6 @@ def format_highlighted_example(doc: Document) -> str:
     return format_conversation_with_highlight(messages, current_index)
 
 
-def _get_metadata(metadata_or_doc: dict | Document) -> dict:
-    """Safely retrieve metadata if needed.
-
-    A workaround for the fact that filter functions in different LangChain vector stores
-    may require different metadata formats.
-    """
-    if isinstance(metadata_or_doc, Document):
-        metadata: dict = metadata_or_doc.metadata
-        return metadata
-    elif isinstance(metadata_or_doc, dict):
-        return metadata_or_doc
-    raise TypeError("metadata_or_doc must be either a Document or dict")
-
-
 def conversations_to_langchain_documents(
     conversations: list[Conversation]
 ) -> list[Document]:
