@@ -137,14 +137,7 @@ class RagAgentFactory(AgentFactory):
     model: BaseChatModel
     agent_vector_store: VectorStore
     agent_config: AgentConfig | None = None
-    seed: int = 0
-    _random: Random = field(init=False, repr=False)
 
-    @_random.default
-    def _create_random(self) -> Random:
-        """Create a random number generator with the specified seed."""
-        return Random(self.seed)
-    
     def create_participant(self) -> RagAgent:
         """Create a RAG agent participant.
         
@@ -154,5 +147,4 @@ class RagAgentFactory(AgentFactory):
         return RagAgent(
             agent_vector_store=self.agent_vector_store,
             model=self.model,
-            seed=self._random.randint(0, 1000)
         )
