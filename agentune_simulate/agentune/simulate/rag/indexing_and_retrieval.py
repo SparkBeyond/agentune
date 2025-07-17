@@ -29,10 +29,10 @@ def format_conversation_with_highlight(messages: Sequence[Message], current_inde
     highlight_index = current_index + 1
 
     for i, msg in enumerate(messages):
-        if i == highlight_index-1 and highlight_index-1 < len(messages):  # Highlight the last message
+        if i == highlight_index - 1:  # Highlight the last message
             highlight_label = f"Last {msg.sender.value.capitalize()} message"
             formatted_lines.append(f"**{highlight_label}**: {msg.content}")
-        if i == highlight_index and highlight_index < len(messages):
+        elif i == highlight_index and highlight_index < len(messages):
             highlight_label = f"Current {msg.sender.value.capitalize()} response"
             formatted_lines.append(f"**{highlight_label}**: {msg.content}")
         else:

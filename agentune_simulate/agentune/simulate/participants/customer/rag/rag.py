@@ -83,7 +83,7 @@ class RagCustomer(Customer):
         """Generate next customer message using RAG LLM approach."""
         # 1. Retrieval
         # Having second thoughts , maybe 20 is enough?
-        k = 50 if not conversation.customer_messages else 20  # Use more examples for the first message, for diversity
+        k = 20
         few_shot_examples: list[tuple[Document, float]] = await indexing_and_retrieval.get_few_shot_examples(
             conversation_history=conversation.messages,
             vector_store=self.customer_vector_store,
@@ -136,15 +136,6 @@ class RagCustomer(Customer):
             sender=self.role, content=response_object.response, timestamp=response_timestamp
         )
 
-    @staticmethod
-    # no used
-    async def _get_few_shot_examples(conversation_history: Sequence[Message], vector_store: VectorStore, k: int = 3) -> list[Document]:
-        return await indexing_and_retrieval.get_similar_examples_for_next_message_role(
-            conversation_history=conversation_history,
-            vector_store=vector_store,
-            k=k,
-            target_role=ParticipantRole.CUSTOMER
-        )
 
 @frozen
 class RagCustomerFactory(CustomerFactory):
