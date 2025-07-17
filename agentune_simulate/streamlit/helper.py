@@ -1,5 +1,5 @@
 """
-Helper functions for the Conversation Simulator Streamlit apps.
+Helper functions for the Agentune Simulate Streamlit apps.
 
 Common utilities shared across different pages of the application.
 """

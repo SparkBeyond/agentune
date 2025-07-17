@@ -1,10 +1,10 @@
-# Conversation Simulator Streamlit App
+# Agentune Simulate Streamlit App
 
 A Streamlit web application for running RAG-based conversation simulations and analyzing results.
 
 ## Features
 
-### 🤖 Conversation Simulator Runner
+### 🤖 Agentune Simulate Runner
 - Upload conversation data and configure simulation settings
 - Flexible model selection (GPT, o1, o3 models) with temperature controls
 - Advanced/Basic configuration modes
@@ -35,16 +35,16 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
 
 ```bash
 # Using Poetry
-poetry run python -m streamlit run streamlit/Conversation_Simulator_Results_Analyzer.py
+poetry run python -m streamlit run streamlit/Agentune_Simulate_Results_Analyzer.py
 
 # Or directly
-python -m streamlit run streamlit/Conversation_Simulator_Results_Analyzer.py
+python -m streamlit run streamlit/Agentune_Simulate_Results_Analyzer.py
 ```
 
 ## Usage
 
 ### Running Simulations
-1. Navigate to "Conversation Simulator Runner" page
+1. Navigate to "Agentune Simulate Runner" page
 2. Upload conversation data (JSON format)
 3. Configure models and simulation parameters
 4. Select conversations to simulate (manual or random)
