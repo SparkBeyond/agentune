@@ -1,6 +1,6 @@
 # Examples
 
-This directory contains example scripts demonstrating how to use the conversation simulator library.
+This directory contains example scripts demonstrating how to use the Agentune Simulate library.
 
 ## Available Examples
 

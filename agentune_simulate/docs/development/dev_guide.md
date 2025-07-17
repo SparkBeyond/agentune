@@ -9,6 +9,12 @@ This guide provides instructions for setting up your development environment and
 
 ## Environment Setup
 
+Agentune Simulate is located under agent_tune directory, so you need to navigate there first.
+All instructions below assume you are in the `agentune_simulate` directory, which is a subdirectory of the main `agent_tune` project.
+```bash
+cd agentune_simulate
+```
+
 ### 1. Install Python with pyenv (Recommended)
 Any way to install Python 3.12.6 is fine, pyenv is suggested as it's a common choice.
 

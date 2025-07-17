@@ -1,7 +1,7 @@
 """Module for Retrieval-Augmented Generation (RAG) components.
 
 This module provides tools for creating and managing vector stores from conversation data,
-which can then be used by RAG-enabled participants in the conversation simulator.
+which can then be used by RAG-enabled participants in the agentune simulate.
 """
 
 from .indexing_and_retrieval import (

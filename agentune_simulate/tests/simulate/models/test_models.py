@@ -1,4 +1,4 @@
-"""Tests for conversation simulator models."""
+"""Tests for agentune simulate models."""
 
 from datetime import datetime, timedelta, timezone
 

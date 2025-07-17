@@ -1,8 +1,8 @@
-# Conversation Simulator Design
+# Agentune Simulate Design
 
 ## Overview
 
-The conversation simulator supports two primary flows:
+The Agentune Simulator supports two primary flows:
 1. **Full Simulation**: Both customer and agent are simulated
 2. **Hybrid Simulation**: Simulated customer with a real agent
 
@@ -286,16 +286,6 @@ runner_with_progress = FullSimulationRunner(
     progress_callback=progress_handler
 )
 ```
-
-### 2. Hybrid Flow (Future Implementation)
-
-Will be orchestrated by `HybridSimulationRunner` - handles conversations between simulated customer and real agent via channels.
-
-**Key characteristics:**
-- Real-time message synchronization
-- Requires conversation termination detection
-- Handles message timing conflicts
-- Complex coordination between simulated and real participants
 
 ## Design Considerations
 

@@ -1,6 +1,6 @@
-# Conversation Simulator - Folder Structure
+# Agentune Simulate - Folder Structure
 
-This document outlines the high-level folder structure for the Conversation Simulator project.
+This document outlines the high-level folder structure for the Agentune Simulate project.
 
 ## Overview
 
@@ -10,17 +10,17 @@ This document outlines the high-level folder structure for the Conversation Simu
 ├── README.md               # Project overview and setup instructions
 ├── CODING_STANDARDS.md     # Development guidelines
 ├── agentune/simulate/      # Main package source code
-│   ├── models/            # Core data structures
-│   ├── participants/      # Customer and agent implementations
-│   │   ├── customer/      # Customer participant types
-│   │   └── agent/         # Agent participant types
-│   ├── runners/           # Simulation execution engines
-│   ├── outcome_detection/ # Conversation outcome analysis
-│   └── channels/          # Communication abstractions
-├── tests/                 # Test files and fixtures
-│   └── fixtures/          # Sample data for testing
-└── docs/                  # Documentation
-    └── development/       # Developer guides and design docs
+│   ├── models/             # Core data structures
+│   ├── participants/       # Customer and agent implementations
+│   │   ├── customer/       # Customer participant types
+│   │   └── agent/          # Agent participant types
+│   ├── runners/            # Simulation execution engines
+│   ├── outcome_detection/  # Conversation outcome analysis
+│   └── channels/           # Communication abstractions
+├── tests/                  # Test files and fixtures
+│   └── fixtures/           # Sample data for testing
+└── docs/                   # Documentation
+    └── development/        # Developer guides and design docs
 ```
 
 ## Key Components

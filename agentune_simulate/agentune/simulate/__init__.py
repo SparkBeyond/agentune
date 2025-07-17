@@ -1,4 +1,4 @@
-"""Conversation Simulator - A library for simulating customer-agent conversations."""
+"""Agentune Simulate - A library for simulating customer-agent conversations."""
 
 # Core models
 from .models.conversation import Conversation
