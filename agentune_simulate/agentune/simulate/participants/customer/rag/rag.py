@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from collections.abc import Sequence
 from attrs import frozen, field
 from random import Random
 import attrs
@@ -16,7 +15,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 
 from .first_message_prompt import CUSTOMER_FIRST_MESSAGE_PROMPT
-from ....models import Conversation, Message, ParticipantRole
+from ....models import Conversation, Message
 from ....rag import indexing_and_retrieval
 from ..base import Customer, CustomerFactory
 from .prompt import CUSTOMER_PROMPT
