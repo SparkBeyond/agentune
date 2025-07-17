@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from langchain_core.documents import Document
 
 from langchain_core.vectorstores import VectorStore
-from ..models import Conversation, Message, ParticipantRole
+from ..models import Conversation, Message
 from ..util.structure import converter
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ def format_conversation_with_highlight(messages: Sequence[Message], current_inde
     highlight_index = current_index + 1
 
     for i, msg in enumerate(messages):
-        if i == highlight_index - 1:  # Highlight the last message
+        if i == current_index:  # Highlight the last message
             highlight_label = f"Last {msg.sender.value.capitalize()} message"
             formatted_lines.append(f"**{highlight_label}**: {msg.content}")
         elif i == highlight_index and highlight_index < len(messages):
@@ -74,11 +74,6 @@ def format_highlighted_example(doc: Document) -> str:
     current_index = metadata["current_message_index"]
 
     return format_conversation_with_highlight(messages, current_index)
-
-
-def _format_conversation_history(messages: Sequence[Message]) -> str:
-    """Deprecated: Use format_conversation instead."""
-    return format_conversation(messages)
 
 
 def _get_metadata(metadata_or_doc: dict | Document) -> dict:
@@ -157,7 +152,7 @@ async def get_similar_finished_conversations(
         List of similar conversations as (Document, score) tuples, sorted by relevance
         and deduplicated by conversation
     """
-    query = _format_conversation_history(conversation.messages)
+    query = format_conversation(conversation.messages)
 
     def filter_by_finished_conversation(metadata_or_doc: dict | Document) -> bool:
         """Filter function to check if the conversation is finished."""
@@ -174,53 +169,6 @@ async def get_similar_finished_conversations(
     retrieved_docs.sort(key=lambda x: x[1], reverse=True)
 
     return retrieved_docs
-
-
-async def get_similar_examples_for_next_message_role(
-    conversation_history: Sequence[Message],
-    vector_store: VectorStore,
-    k: int,
-    target_role: ParticipantRole,
-) -> list[Document]:
-    """Retrieves examples from the vector store where the next message is from the specified role.
-    
-    This function finds conversations similar to the provided history where the subsequent
-    message was authored by the specified role (e.g., AGENT, CUSTOMER). This allows for
-    efficient RAG implementations across different participant types using a single index.
-    
-    Args:
-        conversation_history: The current conversation history
-        vector_store: Vector store containing the indexed conversations
-        k: Number of examples to retrieve
-        target_role: The role to filter results for (e.g., AGENT, CUSTOMER)
-        
-    Returns:
-        List of relevant Document objects for the specified role
-        
-    Raises:
-        ValueError: If not enough valid documents are retrieved
-    """
-    query = _format_conversation_history(conversation_history)
-
-    def filter_by_matching_next_speaker(metadata_or_doc: dict | Document) -> bool:
-        """Filter function to check if the next message role matches the target role."""
-        role: str = _get_metadata(metadata_or_doc).get("next_message_role", "")
-        return role == target_role.value
-    
-    # Filter for documents where the next_message_role matches the target role
-    retrieved_docs: list[Document] = await vector_store.asimilarity_search(
-        query=query,
-        k=k,  # Use the exact k value requested
-        filter=filter_by_matching_next_speaker
-    )
-    
-    # Filter documents to ensure they have all required metadata
-    valid_docs = [
-        doc for doc in retrieved_docs
-        if doc.metadata.get("next_message_content", "").strip()  # Ensure content is not empty
-    ]
-    
-    return valid_docs
 
 
 async def get_few_shot_examples(

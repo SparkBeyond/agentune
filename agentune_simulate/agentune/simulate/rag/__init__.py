@@ -6,10 +6,12 @@ which can then be used by RAG-enabled participants in the conversation simulator
 
 from .indexing_and_retrieval import (
     conversations_to_langchain_documents,
-    get_similar_examples_for_next_message_role
+    get_few_shot_examples,
+    get_similar_finished_conversations
 )
 
 __all__ = [
     "conversations_to_langchain_documents",
-    "get_similar_examples_for_next_message_role",
+    "get_few_shot_examples",
+    "get_similar_finished_conversations",
 ]

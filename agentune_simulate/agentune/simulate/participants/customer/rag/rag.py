@@ -7,7 +7,6 @@ from datetime import datetime
 from attrs import frozen, field
 from random import Random
 import attrs
-from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import Runnable
@@ -19,25 +18,11 @@ from ....models import Conversation, Message
 from ....rag import indexing_and_retrieval
 from ..base import Customer, CustomerFactory
 from .prompt import CUSTOMER_PROMPT
-
-
-# duplicate of the CustomerResponse  in ./_customer_response.py
-class CustomerResponse(BaseModel):
-    """Customer's response with reasoning."""
-
-    reasoning: str = Field(
-        description="Detailed reasoning for why the customer would respond or not, and what the response would be"
-    )
-    should_respond: bool = Field(
-        description="Whether the customer should respond at this point"
-    )
-    response: str | None = Field(
-        default=None,
-        description="Response content, or null if should_respond is false"
-    )
+from ._customer_response import CustomerResponse
 
 
 logger = logging.getLogger(__name__)
+
 
 @frozen
 class RagCustomer(Customer):
@@ -81,18 +66,16 @@ class RagCustomer(Customer):
     async def get_next_message(self, conversation: Conversation) -> Message | None:
         """Generate next customer message using RAG LLM approach."""
         # 1. Retrieval
-        # Having second thoughts , maybe 20 is enough?
-        k = 20
         few_shot_examples: list[tuple[Document, float]] = await indexing_and_retrieval.get_few_shot_examples(
             conversation_history=conversation.messages,
             vector_store=self.customer_vector_store,
-            k=k
+            k=20
         )
 
         # 2. Augmentation
         if not conversation.customer_messages:
             # If this is the first message by the customer, select one random example to provide context, to allow diverse options for the start of the conversation
-            few_shot_examples = [self._random.choice(few_shot_examples)]
+            few_shot_examples = [self._random.choice(few_shot_examples)] if few_shot_examples else []
         else:
             # Select up to 5 randomly chosen examples
             few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
@@ -103,7 +86,7 @@ class RagCustomer(Customer):
         # Format the current conversation in the same way as the examples
         formatted_current_convo = indexing_and_retrieval.format_conversation(conversation.messages)
         # Add the goal line to the conversation if there's an intent
-        goal_line = ( # differnt from the agent, on purpose?
+        goal_line = (
             f"- Your goal in this conversation is: {self.intent_description}"
             if self.intent_description
             else ""

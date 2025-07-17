@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from datetime import datetime
 from attrs import field, frozen
 import attrs
@@ -36,6 +37,7 @@ class AgentResponse(BaseModel):
         description="Response content, or null if should_respond is false"
     )
 
+
 @frozen
 class RagAgent(Agent):
     """RAG LLM-based agent participant.
@@ -46,9 +48,10 @@ class RagAgent(Agent):
 
     agent_vector_store: VectorStore
     model: BaseChatModel
-    intent_description: str | None = None # Store intent
-
+    seed: int = 0
+    intent_description: str | None = None  # Store intent
     llm_chain: Runnable = field(init=False)
+    _random: random.Random = field(init=False, repr=False)
 
     @llm_chain.default
     def _create_llm_chain(self) -> Runnable:
@@ -59,6 +62,11 @@ class RagAgent(Agent):
 
         # Return the runnable chain with the imported prompt
         return prompt | self.model | PydanticOutputParser(pydantic_object=AgentResponse)
+
+    @_random.default
+    def _create_random(self) -> random.Random:
+        """Create a random number generator with the specified seed."""
+        return random.Random(self.seed)
 
     def with_intent(self, intent_description: str) -> RagAgent:
         """Return a new RagAgent instance with the specified intent."""
@@ -71,8 +79,14 @@ class RagAgent(Agent):
         few_shot_examples: list[tuple[Document, float]] = await indexing_and_retrieval.get_few_shot_examples(
             conversation_history=conversation.messages,
             vector_store=self.agent_vector_store,
-            k=3
+            k=20
         )
+        if not conversation.agent_messages:
+            # If this is the first message, select the closest example
+            few_shot_examples = [few_shot_examples[0]] if few_shot_examples else []
+        else:
+            # Select up to 5 randomly chosen examples
+            few_shot_examples = self._random.sample(few_shot_examples, min(5, len(few_shot_examples)))
 
         # 2. Augmentation
         # Format few-shot examples and history for the prompt template

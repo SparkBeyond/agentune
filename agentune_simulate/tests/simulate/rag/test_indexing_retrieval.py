@@ -15,8 +15,7 @@ from langchain_core.embeddings import DeterministicFakeEmbedding
 from agentune.simulate.models import Conversation, Message, ParticipantRole
 from agentune.simulate.rag.indexing_and_retrieval import (
     conversations_to_langchain_documents,
-    get_similar_finished_conversations,
-    get_similar_examples_for_next_message_role
+    get_similar_finished_conversations
 )
 from tests.simulate.rag.test_data import create_test_conversations
 
@@ -120,49 +119,7 @@ class BaseIndexingRetrievalTests(abc.ABC):
         # Second document represents history up to the second message
         assert docs[1].page_content == "Customer: Hello\nAgent: Hi there", "Second document page content is incorrect"
         assert docs[1].metadata["has_next_message"] is False
-    
-    @pytest.mark.asyncio
-    async def test_filtering_by_next_message_role(self):
-        """Test filtering documents by next_message_role."""
-        # Create a test history for retrieving agent examples
-        history = (Message(sender=ParticipantRole.CUSTOMER, content="What are your business hours?", timestamp=datetime.now()),)
-        
-        # Request agent responses
-        k = 2
-        docs = await get_similar_examples_for_next_message_role(
-            conversation_history=history,
-            vector_store=self.vector_store,
-            k=k,
-            target_role=ParticipantRole.AGENT
-        )
-        
-        # Check that we got expected number of results and they all have agent as next role
-        self.assert_docs_match_criteria(
-            docs,
-            expected_count=k,
-            filter_criteria={"next_message_role": ParticipantRole.AGENT.value},
-            message="Agent role filtering test failed"
-        )
-        
-        # Also test with customer role
-        history = (Message(sender=ParticipantRole.AGENT, content="Is there anything else I can help you with?", timestamp=datetime.now()),)
-        
-        k = 2
-        docs = await get_similar_examples_for_next_message_role(
-            conversation_history=history,
-            vector_store=self.vector_store,
-            k=k,
-            target_role=ParticipantRole.CUSTOMER
-        )
-        
-        # Check that we got expected number of results and they all have customer as next role
-        self.assert_docs_match_criteria(
-            docs,
-            expected_count=k,
-            filter_criteria={"next_message_role": ParticipantRole.CUSTOMER.value},
-            message="Customer role filtering test failed"
-        )
-    
+
     @pytest.mark.asyncio
     async def test_filtering_finished_conversations(self):
         """Test filtering for finished conversations."""
