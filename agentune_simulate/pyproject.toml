@@ -6,9 +6,7 @@ authors = ["SparkBeyond <info@sparkbeyond.com>"]
 readme = "README.md"
 packages = [{include = "agentune"}]
 license = "MIT"
-repository = "https://github.com/SparkBeyond/conversation-simulator"
-documentation = "https://github.com/SparkBeyond/conversation-simulator"
-
+repository = "https://github.com/SparkBeyond/agentune"
 
 [tool.poetry.dependencies]
 python = ">=3.12.3,<4.0"
