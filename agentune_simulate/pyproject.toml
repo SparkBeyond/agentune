@@ -5,7 +5,7 @@ description = "A tool for simulating Customer-Agent conversations based on real 
 authors = ["SparkBeyond <info@sparkbeyond.com>"]
 readme = "README.md"
 packages = [{include = "agentune"}]
-license = "MIT"
+license = "Apache-2.0"
 repository = "https://github.com/SparkBeyond/agentune"
 
 [tool.poetry.dependencies]
