@@ -66,7 +66,7 @@ class Person:
 ## 8. Linting and Static Type Checking
 - Use ruff for linting Python code
 - Use mypy for static type checking
-- These tools are configured to run automatically via pre-commit hooks
+- Run these tools before committing changes
 
 ### Running Ruff
 ```bash
@@ -83,18 +83,7 @@ poetry run ruff check --fix .
 poetry run mypy .
 ```
 
-### Pre-commit Hooks
-The project uses pre-commit hooks to automatically run linting and type checking when you commit changes. This ensures code quality standards are maintained without requiring manual intervention.
-
-```bash
-# First-time setup (only needed once)
-pre-commit install
-
-# Manual run (typically not needed, but useful for troubleshooting)
-pre-commit run --all-files
-```
-
-Once installed, the hooks run automatically during each commit. If issues are found, the commit will be rejected with details about what needs to be fixed.
+Make sure to run both ruff and mypy before committing changes.
 
 ## 9. Additional decisions
 - Package management: Use poetry for dependency management

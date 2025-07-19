@@ -29,6 +29,3 @@ See the [Development Guide](./docs/development/dev_guide.md) for setup instructi
 
 Refer to [CODING_STANDARDS.md](./CODING_STANDARDS.md) for detailed guidelines.
 
-## License
-
-MIT

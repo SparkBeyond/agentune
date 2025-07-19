@@ -44,37 +44,8 @@ class Message:
     sender: ParticipantRole  # AGENT or CUSTOMER
 ```
 
-### 3. Channel Interface
 
-Used for communication with real agents.
-
-```python
-class Channel(abc.ABC):
-    @abstractmethod
-    async def create_session(self) -> Session:
-        """Create a new conversation session."""
-        ...
-
-class Session(abc.ABC):
-    session_id: str
-    
-    @abstractmethod
-    async def get_conversation(self) -> Conversation:
-        """Get the conversation history so far."""
-        ...
-    
-    @abstractmethod
-    async def send(self, message: Message) -> None:
-        """Send a message to the real agent."""
-        ...
-    
-    @abstractmethod
-    async def subscribe(self) -> AsyncIterator[Message]:
-        """Subscribe to incoming messages from the agent."""
-        ...
-```
-
-### 4. Intent Structure
+### 3. Intent Structure
 
 Represents a participant's goal or purpose for the conversation.
 
@@ -91,7 +62,7 @@ class Intent:
     # Intent(role=ParticipantRole.AGENT, description="Upsell customer to premium plan during support interaction")
 ```
 
-### 5. Outcome and Outcome Schema
+### 4. Outcome and Outcome Schema
 
 Represents conversation outcomes for analysis and evaluation.
 
@@ -130,7 +101,7 @@ class Outcomes:
     # ))
 ```
 
-### 6. Conversation Structure
+### 5. Conversation Structure
 
 ```python
 @attrs.frozen
@@ -140,7 +111,7 @@ class Conversation:
     outcome: Outcome | None = None
 ```
 
-### 7. Simulation Result
+### 6. Simulation Result
 
 Result object returned by conversation runners.
 
@@ -152,7 +123,7 @@ class ConversationResult:
     duration: timedelta = timedelta(seconds=0)
 ```
 
-### 8. Outcome Detection
+### 7. Outcome Detection
 
 Outcome detection is handled by pluggable detector strategies that analyze conversations to determine if specific outcomes have been reached.
 
@@ -316,7 +287,7 @@ For real agent scenarios, we can consider various termination strategies:
 
 ### 5. Error Handling
 
-- Channel communication failures
+- Network communication failures
 - Participant response timeouts
 - Message validation and formatting
 - Graceful degradation for partial failures

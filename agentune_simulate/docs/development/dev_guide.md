@@ -66,14 +66,7 @@ poetry env use python
 poetry install
 ```
 
-### 5. Install Pre-commit Hooks
-
-```bash
-# Install pre-commit hooks
-pre-commit install
-```
-
-### 6. Set up Environment Variables (Optional)
+### 5. Set up Environment Variables (Optional)
 
 For integration tests and API access, set up your environment variables:
 
@@ -126,13 +119,7 @@ poetry add --group dev <package-name>
 
 ### Code Quality Checks
 
-Pre-commit hooks will automatically run on each commit. You can also run them manually:
-
-```bash
-pre-commit run --all-files
-```
-
-You can also run static type checking and linting manually:
+Run static type checking and linting before committing changes:
 
 ```bash
 # Run ruff
