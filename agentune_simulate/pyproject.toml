@@ -30,7 +30,6 @@ Documentation = "https://github.com/SparkBeyond/agentune/tree/main/agentune_simu
 packages = [{include = "agentune"}]
 
 [tool.poetry.dependencies]
-python = ">=3.12.3,<4.0"
 # Core dependencies
 attrs = "^25.3.0"
 cattrs = "^25.1.1"
