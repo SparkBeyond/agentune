@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.12.3,<4.0"
+requires-python = ">=3.12,<4.0"
 keywords = ["conversation", "simulation", "rag", "llm", "chatbot", "customer-service", "agent"]
 classifiers = [
     "Development Status :: 3 - Alpha",
