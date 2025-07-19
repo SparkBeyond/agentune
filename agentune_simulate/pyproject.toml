@@ -1,12 +1,33 @@
-[tool.poetry]
-name = "agentune_simulate"
+[project]
+name = "agentune-simulate"
 version = "0.1.0"
 description = "A tool for simulating Customer-Agent conversations based on real chat data"
-authors = ["SparkBeyond <info@sparkbeyond.com>"]
+authors = [
+    {name = "SparkBeyond dev team", email = "sparkbeyond-dev@gmail.com"}
+]
 readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12.3,<4.0"
+keywords = ["conversation", "simulation", "rag", "llm", "chatbot", "customer-service", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License"
+]
+
+[project.urls]
+Repository = "https://github.com/SparkBeyond/agentune"
+Homepage = "https://github.com/SparkBeyond/agentune/tree/main/agentune_simulate"
+Documentation = "https://github.com/SparkBeyond/agentune/tree/main/agentune_simulate"
+
+[tool.poetry]
 packages = [{include = "agentune"}]
-license = "MIT"
-repository = "https://github.com/SparkBeyond/agentune"
 
 [tool.poetry.dependencies]
 python = ">=3.12.3,<4.0"
