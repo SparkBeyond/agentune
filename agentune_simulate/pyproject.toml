@@ -1,6 +1,6 @@
 [project]
 name = "agentune-simulate"
-version = "0.1.0"
+version = "0.0.1"
 description = "A tool for simulating Customer-Agent conversations based on real chat data"
 authors = [
     {name = "SparkBeyond dev team", email = "sparkbeyond-dev@gmail.com"}
