@@ -3,7 +3,7 @@ name: Publish agentune-simulate to PyPI
 on:
   push:
     tags:
-      - 'v*'
+      - 'simulate-v*'
 
 jobs:
   test:
