@@ -23,16 +23,17 @@ jobs:
         cache: 'pip'
     
     - name: Install Poetry
-      run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
+      uses: snok/install-poetry@v1
+      with:
+        version: "2.0.1"
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
     
     - name: Install dependencies
       run: |
         cd agentune_simulate
-        poetry config virtualenvs.create false
-        poetry config installer.max-workers 10
-        poetry install
+        poetry install --sync --no-interaction
     
     - name: Run ruff
       run: |

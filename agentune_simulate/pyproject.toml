@@ -3,14 +3,14 @@ name = "agentune-simulate"
 version = "0.0.1"
 description = "A tool for simulating Customer-Agent conversations based on real chat data"
 authors = [
-    {name = "SparkBeyond dev team", email = "sparkbeyond-dev@gmail.com"}
+    {name = "Agentune dev team", email = "agentune-dev@sparkbeyond.com"}
 ]
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.12,<4.0"
 keywords = ["conversation", "simulation", "rag", "llm", "chatbot", "customer-service", "agent"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
