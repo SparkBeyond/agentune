@@ -46,7 +46,8 @@ Agentune Simulate follows a three-step process:
 ### Learn with examples
 
 Start with [`getting_started.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/getting_started.ipynb) for a complete tutorial  
-See [`persistent_storage_example.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/persistent_storage_example.ipynb) for Chroma vector store and scaling
+See [`persistent_storage_example.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/persistent_storage_example.ipynb) for Chroma vector store and scaling  
+Integrate your existing agent with [`real_agent_integration.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/real_agent_integration.ipynb) for real agent systems
 
 ## Contributing
 
