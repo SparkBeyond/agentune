@@ -50,6 +50,6 @@ See [`persistent_storage_example.ipynb`](https://github.com/SparkBeyond/agentune
 
 ## Contributing
 
-- **Environment Setup**: [https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/docs/development/environment-setup.md](./docs/development/environment-setup.md)
-- **Coding Standards**: [https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/docs/development/style-guide.md](./docs/development/style-guide.md)
+- **Environment Setup**: [Environment Setup Guide](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/docs/development/environment-setup.md)
+- **Coding Standards**: [Style Guide](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/docs/development/style-guide.md)
 
