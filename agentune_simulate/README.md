@@ -10,7 +10,7 @@ A tool for simulating Customer-Agent conversations based on real chat data.
    cd agentune_simulate
    ```
 
-2. Set up the development environment (see [Development Guide](./docs/development/dev_guide.md))
+2. Set up the development environment (see [Environment Setup Guide](./docs/development/environment-setup.md))
 
 3. Try the examples to see the library in action (see [Examples](./examples/README.md))
 
@@ -23,9 +23,9 @@ A tool for simulating Customer-Agent conversations based on real chat data.
 
 ## Development
 
-See the [Development Guide](./docs/development/dev_guide.md) for setup instructions and testing.
+See the [Environment Setup Guide](./docs/development/environment-setup.md) for setup instructions and testing.
 
 ### Coding Standards
 
-Refer to [CODING_STANDARDS.md](./CODING_STANDARDS.md) for detailed guidelines.
+Refer to [Style Guide](./docs/development/style-guide.md) for coding standards.
 
