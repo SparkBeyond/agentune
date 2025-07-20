@@ -14,6 +14,7 @@ from langchain_core.vectorstores import VectorStore
 from agentune.simulate.intent_extraction.zeroshot import ZeroshotIntentExtractor
 from agentune.simulate.models.outcome import Outcomes
 from agentune.simulate.outcome_detection.rag.rag import RAGOutcomeDetector
+from agentune.simulate.participants.agent.real import RealAgentFactory
 from agentune.simulate.participants.agent.rag.rag import RagAgentFactory
 from agentune.simulate.participants.customer.rag.rag import RagCustomerFactory
 from agentune.simulate.simulation.adversarial.zeroshot import ZeroShotAdversarialTester
@@ -61,6 +62,9 @@ class SimulationSessionBuilder:
     outcome_detection_model: BaseChatModel | None = None
     intent_extraction_model: BaseChatModel | None = None
     adversarial_model: BaseChatModel | None = None
+
+    # Optional factory overrides
+    agent_factory: RealAgentFactory | None = None
 
     # Session configuration
     session_name: str = "Simulation Session"
@@ -146,6 +150,19 @@ class SimulationSessionBuilder:
         self.customer_model = model
         return self
 
+    def with_agent_factory(self, factory: RealAgentFactory) -> Self:
+        """Sets a custom agent factory to use instead of the default RAG agent.
+        Note that this will override the agent_model setting if provided.
+
+        Args:
+            factory: The real agent factory for creating agent participants
+
+        Returns:
+            Self: The builder instance for method chaining
+        """
+        self.agent_factory = factory
+        return self
+
     def build(self) -> SimulationSession:
         """Creates a SimulationSession with opinionated component choices.
         
@@ -164,7 +181,7 @@ class SimulationSessionBuilder:
 
         return SimulationSession(
             outcomes=self.outcomes,
-            agent_factory=RagAgentFactory(
+            agent_factory=self.agent_factory or RagAgentFactory(
                 model=self.agent_model or self.default_chat_model,
                 agent_vector_store=self.vector_store
             ),
