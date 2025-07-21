@@ -1,4 +1,4 @@
-# Always Optimized Agents: The Path to Self-Improving AI Agents
+# Agentune: The Path to Self-Improving AI Agents
 
 At SparkBeyond, we believe that operational AI agents in general, and customer-facing AI agents in particular, should improve over time effectively.
 
