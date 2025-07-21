@@ -12,11 +12,12 @@ Ready to deploy your improved AI agent? Use Agentune Simulate to validate it fir
 
 ![Agentune Simulate Workflow](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/docs/images/agentune-simulate-flow.png)
 
-Agentune Simulate follows a three-step process:
+How do we validate the twin customer simulator? We create a twin AI-Agent and let them converse. we then evaluate the conversations to check that the customer simulator behaves as the real customer:
 
-1. **Capture Conversations** - Collect real conversations between customers and your existing AI agent
-2. **Create Simulator** - Create a Twin Customer Simulator from the captured conversations
-3. **Simulate & Evaluate** - Simulate interactions to evaluate if your improved AI agent behaves as expected
+1. **Capture Conversations** - Collect real conversations between customers and your existing AI-agent
+2. **Create Simulator** - Create twin Customer Simulator and AI-Agent from the captured conversations
+3. **Simulate & Evaluate** - Simulate interactions to evaluate if the twin Customer Simulator behaves as your real customers
+4. **Connect Real Agent** - Integrate your real agent system and run simulations with simulated customers to validate agent behavior
 
 ## Quick Start
 
@@ -45,9 +46,10 @@ Agentune Simulate follows a three-step process:
 
 ### Learn with examples
 
-Start with [`getting_started.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/getting_started.ipynb) for a complete tutorial  
-See [`persistent_storage_example.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/persistent_storage_example.ipynb) for Chroma vector store and scaling  
-Integrate your existing agent with [`real_agent_integration.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/real_agent_integration.ipynb) for real agent systems
+1. **Quick Start** - [`getting_started.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/getting_started.ipynb) for a quick getting started example
+2. **Production Setup** - [`persistent_storage_example.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/persistent_storage_example.ipynb) for a closer to real life, scalable, persistent example  
+3. **Validate Your Data** - Adapt the 2nd example to load your conversations data and validate the simulation
+4. **Connect Real Agent** - [`real_agent_integration.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/real_agent_integration.ipynb) for integrating your existing agent systems
 
 ## Contributing
 
