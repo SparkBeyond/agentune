@@ -6,7 +6,7 @@ Transform original conversations into realistic simulated ones by
 
 ## **Overview Diagram**
 
-![Conversation Simulation Flow Diagram](./Conversation%20Simulation%20Flow%20Diagram.svg)
+![Conversation Simulation Flow Diagram](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/docs/images/agentune-simulate-flow-diagram.png)
 
 ## Flow Steps
 
