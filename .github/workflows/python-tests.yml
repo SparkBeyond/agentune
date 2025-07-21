@@ -1,4 +1,4 @@
-name: Conversation Simulator CI
+name: Agentune Simulate CI
 
 on:
   pull_request:

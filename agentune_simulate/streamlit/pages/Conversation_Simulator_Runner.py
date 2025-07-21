@@ -1,5 +1,5 @@
 """
-🤖 Conversation Simulator Runner
+🤖 Agentune Simulate
 
 A Streamlit page for running RAG-based conversation simulations.
 """
@@ -8,7 +8,7 @@ import streamlit as st
 import asyncio
 from typing import Any
 
-# Import conversation simulator components
+# Import agentune simulate components
 from agentune.simulate.models import Conversation, Outcomes
 from agentune.simulate.models.results import SimulationSessionResult, ConversationResult
 from agentune.simulate.models.outcome import Outcome
@@ -413,7 +413,7 @@ async def run_simulation(
 def main():
     """Main function for the simulation runner page."""
     
-    st.title("🤖 Conversation Simulator Runner")
+    st.title("🤖 Agentune Simulate Runner")
     st.markdown("Run RAG-based conversation simulations with custom settings")
     
     # Validate API key
@@ -425,7 +425,7 @@ def main():
     
     if config['uploaded_file'] is None:
         st.markdown("""
-        ## Welcome to the Conversation Simulator Runner! 🚀
+        ## Welcome to the Agentune Simulate Runner! 🚀
         
         To get started:
         1. **Upload conversation data** using the file uploader in the sidebar
@@ -608,7 +608,7 @@ def main():
                 use_container_width=True
             )
         
-        st.info("💡 You can analyze these results using the **💬 Conversation Simulator Results Analyzer** page.")
+        st.info("💡 You can analyze these results using the **💬 Agentune Simulate Results Analyzer** page.")
         
         # Option to clear results
         col1, col2, col3 = st.columns([1, 2, 1])

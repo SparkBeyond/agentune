@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Utility functions for conversation simulator examples."""
+"""Utility functions for agentune simulate examples."""
 
 import json
 import logging
