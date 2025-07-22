@@ -62,7 +62,9 @@ ignore = [
     "D213",                             # Non-standard, opposite of D212
     "D400",                             # First line should end with a period
     "D401",                             # First line of docstring should be in imperative mood
+    "D404",                             # First word of docstring should not be 'this'
     "D415",                             # First line should end with a period, question mark, or exclamation point
+    "D417",                             # Some but not all Args documented in docstring
     "RUF009",                           # Do not perform function call in dataclass defaults,
     "RUF021",                           # Parenthesize and/or subexpressions
     "ANN401",                           # Dynamically typed expressions (typing.Any) are disallowed,

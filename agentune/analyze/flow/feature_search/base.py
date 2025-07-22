@@ -1,48 +1,94 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 
 from attrs import frozen
+from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import ContextDefinition
-from agentune.analyze.core.dataset import Dataset, DatasetStreamSource
-from agentune.analyze.feature.base import Feature, Regression
-from agentune.analyze.feature.describe.base import FeatureDescriber
+from agentune.analyze.context.base import TablesWithContextDefinitions
+from agentune.analyze.core.dataset import Dataset, DatasetSource
+from agentune.analyze.core.duckdbio import SplitDuckbTable
+from agentune.analyze.feature.base import Classification, Feature, Regression, TargetKind
 from agentune.analyze.feature.eval.base import FeatureEvaluator
-from agentune.analyze.feature.gen.base import FeatureGenerator, FeatureTransformer
+from agentune.analyze.feature.gen.base import FeatureGenerator
 from agentune.analyze.feature.select.base import FeatureSelector
+from agentune.analyze.feature.stats import stats_calculators
 from agentune.analyze.feature.stats.base import (
-    FeatureStatsCalculator,
     FeatureWithFullStats,
-    RelationshipStatsCalculator,
 )
+from agentune.analyze.feature.stats.stats_calculators import (
+    CombinedSyncFeatureStatsCalculator,
+    CombinedSyncRelationshipStatsCalculator,
+)
+from agentune.analyze.flow.base import RunContext
 
+# TODO remove the context indexing into the preprocessing phase
+
+@frozen
+class FeatureSearchInputData:
+    feature_search: Dataset # Small dataset for feature generators, held in memory
+    feature_eval: DatasetSource 
+    train: DatasetSource # Includes the feature_search and feature_eval datasets
+    test: DatasetSource
+    target_column: str
+    contexts: TablesWithContextDefinitions
+
+    def __attrs_post_init__(self) -> None:
+        if self.feature_search.schema != self.train.schema:
+            raise ValueError('Feature search dataset schema must match train dataset schema')
+        if self.feature_search.schema != self.test.schema:
+            raise ValueError('Feature search dataset schema must match test dataset schema')
+        if self.target_column not in self.feature_search.schema.names:
+            raise ValueError(f'Target column {self.target_column} not found')
+        
+    @staticmethod
+    def from_split_table(split_table: SplitDuckbTable, target_column: str,
+                         contexts: TablesWithContextDefinitions,
+                         conn: DuckDBPyConnection) -> FeatureSearchInputData:
+        return FeatureSearchInputData(
+            feature_search=split_table.feature_search().to_dataset(conn),
+            train=split_table.train(), 
+            test=split_table.test(),
+            feature_eval=split_table.feature_eval(),
+            target_column=target_column,
+            contexts=contexts
+        )
+
+@frozen
+class FeatureSearchParams[TK: TargetKind]:
+    generators: tuple[FeatureGenerator, ...]
+    evaluators: tuple[type[FeatureEvaluator], ...]
+    selector: FeatureSelector[Feature, TK]
+    # TODO declare a not-necessarily-sync version of these APIs, even if the only implementation right now is sync
+    relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[TK] 
+    feature_stats_calculator: CombinedSyncFeatureStatsCalculator = stats_calculators.default_feature_stats_calculator
 
 @frozen 
-class ContextSource:
-    name: str # will name the relation we create
-    source: DatasetStreamSource
-    context_definitions: Sequence[ContextDefinition]
+class RegressionFeatureSearchParams(FeatureSearchParams[Regression]):
+    # Redeclare to set the default
+    relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[Regression] = stats_calculators.default_regression_calculator
 
 @frozen
-class FeatureSearchDatasets:
-    feature_search: Dataset # In memory! 
-    target_col: str
-    context_sources: Sequence[ContextSource]
+class ClassificationFeatureSearchParams(FeatureSearchParams[Classification]):
+    # Redeclare to set the default
+    relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[Classification] = stats_calculators.default_classification_calculator
 
 @frozen
-class RegressionFeatureSearchParams:
-    datasets: FeatureSearchDatasets
-    feature_generators: Sequence[FeatureGenerator]
-    # We could have several transformers, but then we'd have to define which ones gets to transform which features,
-    # whether a transformer can transform features emitted by another transformer, etc.
-    feature_transformer: FeatureTransformer | None
-    feature_describer: FeatureDescriber | None
-    feature_evaluators: Sequence[type[FeatureEvaluator]]
-    feature_stats_calculator: FeatureStatsCalculator[Feature]
-    relationship_stats_calculator: RelationshipStatsCalculator[Feature, Regression]
-    feature_selector: FeatureSelector[Feature, Regression]
-    
+class FeatureSearchResults[TK: TargetKind]:
+    features_with_train_stats: tuple[FeatureWithFullStats[Feature, TK], ...]
+    features_with_test_stats: tuple[FeatureWithFullStats[Feature, TK], ...]
+
+    def __attrs_post_init__(self) -> None:
+        if tuple(f.feature for f in self.features_with_train_stats) != tuple(f.feature for f in self.features_with_test_stats):
+            raise ValueError('Features with train stats must match features with test stats')
+
+    @property
+    def features(self) -> tuple[Feature, ...]:
+        return tuple(f.feature for f in self.features_with_test_stats)
+
 
 class FeatureSearchFlow(ABC):
+    # TODO the real one needs to be async but that's harder to implement so it's sync for now
     @abstractmethod
-    def run(self, params: RegressionFeatureSearchParams) -> tuple[FeatureWithFullStats[Feature, Regression], ...]: ...
+    def run[TK: TargetKind](self, context: RunContext, data: FeatureSearchInputData, 
+                                  params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]: ...

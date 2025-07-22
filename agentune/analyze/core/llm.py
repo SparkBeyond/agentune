@@ -48,13 +48,23 @@ class LLMSetupHook(ABC):
     @abstractmethod
     def __call__[T: LLM](self, model: T, context: LLMContext, spec: LLMSpec) -> T: ...
 
+class FakeTransport(httpx.BaseTransport):
+    """A transport that fails all requests."""
+    @override 
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        raise httpx.RequestError('Synchronous HTTP requests disallowed')
+
+# A synchronous httpx.Client that fails all requests. Used to prevent accidental use of synchronous HTTP requests.
+fake_httpx_client: httpx.Client = httpx.Client(transport=FakeTransport())
+
+
 class DefaultLLMProvider(LLMProvider):
     """Provides the standard llama-index LLM types.
     
     Can raise ImportError if a spec requests a model from a provider whose package is not installed.
     """
 
-    # TODO if we adopt this approach, add cases for the other llama-index LLM types.
+    # TODO add cases for the other llama-index LLM types.
 
     @override
     def from_spec(self, spec: LLMSpec, context: LLMContext) -> LLM | None:
@@ -95,8 +105,9 @@ class LLMContext:
 
     # These are needed to create (most) model instances.
     # The existence of an AsyncClient implies that we're in an asyncio context; this code cannot be used otherwise.
-    httpx_client: httpx.Client
     httpx_async_client: httpx.AsyncClient
+
+    httpx_client: httpx.Client = fake_httpx_client # Disallow synchronous HTTP requests by default
 
     hooks: tuple[LLMSetupHook, ...] = ()
     providers: tuple[LLMProvider, ...] = field(factory=lambda: (DefaultLLMProvider(),))

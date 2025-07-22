@@ -12,7 +12,7 @@ from duckdb import DuckDBPyConnection
 import agentune.analyze.util.copy
 from agentune.analyze.context.base import ContextDefinition, TablesWithContextDefinitions
 from agentune.analyze.core import types
-from agentune.analyze.core.database import DatabaseTable
+from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import Feature, FloatFeature, Regression, SyncFeature
@@ -50,7 +50,7 @@ class ToySyncFeature(SyncFeature, FloatFeature):
     
     @property
     @override
-    def context_tables(self) -> list[DatabaseTable]:
+    def context_tables(self) -> list[DuckdbTable]:
         return []
     
     @property
@@ -85,7 +85,7 @@ class ToyAsyncFeature(FloatFeature):
     
     @property
     @override
-    def context_tables(self) -> list[DatabaseTable]:
+    def context_tables(self) -> list[DuckdbTable]:
         return []
     
     @property
@@ -154,6 +154,11 @@ class ToyAsyncFeatureDescriber(FeatureDescriber[Feature]):
 class ToySyncFeatureEvaluator(SyncFeatureEvaluator[SyncFeature]):
     features: tuple[SyncFeature, ...]
 
+    @override
+    @classmethod
+    def supports_feature(cls, feature: Feature) -> bool:
+        return isinstance(feature, SyncFeature)
+
     @override 
     @classmethod
     def for_features(cls, features: Sequence[SyncFeature]) -> Self:
@@ -174,6 +179,11 @@ class ToySyncFeatureEvaluator(SyncFeatureEvaluator[SyncFeature]):
 @frozen    
 class ToyAsyncFeatureEvaluator(FeatureEvaluator[Feature]):
     features: tuple[Feature, ...]
+
+    @override
+    @classmethod
+    def supports_feature(cls, feature: Feature) -> bool:
+        return not isinstance(feature, SyncFeature)
 
     @override 
     @classmethod

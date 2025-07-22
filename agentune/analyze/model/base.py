@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import override
 
-from agentune.analyze.core.dataset import Dataset, DatasetStream
+from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.schema import Schema
 
 
@@ -73,14 +73,14 @@ class ClassifierTrainer[T](ABC):
     def name(self) -> str: ...
 
     @abstractmethod
-    async def atrain(self, classes: Sequence[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: ...
+    async def atrain(self, classes: Sequence[T], data: DatasetSource, target_col: str, weight_col: str) -> Classifier[T]: ...
     
 class SyncClassifierTrainer[T](ClassifierTrainer[T]):
     @abstractmethod
-    def train(self, classes: Sequence[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: ...
+    def train(self, classes: Sequence[T], data: DatasetSource, target_col: str, weight_col: str) -> Classifier[T]: ...
 
     @override
-    async def atrain(self, classes: Sequence[T], data: DatasetStream, target_col: str, weight_col: str) -> Classifier[T]: 
+    async def atrain(self, classes: Sequence[T], data: DatasetSource, target_col: str, weight_col: str) -> Classifier[T]: 
         return await asyncio.to_thread(self.train, classes, data.copy_to_thread(), target_col, weight_col)
 
 class RegressorTrainer(ABC):
@@ -89,13 +89,13 @@ class RegressorTrainer(ABC):
     def name(self) -> str: ...
 
     @abstractmethod
-    async def atrain(self, data: DatasetStream, target_col: str, weight_col: str) -> Regressor: ...
+    async def atrain(self, data: DatasetSource, target_col: str, weight_col: str) -> Regressor: ...
     
 class SyncRegressorTrainer(RegressorTrainer):
     @abstractmethod
-    def train(self, data: DatasetStream, target_col: str, weight_col: str) -> Regressor: ...
+    def train(self, data: DatasetSource, target_col: str, weight_col: str) -> Regressor: ...
 
     @override
-    async def atrain(self, data: DatasetStream, target_col: str, weight_col: str) -> Regressor: 
+    async def atrain(self, data: DatasetSource, target_col: str, weight_col: str) -> Regressor: 
         return await asyncio.to_thread(self.train, data.copy_to_thread(), target_col, weight_col)
 

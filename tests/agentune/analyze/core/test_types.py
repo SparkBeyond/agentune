@@ -1,9 +1,9 @@
 import contextlib
 
 from agentune.analyze.core import types
-from agentune.analyze.core.duckdb import DuckdbManager
+from agentune.analyze.core.database import DuckdbManager
+from agentune.analyze.core.dataset import duckdb_to_polars
 from agentune.analyze.core.schema import Field, Schema
-from agentune.analyze.util import dataconv
 
 
 def test_types_and_schema() -> None:
@@ -31,7 +31,7 @@ def test_types_and_schema() -> None:
         schema = Schema.from_duckdb(relation)
         assert schema.dtypes == all_types
 
-        df = dataconv.duckdb_to_polars(relation)
+        df = duckdb_to_polars(relation)
         
         def expected_dtype(dtype: types.Dtype) -> types.Dtype:
             if dtype in (types.json, types.uuid):

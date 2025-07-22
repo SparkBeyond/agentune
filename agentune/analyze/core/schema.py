@@ -7,7 +7,7 @@ import pyarrow as pa
 from attrs import field, frozen
 from duckdb import DuckDBPyRelation
 
-from agentune.analyze.core.types import Dtype
+from agentune.analyze.core.types import Dtype, EnumDtype
 
 # We define these types instad of using pl.Field and pl.Schema because we might want to support e.g. semantic types in the future.
 
@@ -71,3 +71,13 @@ class Schema:
         pl_schema = input if isinstance(input, pl.Schema) else input.schema
 
         return Schema(tuple(Field(col, Dtype.from_polars(dtype)) for col, dtype in pl_schema.items()))
+
+
+def restore_df_types(df: pl.DataFrame, schema: Schema) -> pl.DataFrame:
+    """Restore the correct types to a Polars dataframe created from a DuckDB relation, given the schema."""
+    # Preserve enum types
+    for col in schema.cols:
+        if isinstance(col.dtype, EnumDtype):
+            values = col.dtype.values
+            df = df.cast({col.name: pl.Enum(categories=values)})
+    return df

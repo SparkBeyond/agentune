@@ -5,7 +5,7 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.context.base import KtsContext, KtsContextDefinition, TimeSeries, TimeWindow
-from agentune.analyze.util import dataconv
+from agentune.analyze.core.dataset import duckdb_to_dataset
 
 
 @frozen
@@ -55,7 +55,7 @@ class KtsContextImpl[K](KtsContext[K]):
             
             # TODO output column key_exists could conflict with the name of another column;
             #  duckdb allows multiple columns with the same name in a result set, but polars doesn't
-            dataset = dataconv.duckdb_to_dataset(relation)
+            dataset = duckdb_to_dataset(relation)
             dataset_without_key_exists = dataset.drop('key_exists')
 
             # Handle special cases

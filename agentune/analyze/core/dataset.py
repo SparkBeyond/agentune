@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from typing import override
 
 import polars as pl
@@ -10,7 +10,7 @@ import pyarrow as pa
 from attrs import frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-from agentune.analyze.core.schema import Schema
+from agentune.analyze.core.schema import Schema, restore_df_types
 from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.util.polarutil import df_field
 
@@ -54,9 +54,6 @@ class Dataset(CopyToThread):
     def empty(self) -> Dataset:
         return Dataset(self.schema, self.data.clear())
 
-    def as_stream(self) -> DatasetStream:
-        return DatasetStream(self.schema, iter([self]))
-    
     @staticmethod
     def from_polars(df: pl.DataFrame) -> Dataset:
         """Note that some schema information is not represented in a polars DataFrame.
@@ -68,61 +65,49 @@ class Dataset(CopyToThread):
     def copy_to_thread(self) -> Dataset:
         return Dataset(self.schema, self.data.clone())
 
-@frozen(eq=False, hash=False)
-class DatasetStream(Iterator[Dataset], CopyToThread):
-    """A stream of datasets, which can only be read once, and whose schema is known ahead of time."""
-
-    schema: Schema
-    iter: Iterator[Dataset]
-
-    @override
-    def copy_to_thread(self) -> DatasetStream:
-        return DatasetStream(self.schema, iter(dataset.copy_to_thread() for dataset in self.iter)) 
-
-    def __iter__(self) -> Iterator[Dataset]: 
-        return self.iter
-    
-    def __next__(self) -> Dataset:
-        return next(self.iter)
-    
-    def to_arrow_reader(self) -> pa.RecordBatchReader:
-        return pa.RecordBatchReader.from_batches(self.schema.to_arrow(), 
-                                                 itertools.chain.from_iterable(dataset.data.to_arrow().to_batches() for dataset in self))
-    
-    def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
-        return conn.from_arrow(self.to_arrow_reader())
-
-@frozen(eq=False, hash=False) # The 'iterable' may not be comparable or hashable
-class DatasetStreamSource(Iterable[Dataset], CopyToThread):
+class DatasetSource(CopyToThread):
     """A source of a dataset stream which can be read multiple times, and whose schema is known ahead of time."""
 
-    schema: Schema
-    iterable: Iterable[Dataset]
-
-    @override
-    def copy_to_thread(self) -> DatasetStreamSource:
-        return DatasetStreamSource(self.schema, (dataset.copy_to_thread() for dataset in self.iterable))
-
-    def open(self) -> DatasetStream:
-        return DatasetStream(self.schema, iter(self.iterable))
-
-    def __iter__(self) -> Iterator[Dataset]: 
-        return iter(self.iterable)
-
-class DatasetSink(ABC):
-    """Interface for telling pipelines where to write their outputs."""
+    @property
+    @abstractmethod
+    def schema(self) -> Schema: ...
 
     @abstractmethod
-    def write(self, dataset: DatasetStream) -> None:
+    def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]: ...
+
+    @abstractmethod
+    def to_arrow_reader(self, conn: DuckDBPyConnection) -> pa.RecordBatchReader:
+        return pa.RecordBatchReader.from_batches(self.schema.to_arrow(), 
+                                                 itertools.chain.from_iterable(dataset.data.to_arrow().to_batches() for dataset in self.open(conn)))
+    @abstractmethod
+    def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation: ...
+    
+    def to_dataset(self, conn: DuckDBPyConnection) -> Dataset:
+        """Read the entire source into memory."""
+        return Dataset(self.schema, self.to_duckdb(conn).pl())
+
+    
+class DatasetSink(ABC):
+    """Interface for writing data."""
+
+    @abstractmethod
+    def write(self, dataset: DatasetSource, conn: DuckDBPyConnection) -> None:
         """Calling again will overwrite the previously written data.
         Calling again while the previous call has not yet completed is undefined.
-        This applies to calling async_write too.
+
+        A connection is required because some sinks use duckdb to implement writing to them,
+        even if the sink is not in a real duckdb database.
         """
         ...
 
-    @abstractmethod
-    async def async_write(self, dataset: DatasetStream) -> None:
-        """Does not block the calling thread. Only guarantees a best-attempt at actually being async on the thread(s)
-        it actually runs on.
-        """
-        ...
+def duckdb_to_dataset_iterator(relation: DuckDBPyRelation) -> Iterator[Dataset]:
+    schema = Schema.from_duckdb(relation)
+    return iter(Dataset(schema, restore_df_types(pl.DataFrame(batch), schema)) 
+                for batch in relation.fetch_arrow_reader())
+
+def duckdb_to_dataset(relation: DuckDBPyRelation) -> Dataset:
+    schema = Schema.from_duckdb(relation)
+    return Dataset(schema, restore_df_types(relation.pl(), schema))
+
+def duckdb_to_polars(relation: DuckDBPyRelation) -> pl.DataFrame:
+    return duckdb_to_dataset(relation).data

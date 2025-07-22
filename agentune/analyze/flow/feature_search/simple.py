@@ -1,20 +1,15 @@
 import asyncio
-import contextlib
 import itertools
 import logging
-from contextlib import ExitStack
 from typing import cast, override
 
 import duckdb
 from attrs import frozen
 
-from agentune.analyze.context.base import TablesWithContextDefinitions, TableWithContextDefinitions
-from agentune.analyze.core import setup
-from agentune.analyze.core.database import DatabaseTable
+from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset
-from agentune.analyze.core.duckdb import DuckdbManager
 from agentune.analyze.core.schema import Schema
-from agentune.analyze.feature.base import Feature, Regression, SyncFeature
+from agentune.analyze.feature.base import Feature, SyncFeature, TargetKind
 from agentune.analyze.feature.describe.base import FeatureDescriber, SyncFeatureDescriber
 from agentune.analyze.feature.eval.base import FeatureEvaluator, SyncFeatureEvaluator
 from agentune.analyze.feature.gen.base import (
@@ -34,10 +29,12 @@ from agentune.analyze.feature.stats.base import (
     SyncFeatureStatsCalculator,
     SyncRelationshipStatsCalculator,
 )
+from agentune.analyze.flow.base import RunContext
 from agentune.analyze.flow.feature_search.base import (
-    FeatureSearchDatasets,
     FeatureSearchFlow,
-    RegressionFeatureSearchParams,
+    FeatureSearchInputData,
+    FeatureSearchParams,
+    FeatureSearchResults,
 )
 from agentune.analyze.util.queue import Queue
 
@@ -66,85 +63,53 @@ class SimpleFeatureSearchFlow(FeatureSearchFlow):
         self._queue_size = 2**31 # effectively infinite
 
     @override
-    def run(self, params: RegressionFeatureSearchParams) -> tuple[FeatureWithFullStats[Feature, Regression], ...]:
-        setup.setup()
+    def run[TK: TargetKind](self, context: RunContext, input_data: FeatureSearchInputData, 
+                            params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]: 
+
+        # Feature generation
+        generated_features = []
+        for generator in params.generators:
+            _logger.info(f'Generating features with {generator}')
+            generated_features.extend(self._generate_features(input_data, input_data.contexts, generator))
+            _logger.info(f'Now have {len(generated_features)} features')
+                    
+        # Feature evaluation
+        # This assumes a 'fallback' evaluator that can evaluate all features and comes last in the input list (TODO improve these APIs)
+        features_by_evaluator = { evaluator: [
+            feature for feature in generated_features if evaluator.supports_feature(feature)
+        ] for evaluator in params.evaluators }
+        del generated_features # free memory
+
+        evaluated_features = []
+        for evaluator_cls, features in features_by_evaluator.items():
+            with context.ddb_manager.cursor() as conn:
+                if issubclass(evaluator_cls, SyncFeatureEvaluator):
+                    evaluated_features.extend(self._evaluate_sync_features(input_data, input_data.contexts, conn, evaluator_cls, cast(list[SyncFeature], features)))
+                else:
+                    evaluated_features.extend(self._evaluate_async_features(input_data, input_data.contexts, conn, evaluator_cls, features))
+                _logger.info(f'Evaluated {len(features)} with {evaluator_cls.__name__} on {input_data.feature_search.data.height} rows')
+
+        del features_by_evaluator # free memory
+        # _logger.info(f'Example feature stats: {evaluated_features[0].dataset}')
+
+        # Feature stats calculation
+        features_with_stats = self._calculate_full_stats(input_data, params.feature_stats_calculator, params.relationship_stats_calculator, evaluated_features)
+        _logger.info(f'Calculated stats for {len(features_with_stats)} features')
+        del evaluated_features # free memory
+
+        # Feature selection
+        selected_features = self._select_features(params.selector, features_with_stats)
+        _logger.info(f'Selected {len(selected_features)} features')
+
+        # TODO evaluate on the right datasets; right now we only have the features as evaluated on the feature search dataset
+        results = FeatureSearchResults(
+            features_with_train_stats=tuple(selected_features),
+            features_with_test_stats=tuple(selected_features),
+        )
         
-        with ExitStack() as context_stack:
-            ddb_manger = context_stack.enter_context(contextlib.closing(DuckdbManager.create('feature_search')))
-
-            # Context generation
-            with ddb_manger.cursor() as conn:
-                contexts = self._generate_contexts(params.datasets, conn)
-
-            # Feature generation
-            generated_features = []
-            for generator in params.feature_generators:
-                _logger.info(f'Generating features with {generator}')
-                generated_features.extend(self._generate_features(params.datasets, contexts, generator))
-                _logger.info(f'Now have {len(generated_features)} features')
-                        
-            # Feature transformation
-            if params.feature_transformer is None:
-                transformed_features = generated_features
-            else:
-                transformer = params.feature_transformer # for mypy to realize this is a stable expression
-                _logger.info(f'Transforming features with {transformer}')
-                transformed_features = self._transform_features(params.datasets, contexts, generated_features, transformer)
-                _logger.info(f'Created {len(transformed_features)} transformed features')
-                transformed_features = generated_features + transformed_features
-            del generated_features # free memory
-
-            # Feature evaluation
-            # This assumes a 'fallback' evaluator that can evaluate all features and comes last in the input list (TODO improve these APIs)
-            features_by_evaluator = { evaluator: [
-                feature for feature in transformed_features if evaluator.supports_feature(feature)
-            ] for evaluator in params.feature_evaluators }
-            del transformed_features # free memory
-
-            evaluated_features = []
-            for evaluator_cls, features in features_by_evaluator.items():
-                with ddb_manger.cursor() as conn:
-                    if issubclass(evaluator_cls, SyncFeatureEvaluator):
-                        evaluated_features.extend(self._evaluate_sync_features(params.datasets, contexts, conn, evaluator_cls, cast(list[SyncFeature], features)))
-                    else:
-                        evaluated_features.extend(self._evaluate_async_features(params.datasets, contexts, conn, evaluator_cls, features))
-                    _logger.info(f'Evaluated {len(features)} with {evaluator_cls.__name__}')
-
-            del features_by_evaluator # free memory
-
-            # Feature stats calculation
-            features_with_stats = self._calculate_full_stats(params.datasets, params.feature_stats_calculator, params.relationship_stats_calculator, evaluated_features)
-            _logger.info(f'Calculated stats for {len(features_with_stats)} features')
-            del evaluated_features # free memory
-
-            # Feature selection
-            selected_features = self._select_features(params.feature_selector, features_with_stats)
-            _logger.info(f'Selected {len(selected_features)} features')
-
-            # Feature description
-            if params.feature_describer is None:
-                final_features = selected_features
-            else:
-                final_features = self._describe_features(params.feature_describer, selected_features)
-                _logger.info('Recalculated feature descriptions')
-
-            return tuple(final_features)
+        return results
     
-    def _generate_contexts(self, datasets: FeatureSearchDatasets, contexts_conn: duckdb.DuckDBPyConnection) -> TablesWithContextDefinitions:
-        tables_with_contexts = []
-        for context_source in datasets.context_sources:
-            _logger.info(f'Ingesting context data from {context_source.name}')
-            database_table = DatabaseTable(context_source.name, context_source.source.schema, 
-                                           tuple(definition.index for definition in context_source.context_definitions))
-            database_table.create(contexts_conn)
-            context_source.source.open().to_duckdb(contexts_conn).insert_into(database_table.name)
-            tables_with_contexts.append(TableWithContextDefinitions(database_table, tuple(context_source.context_definitions)))
-        contexts = TablesWithContextDefinitions.from_list(tables_with_contexts)
-        if len(contexts) > 0:
-            _logger.info(f'All context data and objects: {contexts}')
-        return contexts
-
-    def _generate_features(self, datasets: FeatureSearchDatasets, contexts: TablesWithContextDefinitions, 
+    def _generate_features(self, datasets: FeatureSearchInputData, contexts: TablesWithContextDefinitions, 
                            generator: FeatureGenerator) -> list[Feature]:
         if isinstance(generator, SyncFeatureGenerator):
             return list(generator.generate(datasets.feature_search, contexts))
@@ -158,7 +123,7 @@ class SimpleFeatureSearchFlow(FeatureSearchFlow):
             queue.close()
             return list(queue)
         
-    def _transform_features(self, datasets: FeatureSearchDatasets, contexts: TablesWithContextDefinitions, 
+    def _transform_features(self, datasets: FeatureSearchInputData, contexts: TablesWithContextDefinitions, 
                             features: list[Feature], transformer: FeatureTransformer) -> list[Feature]:
         if isinstance(transformer, SyncFeatureTransformer):
             return [transformed for feature in features for transformed in transformer.transform(datasets.feature_search, contexts, feature)]
@@ -181,7 +146,7 @@ class SimpleFeatureSearchFlow(FeatureSearchFlow):
         )
         
         
-    def _evaluate_sync_features(self, datasets: FeatureSearchDatasets, contexts: TablesWithContextDefinitions, 
+    def _evaluate_sync_features(self, datasets: FeatureSearchInputData, contexts: TablesWithContextDefinitions, 
                                 conn: duckdb.DuckDBPyConnection,
                                 evaluator_cls: type[SyncFeatureEvaluator], sync_features: list[SyncFeature]) -> list[EvaluatedFeatures]:
         feature_batch_size = 100
@@ -189,11 +154,11 @@ class SimpleFeatureSearchFlow(FeatureSearchFlow):
         for sync_feature_batch in itertools.batched(sync_features, feature_batch_size):
             evaluator = evaluator_cls.for_features(list(sync_feature_batch))
             evaluated = evaluator.evaluate(datasets.feature_search, contexts, conn, include_originals=False)
-            evaluated_with_target = self._add_target_to_evaluated(datasets.feature_search, evaluated, datasets.target_col)
+            evaluated_with_target = self._add_target_to_evaluated(datasets.feature_search, evaluated, datasets.target_column)
             evaluated_batches.append(EvaluatedFeatures(evaluated_with_target, list(sync_feature_batch)))
         return evaluated_batches
     
-    def _evaluate_async_features(self, datasets: FeatureSearchDatasets, contexts: TablesWithContextDefinitions, 
+    def _evaluate_async_features(self, datasets: FeatureSearchInputData, contexts: TablesWithContextDefinitions, 
                                  conn: duckdb.DuckDBPyConnection,
                                  evaluator_cls: type[FeatureEvaluator], async_features: list[Feature]) -> list[EvaluatedFeatures]:
         feature_batch_size = 100
@@ -202,17 +167,17 @@ class SimpleFeatureSearchFlow(FeatureSearchFlow):
             for async_feature_batch in itertools.batched(async_features, feature_batch_size):
                 evaluator = evaluator_cls.for_features(list(async_feature_batch))
                 evaluated = await evaluator.aevaluate(datasets.feature_search, contexts, conn, include_originals=False)
-                evaluated_with_target = self._add_target_to_evaluated(datasets.feature_search, evaluated, datasets.target_col)  
+                evaluated_with_target = self._add_target_to_evaluated(datasets.feature_search, evaluated, datasets.target_column)  
                 await queue.aput(EvaluatedFeatures(evaluated_with_target, list(async_feature_batch)))
         _logger.info('running async evaluate')
         asyncio.run(aevaluate())
         queue.close()
         return list(queue)
     
-    def _calculate_full_stats(self, datasets: FeatureSearchDatasets, 
+    def _calculate_full_stats[TK: TargetKind](self, datasets: FeatureSearchInputData, 
                               feature_stats_calculator: FeatureStatsCalculator[Feature],
-                              relationship_stats_calculator: RelationshipStatsCalculator[Feature, Regression],
-                              all_evaluated_features: list[EvaluatedFeatures]) -> list[FeatureWithFullStats[Feature, Regression]]:
+                              relationship_stats_calculator: RelationshipStatsCalculator[Feature, TK],
+                              all_evaluated_features: list[EvaluatedFeatures]) -> list[FeatureWithFullStats[Feature, TK]]:
         feature_stats_list = self._calculate_feature_stats(feature_stats_calculator, all_evaluated_features)
         relationship_stats_list = self._calculate_relationship_stats(datasets, relationship_stats_calculator, all_evaluated_features)
         return [FeatureWithFullStats(a[0], FullFeatureStats(a[1], b[1]))
@@ -236,19 +201,19 @@ class SimpleFeatureSearchFlow(FeatureSearchFlow):
             queue.close()
             return list(queue)
     
-    def _calculate_relationship_stats(self, datasets: FeatureSearchDatasets, 
-                                      calculator: RelationshipStatsCalculator[Feature, Regression], 
-                                      all_evaluated_features: list[EvaluatedFeatures]) -> list[tuple[Feature, RelationshipStats[Feature, Regression]]]:
+    def _calculate_relationship_stats[TK: TargetKind](self, datasets: FeatureSearchInputData, 
+                                      calculator: RelationshipStatsCalculator[Feature, TK], 
+                                      all_evaluated_features: list[EvaluatedFeatures]) -> list[tuple[Feature, RelationshipStats[Feature, TK]]]:
         if isinstance(calculator, SyncRelationshipStatsCalculator):
-            return [(feature, calculator.calculate_from_dataset(feature, evaluated_features.dataset, feature.name, datasets.target_col))
+            return [(feature, calculator.calculate_from_dataset(feature, evaluated_features.dataset, feature.name, datasets.target_column))
                     for evaluated_features in all_evaluated_features 
                     for feature in evaluated_features.features]
         else:
-            queue = Queue[tuple[Feature, RelationshipStats[Feature, Regression]]](self._queue_size)
+            queue = Queue[tuple[Feature, RelationshipStats[Feature, TK]]](self._queue_size)
             async def acalculate() -> None:
                 for evaluated_features in all_evaluated_features:
                     for feature in evaluated_features.features:
-                        stats = await calculator.acalculate_from_dataset(feature, evaluated_features.dataset, feature.name, datasets.target_col)
+                        stats = await calculator.acalculate_from_dataset(feature, evaluated_features.dataset, feature.name, datasets.target_column)
                         await queue.aput((feature, stats))
             asyncio.run(acalculate())
             queue.close()

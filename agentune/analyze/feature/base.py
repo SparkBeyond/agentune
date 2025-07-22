@@ -9,7 +9,7 @@ from llama_index.core.llms import ChatMessage, ChatResponse
 
 import agentune.analyze.core.types
 from agentune.analyze.context.base import ContextDefinition, TablesWithContextDefinitions
-from agentune.analyze.core.database import DatabaseTable
+from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.sercontext import LLMWithSpec
@@ -63,7 +63,7 @@ class Feature[T](ABC):
     
     @property
     @abstractmethod
-    def context_tables(self) -> Sequence[DatabaseTable]: 
+    def context_tables(self) -> Sequence[DuckdbTable]: 
         """Context tables used by the feature.
         This affects the parameters to evaluate().
         Specifying a table with only the columns you will use may, in future, allow us
@@ -160,6 +160,9 @@ class CategoricalFeature(Feature[str | None]):
 
 class SyncFeature[T](Feature[T]):
     # A feature must override at least one of evaluate or evaluate_batch.
+    
+    # TODO missing the context objects param to evaluate! The context generation flow is not defined yet,
+    #  but we need to define the API first (and also in the inputs to FeatureGenerator etc)
 
     def evaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
                  conn: DuckDBPyConnection) -> T: 

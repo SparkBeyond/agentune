@@ -4,22 +4,22 @@ from functools import partial
 from typing import Any
 
 import cattrs
-import cattrs.dispatch
 import cattrs.preconf.json
-import cattrs.strategies
 import httpx
 from attrs import field, frozen
 from llama_index.core.llms import LLM
 
 from agentune.analyze.core.llm import LLMContext, LLMSpec
-from agentune.analyze.core.serialize import default_converter
+
+# Custom hooks that don't need a SerializationContext should be registered directly with this converter.
+default_converter: cattrs.Converter = cattrs.preconf.json.make_converter()
 
 
 @frozen(eq=False, hash=False)
 class SerializationContext:
     """Provides all live values that may be required when deserializing any class defined in this library."""
 
-    llm: LLMContext
+    llm_context: LLMContext
     # We may add DuckdbManager here, and other future fixtures. Or make another class containing both this and them.
 
     # The final converter to be used, containing all hooks (context-aware and non-context-aware) that have been registered 
@@ -36,11 +36,11 @@ class SerializationContext:
 
     @property
     def httpx_client(self) -> httpx.Client:
-        return self.llm.httpx_client
+        return self.llm_context.httpx_client
     
     @property
     def httpx_async_client(self) -> httpx.AsyncClient:
-        return self.llm.httpx_async_client
+        return self.llm_context.httpx_async_client
     
 
 # Variants on cattrs register/unregister functions that additionally use a SerializationContext.
@@ -82,7 +82,7 @@ class LLMWithSpec:
 
 @register_context_structure_hook
 def _structure_llm(context: SerializationContext, spec: LLMSpec, _: type) -> LLMWithSpec:
-    return LLMWithSpec(spec, context.llm.from_spec(spec))
+    return LLMWithSpec(spec, context.llm_context.from_spec(spec))
 
 @default_converter.register_unstructure_hook
 def _unstructure_llm(llm: LLMWithSpec) -> LLMSpec:

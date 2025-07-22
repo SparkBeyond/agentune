@@ -7,8 +7,7 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.context.base import LookupContext, LookupContextDefinition
-from agentune.analyze.core.dataset import Dataset
-from agentune.analyze.util import dataconv
+from agentune.analyze.core.dataset import Dataset, duckdb_to_dataset
 
 
 @frozen
@@ -46,5 +45,5 @@ class LookupContextImpl[K](LookupContext):
                                     LEFT JOIN {self.relation_name} t ON k.key_value = t."{self.definition.key_col.name}"
                                     ORDER BY k.position
                                     ''', params=[tuple(keys)]) 
-        return dataconv.duckdb_to_dataset(relation)
+        return duckdb_to_dataset(relation)
 

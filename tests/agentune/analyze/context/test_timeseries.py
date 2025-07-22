@@ -6,15 +6,15 @@ import polars as pl
 
 from agentune.analyze.context.base import TimeWindow
 from agentune.analyze.context.timeseries import KtsContextDefinition, KtsContextImpl
-from agentune.analyze.core.database import DatabaseTable
-from agentune.analyze.util import dataconv
+from agentune.analyze.core.database import DuckdbTable
+from agentune.analyze.core.dataset import duckdb_to_polars
 
 
 def test_timeseries() -> None:
     with duckdb.connect(':memory:lookup') as conn:
         conn.execute('create table test(key integer, date timestamp_ms, val1 integer, val2 varchar)')
 
-        table = DatabaseTable.from_duckdb('test', conn)
+        table = DuckdbTable.from_duckdb('test', conn)
         context_definition = KtsContextDefinition('ts', table, table.schema['key'], table.schema['date'], 
                                                   (table.schema['val1'], table.schema['val2']))
         context_definition.index.create(conn, 'test')
@@ -27,7 +27,7 @@ def test_timeseries() -> None:
 
         context = KtsContextImpl[int](conn, context_definition)
 
-        df_all = dataconv.duckdb_to_polars(conn.table('test'))
+        df_all = duckdb_to_polars(conn.table('test'))
 
         for key in range(0, 6):
             for start in [datetime.datetime(2000, 1, 1), *included_dates, datetime.datetime(2030, 1, 1)]:

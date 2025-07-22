@@ -4,7 +4,7 @@ from attrs import frozen
 
 from agentune.analyze.context.base import TablesWithContextDefinitions, TableWithContextDefinitions
 from agentune.analyze.core import types
-from agentune.analyze.core.database import DatabaseTable
+from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import IntFeature
@@ -14,7 +14,7 @@ from agentune.analyze.feature.sql import SqlBackedFeature
 @frozen
 class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
     params: Schema
-    context_tables: tuple[DatabaseTable, ...]
+    context_tables: tuple[DuckdbTable, ...]
     sql_query: str
     index_column_name: str = 'row_index_column'
 
@@ -28,7 +28,7 @@ def test_sql_feature() -> None:
         conn.sql('CREATE TABLE context_table (key int, value int)')
         conn.sql('INSERT INTO context_table VALUES (1, 2), (3, 4)')
 
-        context_table = DatabaseTable.from_duckdb('context_table', conn)
+        context_table = DuckdbTable.from_duckdb('context_table', conn)
         tables_with_contexts = TablesWithContextDefinitions.from_list([
             TableWithContextDefinitions(
                 context_table,

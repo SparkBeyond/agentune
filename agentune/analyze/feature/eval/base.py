@@ -26,7 +26,7 @@ class FeatureEvaluator[F: Feature](ABC):
         """Whether this evaluator can evaluate this feature, together with other features for which it returns True,
         more efficiently than evaluating them one by one (or in parallel in the case of async features).
         """
-        ...
+        raise NotImplementedError # returning ... evaluates as false in a boolean context
 
     @classmethod
     @abstractmethod

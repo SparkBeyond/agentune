@@ -598,3 +598,5 @@ default_classification_calculator = CombinedSyncRelationshipStatsCalculator(
     numeric_calculator=NumericClassificationCalculator(),
     categorical_calculator=CategoricalClassificationCalculator(),
 )
+
+default_feature_stats_calculator = CombinedSyncFeatureStatsCalculator()

@@ -47,7 +47,7 @@ class DelayingAsyncFeature(ToyAsyncFeature):
         await asyncio.sleep(self.delay_per_row.total_seconds())
         value = await super().aevaluate(args, contexts, conn)
         noise = self._rnd.normalvariate() * self.add_random_noise
-        return value + noise # TODO why don't we use native float for the scalar of this feature type, again?
+        return value + noise 
 
     @override
     async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,

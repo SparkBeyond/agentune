@@ -9,7 +9,7 @@ import polars as pl
 from attrs import field, frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-from agentune.analyze.core.database import ArtIndex, DatabaseIndex, DatabaseTable
+from agentune.analyze.core.database import ArtIndex, DuckdbIndex, DuckdbTable
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field
 
@@ -19,7 +19,7 @@ class ContextDefinition(ABC):
 
     @property
     @abstractmethod
-    def table(self) -> DatabaseTable: ...
+    def table(self) -> DuckdbTable: ...
 
     @property
     @abstractmethod
@@ -27,7 +27,7 @@ class ContextDefinition(ABC):
 
     @property
     @abstractmethod
-    def index(self) -> DatabaseIndex: ...
+    def index(self) -> DuckdbIndex: ...
 
     
 type ContextBuilder[TDef: ContextDefinition, TContext: ContextObject] = Callable[[TDef], TContext]
@@ -64,7 +64,7 @@ class ContextObject(ABC):
 
 @frozen
 class TableWithContextDefinitions:
-    table: DatabaseTable
+    table: DuckdbTable
     context_definitions: tuple[ContextDefinition, ...]
 
 @frozen
@@ -87,7 +87,7 @@ class TablesWithContextDefinitions:
 
 @frozen
 class TableWithContexts:
-    table: DatabaseTable
+    table: DuckdbTable
     contexts: tuple[ContextObject, ...]
 
 @frozen
@@ -102,13 +102,13 @@ class TablesWithContexts:
 @frozen
 class LookupContextDefinition(ContextDefinition):
     name: str
-    table: DatabaseTable
+    table: DuckdbTable
     key_col: Field
     value_cols: tuple[Field, ...] # can be used to restrict the available value columns from what's in the table
 
     @property
     @override
-    def index(self) -> DatabaseIndex:
+    def index(self) -> DuckdbIndex:
         return ArtIndex(
             name=f'art_by_{self.key_col.name}',
             cols=(self.key_col.name, )
@@ -142,14 +142,14 @@ class LookupContext[K](ContextObject):
 @frozen
 class KtsContextDefinition(ContextDefinition):
     name: str
-    table: DatabaseTable
+    table: DuckdbTable
     key_col: Field
     date_col: Field # Should be of type timestamp
     value_cols: Sequence[Field] # can be used to restrict the available value columns from what's in the table
 
     @property
     @override
-    def index(self) -> DatabaseIndex:
+    def index(self) -> DuckdbIndex:
         return ArtIndex(
             name=f'art_by_{self.key_col.name}',
             cols=(self.key_col.name, )

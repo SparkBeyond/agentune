@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 
 from agentune.analyze.context.base import ContextDefinition
-from agentune.analyze.core.database import DatabaseTable
+from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import BoolFeature
 from agentune.analyze.feature.stats.stats import (
@@ -51,7 +51,7 @@ class SimpleBoolFeature(BoolFeature):
         return Schema((Field(self._name, self.dtype),))
 
     @property
-    def context_tables(self) -> Sequence[DatabaseTable]:
+    def context_tables(self) -> Sequence[DuckdbTable]:
         return []
 
     @property

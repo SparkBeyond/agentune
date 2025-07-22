@@ -1,7 +1,7 @@
 import duckdb
 
 from agentune.analyze.context.lookup import LookupContextDefinition, LookupContextImpl
-from agentune.analyze.core.database import DatabaseTable
+from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Schema
 
 
@@ -9,7 +9,7 @@ def test_lookup() -> None:
     with duckdb.connect(':memory:lookup') as conn:
         conn.execute('create table test(key integer, val1 integer, val2 varchar)')
 
-        table = DatabaseTable.from_duckdb('test', conn)
+        table = DuckdbTable.from_duckdb('test', conn)
         context_definition = LookupContextDefinition('lookup', table, table.schema['key'], (table.schema['val1'], table.schema['val2']))
         context_definition.index.create(conn, 'test')
         

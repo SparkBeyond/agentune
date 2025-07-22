@@ -1,6 +1,6 @@
 import asyncio
 import contextlib
-from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Iterable, Iterator
 
 import janus
 from janus import AsyncQueueShutDown, SyncQueueEmpty, SyncQueueShutDown
@@ -91,6 +91,14 @@ class Queue[T](Iterable[T], AsyncIterable[T]):
         if then_close:
             self._queue.shutdown()
 
+    def produce(self, into: Callable[[T], None]) -> None:
+        for x in self:
+            into(x)
+
+    async def aproduce(self, into: Callable[[T], Awaitable[None]]) -> None:
+        async for x in self:
+            await into(x)
+
     # Wait for queue to empty. Does not close the queue.
     def wait_empty(self) -> None:
         self._queue.sync_q.join()
@@ -145,3 +153,4 @@ def sync_to_async_iter[T](iter: Iterator[T]) -> AsyncIterator[T]:
     queue = Queue[T]()
     _ = asyncio.to_thread(queue.consume, iter)
     return aiter(queue)
+

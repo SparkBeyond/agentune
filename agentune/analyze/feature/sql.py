@@ -5,9 +5,8 @@ import duckdb
 import polars as pl
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
-from agentune.analyze.core.dataset import Dataset
+from agentune.analyze.core.dataset import Dataset, duckdb_to_polars
 from agentune.analyze.feature.base import SqlQueryFeature, SyncFeature
-from agentune.analyze.util import dataconv
 
 
 @attrs.define # for declaring index_column_name
@@ -35,7 +34,7 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
             if self.index_column_name in input.data.columns:
                 raise ValueError(f'Input data already has a column named {self.index_column_name}')
             cursor.register('main_table', input.data.with_row_index(self.index_column_name, input.data.width))
-            result = dataconv.duckdb_to_polars(cursor.sql(self.sql_query))
+            result = duckdb_to_polars(cursor.sql(self.sql_query))
             assert result.width == 1, f'SQL query must return exactly one column but returned {result.width}'
             series = result.to_series(0)
             assert series.dtype == self.dtype.polars_type, f'SQL query must return a column of type {self.dtype.polars_type} but returned {series.dtype}'
