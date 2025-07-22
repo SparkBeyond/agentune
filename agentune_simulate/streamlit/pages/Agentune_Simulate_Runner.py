@@ -306,20 +306,25 @@ def initialize_sidebar():
 
 
 async def build_vector_store(
-    reference_conversations: list[Conversation],
-    embeddings_model: OpenAIEmbeddings
+        reference_conversations: list[Conversation],
+        embeddings_model: OpenAIEmbeddings,
+        batch_size: int = 100
 ) -> InMemoryVectorStore:
     """Build a single vector store from reference conversations."""
-    
+
     # Convert conversations to documents (without role filtering for shared vector store)
     documents = conversations_to_langchain_documents(reference_conversations)
-    
-    # Create a single in-memory vector store for all components
-    vector_store = InMemoryVectorStore.from_documents(
-        documents=documents,
-        embedding=embeddings_model
-    )
-    
+
+    # Create empty vector store first
+    vector_store = InMemoryVectorStore(embeddings_model)
+
+    # Process documents in batches
+    for i in range(0, len(documents), batch_size):
+        batch = documents[i:i + batch_size]
+
+        # Add batch to vector store
+        vector_store.add_documents(batch)
+
     return vector_store
 
 
