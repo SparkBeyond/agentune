@@ -69,7 +69,7 @@ def format_highlighted_example(doc: Document) -> str:
 
     # Deserialize the structured messages
     messages_data = metadata["full_conversation"]
-    messages = converter.structure(messages_data, list[Message])
+    messages = converter.loads(messages_data, list[Message])
 
     # Get the current message index and use it to highlight the next message
     current_index = metadata["current_message_index"]
@@ -106,7 +106,7 @@ def conversations_to_langchain_documents(
                 "has_next_message": bool(next_message),
                 "current_message_role": current_message.sender.value,
                 "current_message_timestamp": current_message.timestamp.isoformat(),
-                "full_conversation": converter.unstructure(conversation.messages),
+                "full_conversation": converter.dumps(conversation.messages),
                 "outcome": outcome
             }
 
