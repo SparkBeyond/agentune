@@ -6,7 +6,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 
-from ... import Message
+from ...models.message import Message
 from ...rag import indexing_and_retrieval
 from ...util.structure import converter
 
