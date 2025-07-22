@@ -29,12 +29,12 @@ from agentune.analyze.feature.stats.base import (
     SyncFeatureStatsCalculator,
     SyncRelationshipStatsCalculator,
 )
-from agentune.analyze.flow.base import RunContext
-from agentune.analyze.flow.feature_search.base import (
-    FeatureSearchFlow,
+from agentune.analyze.run.base import RunContext
+from agentune.analyze.run.feature_search.base import (
     FeatureSearchInputData,
     FeatureSearchParams,
     FeatureSearchResults,
+    FeatureSearchRunner,
 )
 from agentune.analyze.util.queue import Queue
 
@@ -52,7 +52,7 @@ class EvaluatedFeatures:
 # | |__| | | |___| | | |\  | | |___| |   | |    | |__| | ____) || |____ 
 # |_____/   \_____/  |_| \_|  \_____/    |_|     \____/ |_____/ |______|
 
-class SimpleFeatureSearchFlow(FeatureSearchFlow):
+class SimpleFeatureSearchRunner(FeatureSearchRunner):
     """Runs one unit at a time, holding all intermediate values in memory.
     Runs async units on a single asyncio event loop (which it creates), but only one at a time.
     This means all units run on the same (calling) thread and we don't have to manage moving values between threads.

@@ -20,12 +20,12 @@ from agentune.analyze.core.duckdbio import (
     DuckdbDatasetSink,
     SplitDuckbTable,
 )
-from agentune.analyze.flow.base import RunContext
-from agentune.analyze.flow.feature_search.base import (
+from agentune.analyze.run.base import RunContext
+from agentune.analyze.run.feature_search.base import (
     FeatureSearchInputData,
     RegressionFeatureSearchParams,
 )
-from agentune.analyze.flow.feature_search.simple import SimpleFeatureSearchFlow
+from agentune.analyze.run.feature_search.simple import SimpleFeatureSearchRunner
 
 _logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def test_endtoend_low_level(test_csv_path: Path) -> None:
             ToySyncFeatureSelector(),
         )
 
-        results = SimpleFeatureSearchFlow().run(run_context, input_data, input_params)
+        results = SimpleFeatureSearchRunner().run(run_context, input_data, input_params)
         # TODO assert stuff
         _logger.info(results)
 

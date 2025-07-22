@@ -20,7 +20,7 @@ from agentune.analyze.feature.stats.stats_calculators import (
     CombinedSyncFeatureStatsCalculator,
     CombinedSyncRelationshipStatsCalculator,
 )
-from agentune.analyze.flow.base import RunContext
+from agentune.analyze.run.base import RunContext
 
 # TODO remove the context indexing into the preprocessing phase
 
@@ -87,7 +87,7 @@ class FeatureSearchResults[TK: TargetKind]:
         return tuple(f.feature for f in self.features_with_test_stats)
 
 
-class FeatureSearchFlow(ABC):
+class FeatureSearchRunner(ABC):
     # TODO the real one needs to be async but that's harder to implement so it's sync for now
     @abstractmethod
     def run[TK: TargetKind](self, context: RunContext, data: FeatureSearchInputData, 
