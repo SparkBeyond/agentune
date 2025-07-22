@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from attrs import frozen
+from frozendict import frozendict
 
 from agentune.analyze.feature.base import (
     BoolFeature,
@@ -40,8 +41,7 @@ class CategoricalFeatureStats(FeatureStats[CategoricalFeature]):
     n_total: int
     n_missing: int
     unique_count: int
-    # TODO: dataclasses should have hashable members; should use a frozendict here
-    value_counts: dict[str, int]
+    value_counts: frozendict[str, int]
     # entropy
 
 
