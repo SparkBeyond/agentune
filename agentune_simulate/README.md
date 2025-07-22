@@ -8,7 +8,7 @@
 
 ---
 
-Developing your customer-facing conversational AI agent? Want to ensure it behaves as expected before going live? Agentune Simulate is here to help!
+**Launching an AI Agent? Stop guessing, start simulating.**
 
 Many developers and data scientists struggle to test and validate AI agents effectively. Some deploy directly to production, testing on real customers! Others perform A/B testing, which also means testing on real customers. Many rely on predefined tests that cover main use cases but fail to capture real user intents.
 
@@ -16,7 +16,9 @@ Agentune Simulate creates a customer simulator (twin) based on a set of real con
 
 Ready to deploy your improved AI agent? Use Agentune Simulate to validate it first against real customer interactions!
 
-## How It Works
+## How Does It Work?    
+
+Running a simulation with Agentune Simulate generates realistic conversations between your AI agent and simulated customers. This lets you evaluate your agent's performance, identify edge cases, and validate behavior before real deployment.
 
 ![Agentune Simulate Workflow](https://raw.githubusercontent.com/SparkBeyond/agentune/main/agentune_simulate/docs/images/agentune-simulate-flow.png)
 
@@ -26,7 +28,7 @@ Ready to deploy your improved AI agent? Use Agentune Simulate to validate it fir
 2. **Create Simulator** - Create twin Customer Simulator and AI-Agent from the captured conversations
 3. **Simulate & Evaluate** - Simulate interactions to evaluate if the twin Customer Simulator behaves as your real customers
 
-**Connect a Real Agent** - Now you can integrate your real agent system and run simulations with simulated customers to validate agent behavior
+![Agentune Simulate Workflow](https://raw.githubusercontent.com/SparkBeyond/agentune/main/agentune_simulate/docs/images/agentune-simulate-validation-flow.png)
 
 ## Quick Start
 
