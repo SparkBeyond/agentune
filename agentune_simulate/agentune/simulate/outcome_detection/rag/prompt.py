@@ -1,13 +1,14 @@
 """Prompts for RAG-based outcome detection."""
 
-
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 
-from ...models.conversation import Conversation
+from ... import Message
+from ...rag import indexing_and_retrieval
+from ...util.structure import converter
 
 
 class OutcomeDetectionResult(BaseModel):
@@ -106,7 +107,10 @@ def format_examples(examples: list[tuple[Document, float]]) -> str:
     formatted_examples = []
     
     for i, (doc, _) in enumerate(examples):
-        conversation_text = doc.metadata.get('full_conversation', '')
+        messages_data = doc.metadata.get('full_conversation', '')
+        messages = converter.structure(messages_data, list[Message])
+        conversation_text = indexing_and_retrieval.format_conversation(messages)
+
         outcome_info = doc.metadata.get('outcome', 'No outcome information available')
         
         example = f"Example {i+1}:\n{conversation_text}\n\nOutcome: {outcome_info}"
@@ -114,12 +118,6 @@ def format_examples(examples: list[tuple[Document, float]]) -> str:
     
     return "\n\n".join(formatted_examples)
 
-
-def format_conversation(conversation: Conversation) -> str:
-    return "\n".join([
-        f"{message.sender.value.capitalize()}: {message.content}"
-        for message in conversation.messages
-    ])
 
 # Create a prompt template that can be reused
 OUTCOME_DETECTION_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([

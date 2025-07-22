@@ -20,7 +20,7 @@ from langchain_core.vectorstores import VectorStore
 from ...models.outcome import Outcome, Outcomes
 from ...rag import indexing_and_retrieval
 from ..base import OutcomeDetector, OutcomeDetectionTest
-from .prompt import OUTCOME_DETECTION_PROMPT_TEMPLATE, format_conversation, format_examples, OutcomeDetectionResult
+from .prompt import OUTCOME_DETECTION_PROMPT_TEMPLATE, format_examples, OutcomeDetectionResult
 
 
 class RAGOutcomeDetector(OutcomeDetector):
@@ -96,7 +96,7 @@ class RAGOutcomeDetector(OutcomeDetector):
             # Retrieve similar conversations for this instance
             few_shot_examples = await indexing_and_retrieval.get_similar_finished_conversations(self.vector_store, instance.conversation, k=self.num_examples)
 
-            formatted_conversation = format_conversation(instance.conversation)
+            formatted_conversation = indexing_and_retrieval.format_conversation(instance.conversation.messages)
             formatted_examples = format_examples(few_shot_examples)
             outcomes_str = "\n".join([
                 f"- {outcome.name}: {outcome.description}" 

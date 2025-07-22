@@ -255,7 +255,7 @@ async def _evaluate_adversarial_quality(
     original_conversations: list[Conversation],
     simulated_conversations: list[Conversation],
     adversarial_tester: AdversarialTester,
-    max_pairs: int = 200,
+    max_pairs: int = 100,
     return_exceptions: bool = True,
 ) -> AdversarialEvaluationResult:
     """Evaluate simulation quality using adversarial testing across a random sample of conversation pairs.
