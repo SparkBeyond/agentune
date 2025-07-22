@@ -1,5 +1,13 @@
 # Agentune Simulate
 
+[![CI](https://github.com/SparkBeyond/agentune/actions/workflows/python-tests.yml/badge.svg?label=CI)](https://github.com/SparkBeyond/agentune/actions)
+[![PyPI version](https://badge.fury.io/py/agentune-simulate.svg)](https://pypi.org/project/agentune-simulate/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Twitter Follow](https://img.shields.io/twitter/follow/agentune_sb?style=social)](https://x.com/agentune_sb)
+[![Discord](https://img.shields.io/discord/1375004885845807114?color=7289da&label=discord&logo=discord&logoColor=white)](https://discord.com/channels/1375004885845807114/1375004886483210254)
+
+---
+
 Developing your customer-facing conversational AI agent? Want to ensure it behaves as expected before going live? Agentune Simulate is here to help!
 
 Many developers and data scientists struggle to test and validate AI agents effectively. Some deploy directly to production, testing on real customers! Others perform A/B testing, which also means testing on real customers. Many rely on predefined tests that cover main use cases but fail to capture real user intents.
@@ -51,6 +59,8 @@ Ready to deploy your improved AI agent? Use Agentune Simulate to validate it fir
 2. **Production Setup** - [`persistent_storage_example.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/persistent_storage_example.ipynb) for a closer to real life, scalable, persistent example  
 3. **Validate _Your_ Data** - Adapt the 2nd example to load _your_ conversations data and validate the simulation
 4. **Connect Real Agent** - [`real_agent_integration.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/real_agent_integration.ipynb) for integrating your existing agent systems
+
+📧 **Need help? Have feedback?** Contact us at [agentune-dev@sparkbeyond.com](mailto:agentune-dev@sparkbeyond.com)
 
 ## Contributing
 
