@@ -10,7 +10,7 @@ Ready to deploy your improved AI agent? Use Agentune Simulate to validate it fir
 
 ## How It Works
 
-![Agentune Simulate Workflow](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/docs/images/agentune-simulate-flow.png)
+![Agentune Simulate Workflow](https://raw.githubusercontent.com/SparkBeyond/agentune/main/agentune_simulate/docs/images/agentune-simulate-flow.png)
 
 **How do we validate the twin customer simulator?** We create a twin AI-Agent and let them converse. we then evaluate the conversations to check that the customer simulator behaves as the real customer:
 
