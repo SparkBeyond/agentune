@@ -4,7 +4,7 @@
 [![PyPI version](https://badge.fury.io/py/agentune-simulate.svg)](https://pypi.org/project/agentune-simulate/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Twitter Follow](https://img.shields.io/twitter/follow/agentune_sb?style=social)](https://x.com/agentune_sb)
-[![Discord](https://img.shields.io/discord/1375004885845807114?color=7289da&label=discord&logo=discord&logoColor=white)](https://discord.com/channels/1375004885845807114/1375004886483210254)
+[![Discord](https://img.shields.io/discord/1375004885845807114?color=7289da&label=discord&logo=discord&logoColor=white)](https://discord.gg/2Ahck8bh)
 
 ---
 
