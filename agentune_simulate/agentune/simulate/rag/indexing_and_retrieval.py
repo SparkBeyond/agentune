@@ -134,7 +134,6 @@ async def get_similar_finished_conversations(
         vector_store: The vector store to search for similar conversations
         conversation: Current conversation to find examples for
         k: Number of similar conversations to retrieve
-        instance: Optional instance to exclude exact matches (if provided)
 
     Returns:
         List of similar conversations as (Document, score) tuples, sorted by relevance
