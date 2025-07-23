@@ -170,7 +170,7 @@ _simple_dtypes = [boolean, int8, int16, int32, int64, uint8, uint16, uint32, uin
 _simple_dtype_by_polars_type = {dtype.polars_type: dtype for dtype in _simple_dtypes
                                 if dtype is not json and dtype is not uuid} # those are erased to string
 _simple_dtype_by_duckdb_type_str = {str(dtype.duckdb_type): dtype for dtype in _simple_dtypes}
-
+_simple_dtype_by_duckdb_type_str[str(ddt.TIMESTAMP)] = timestamp # alias for TIMESTAMP_MS
 
 def dtype_from_polars(pltype: PolarsDataType) -> Dtype:
     if pltype in _simple_dtype_by_polars_type:

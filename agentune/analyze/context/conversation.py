@@ -1,0 +1,114 @@
+import datetime
+from typing import override
+
+import attrs
+import more_itertools
+import polars as pl
+from attrs import field, frozen
+from duckdb import DuckDBPyConnection
+
+from agentune.analyze.context.base import ContextDefinition
+from agentune.analyze.core import types
+from agentune.analyze.core.database import ArtIndex, DuckdbIndex, DuckdbTable
+from agentune.analyze.core.dataset import Dataset
+from agentune.analyze.core.schema import Field, dtype_is
+from agentune.analyze.util.duckdbutil import results_iter
+
+
+@frozen
+class Message:
+    role: str # TODO should this be an enum? something else? do we know the set of roles (up to the strings used to encode them)?
+    timestamp: datetime.datetime
+    content: str
+
+@frozen
+class Conversation:
+    messages: tuple[Message, ...] = field()
+
+    @messages.validator
+    def _validate_messages(self, _attribute: attrs.Attribute, value: tuple[Message, ...]) -> None:
+        # TODO in the long run we may want to disable this due to performance concerns
+        if not more_itertools.is_sorted(value, key=lambda m: m.timestamp): # NOTE we permit messages with the same timestamp
+            raise ValueError('Messages must be sorted by timestamp')
+
+@frozen
+class ConversationContext[K](ContextDefinition):
+    """A context definition for storing conversations in a context table with one row per message.
+
+    It is joined to the main table by the conversation id column, whose type K can be any type that supports 
+    indexing and equality comparisons.
+
+    tparams:
+        K: the type of the conversation id column (self.main_table_id_column in the main table, and self.id_column in the context table).
+           This can be any type that supports duckdb indexing and equality comparisons in SQL queries.
+    """
+    name: str
+    table: DuckdbTable
+    main_table_id_column: Field
+    id_column: Field = field()
+    timestamp_column: Field = field(validator=dtype_is(types.timestamp))
+    role_column: Field = field(validator=dtype_is(types.string)) # TODO also suppport an enum
+    content_column: Field = field(validator=dtype_is(types.string))
+
+    @id_column.validator
+    def _validate_id_column(self, _attribute: attrs.Attribute, value: Field) -> None:
+        if value.dtype != self.main_table_id_column.dtype:
+            raise ValueError(f'ID column {value.name} has dtype {value.dtype}, '
+                             f'but main table ID column {self.main_table_id_column.name} has dtype {self.main_table_id_column.dtype}')
+    
+    @property
+    @override
+    def index(self) -> DuckdbIndex:
+        return ArtIndex(
+            name=f'art_by_{self.id_column.name}',
+            cols=(self.id_column.name, )
+        )
+
+    def get_conversation(self, conn: DuckDBPyConnection, id: K) -> Conversation | None:
+        """Get a single conversation, given the id (from the primary table)."""
+        conn.execute(f'''SELECT "{self.timestamp_column.name}", "{self.role_column.name}", "{self.content_column.name}"
+                        FROM "{self.table.name}"
+                        WHERE "{self.id_column.name}" = $1
+                        ORDER BY "{self.timestamp_column.name}"''', [id])
+        results = tuple(Message(
+            timestamp=row[0],
+            role=row[1],
+            content=row[2]
+        ) for row in results_iter(conn))
+        if not results:
+            return None
+        return Conversation(results)
+
+    def get_conversations(self, ids: list[K] | pl.Series | pl.DataFrame | Dataset, conn: DuckDBPyConnection) -> tuple[Conversation | None, ...]:
+        """Batch get conversations, joined to the main table's series of conversation IDs.
+        
+        Args:
+            ids: a list or series of conversation IDs, or a dataframe or dataset with the column named by self.main_table_id_column
+        """
+        if isinstance(ids, Dataset):
+            ids = ids.data[self.main_table_id_column.name]
+        elif isinstance(ids, pl.DataFrame):
+            ids = ids[self.main_table_id_column.name]
+        
+        if isinstance(ids, pl.Series):
+            ids = ids.to_list()
+        
+        conn.execute(f'''SELECT "{self.id_column.name}", "{self.timestamp_column.name}", "{self.role_column.name}", "{self.content_column.name}"
+                         FROM "{self.table.name}"
+                         WHERE "{self.id_column.name}" IN $1
+                         ORDER BY "{self.main_table_id_column.name}", "{self.timestamp_column.name}"''', [ids])
+
+        messages: list[Message] = []
+        conversation_id = None
+        conversations: dict[K, Conversation] = {}
+        for (row_conversation_id, timestamp, role, content) in results_iter(conn):
+            if row_conversation_id != conversation_id:
+                if conversation_id is not None:
+                    conversations[conversation_id] = Conversation(tuple(messages))
+                messages = []
+                conversation_id = row_conversation_id
+            messages.append(Message(timestamp, role, content))
+        if conversation_id is not None:
+            conversations[conversation_id] = Conversation(tuple(messages))
+
+        return tuple(conversations.get(id) for id in ids)

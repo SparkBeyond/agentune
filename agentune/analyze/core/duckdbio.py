@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Literal, Self, override
@@ -21,6 +20,7 @@ from agentune.analyze.core.dataset import (
     duckdb_to_dataset_iterator,
 )
 from agentune.analyze.core.schema import Schema
+from agentune.analyze.util.duckdbutil import transaction_scope
 
 
 @frozen
@@ -244,14 +244,3 @@ class SplitDuckbTable:
     def feature_eval(self) -> DatasetSource:
         return self._split_as_source('feature_eval')
 
-    
-
-@contextlib.contextmanager
-def transaction_scope(conn: DuckDBPyConnection) -> Iterator[DuckDBPyConnection]:
-    conn.begin()
-    try:
-        yield conn
-        conn.commit()
-    except:
-        conn.rollback()
-        raise

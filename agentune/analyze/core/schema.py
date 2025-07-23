@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
 
+import attrs
 import polars as pl
 import pyarrow as pa
 from attrs import field, frozen
@@ -81,3 +83,11 @@ def restore_df_types(df: pl.DataFrame, schema: Schema) -> pl.DataFrame:
             values = col.dtype.values
             df = df.cast({col.name: pl.Enum(categories=values)})
     return df
+
+
+def dtype_is(dtype: Dtype) -> Callable[[Any, attrs.Attribute, Field], None]:
+    """An attrs field validator that checks that a Field has the given dtype."""
+    def validator(_self: Any, _attribute: attrs.Attribute, value: Field) -> None:
+        if value.dtype != dtype:
+            raise ValueError(f'Column {value.name} has dtype {value.dtype}, but should have dtype {dtype}')
+    return validator

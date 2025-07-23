@@ -12,7 +12,6 @@ select = [
     "S",                                # flake8-bandit (misc ruleset)
     "BLE",                              # Don't catch all exceptions
     "B",                                # flake8-bugbear (misc ruleset)
-    "A",                                # flake8-builtins
     "C4",                               # flake8-comprehensions
     "T10",                              # flake8-debugger
     "EXE",                              # flake8-executable
@@ -63,6 +62,7 @@ ignore = [
     "D400",                             # First line should end with a period
     "D401",                             # First line of docstring should be in imperative mood
     "D404",                             # First word of docstring should not be 'this'
+    "D413",                             # Require blank line after each section in docstring
     "D415",                             # First line should end with a period, question mark, or exclamation point
     "D417",                             # Some but not all Args documented in docstring
     "RUF009",                           # Do not perform function call in dataclass defaults,
