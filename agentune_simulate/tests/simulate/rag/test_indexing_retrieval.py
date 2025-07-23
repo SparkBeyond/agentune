@@ -12,9 +12,7 @@ from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStore, InMemoryVectorStore
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from agentune.simulate import Intent
 from agentune.simulate.models import Conversation, Message, ParticipantRole
-from agentune.simulate.outcome_detection.base import OutcomeDetectionTest
 from agentune.simulate.rag.indexing_and_retrieval import (
     conversations_to_langchain_documents,
     get_similar_finished_conversations
@@ -138,8 +136,7 @@ class BaseIndexingRetrievalTests(abc.ABC):
         docs_with_scores = await get_similar_finished_conversations(
             vector_store=self.vector_store,
             conversation=query_conversation,
-            k=k,
-            instance=OutcomeDetectionTest(query_conversation, intent=Intent(role=ParticipantRole.CUSTOMER, description="No description"))  # No specific intent for this test,
+            k=k
         )
         
         # Check that we got expected number of results
