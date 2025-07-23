@@ -143,6 +143,15 @@ class SimulationSessionResult:
                 
                 lines.append(f"{outcome:<20} {orig_count:>3} ({orig_pct:>4.1f}%)   {sim_count:>3} ({sim_pct:>4.1f}%)")
             
+            # Add row for conversations without outcome if any exist
+            if orig_dist.conversations_without_outcome > 0 or sim_dist.conversations_without_outcome > 0:
+                orig_no_outcome = orig_dist.conversations_without_outcome
+                sim_no_outcome = sim_dist.conversations_without_outcome
+                orig_no_outcome_pct = orig_dist.no_outcome_percentage
+                sim_no_outcome_pct = sim_dist.no_outcome_percentage
+                
+                lines.append(f"{'No outcome':<20} {orig_no_outcome:>3} ({orig_no_outcome_pct:>4.1f}%)   {sim_no_outcome:>3} ({sim_no_outcome_pct:>4.1f}%)")
+            
             # Show a sample conversation
             if self.simulated_conversations:
                 sample_conv = self.simulated_conversations[0].conversation
