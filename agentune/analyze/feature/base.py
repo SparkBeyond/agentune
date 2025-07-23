@@ -64,7 +64,7 @@ class Feature[T](ABC):
     @property
     @abstractmethod
     def context_tables(self) -> Sequence[DuckdbTable]: 
-        """Context tables used by the feature.
+        """Context tables used by the feature (via SQL queries).
         This affects the parameters to evaluate().
         Specifying a table with only the columns you will use may, in future, allow us
         to improve performance.
@@ -74,7 +74,7 @@ class Feature[T](ABC):
     @property
     @abstractmethod
     def context_objects(self) -> Sequence[ContextDefinition]: 
-        """Context object definitions used by the feature.
+        """Context objects used by the feature (via python methods on the context objects).
         This affects the parameters to evaluate().
         Specifying a context with only the value columns you will use may, in future, allow us
         to improve performance.
@@ -161,9 +161,6 @@ class CategoricalFeature(Feature[str | None]):
 class SyncFeature[T](Feature[T]):
     # A feature must override at least one of evaluate or evaluate_batch.
     
-    # TODO missing the context objects param to evaluate! The context generation flow is not defined yet,
-    #  but we need to define the API first (and also in the inputs to FeatureGenerator etc)
-
     def evaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
                  conn: DuckDBPyConnection) -> T: 
         df = pl.DataFrame(
