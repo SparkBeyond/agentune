@@ -5,6 +5,7 @@ from langchain_core.documents import Document
 
 from langchain_core.vectorstores import VectorStore
 from ..models import Conversation, Message
+from ..outcome_detection.base import OutcomeDetectionTest
 from ..util.structure import converter
 from .filtered_retriever import VectorStoreSearcher
 
@@ -122,7 +123,8 @@ def conversations_to_langchain_documents(
 async def get_similar_finished_conversations(
         vector_store: VectorStore,
         conversation: Conversation,
-        k: int
+        k: int,
+        instance: OutcomeDetectionTest
 ) -> list[tuple[Document, float]]:
     """Retrieve similar finished conversation examples from the vector store.
 
@@ -134,6 +136,7 @@ async def get_similar_finished_conversations(
         vector_store: The vector store to search for similar conversations
         conversation: Current conversation to find examples for
         k: Number of similar conversations to retrieve
+        instance: Optional instance to exclude exact matches (if provided)
 
     Returns:
         List of similar conversations as (Document, score) tuples, sorted by relevance
@@ -151,6 +154,12 @@ async def get_similar_finished_conversations(
 
     # Sort by similarity score (highest first)
     retrieved_docs.sort(key=lambda x: x[1], reverse=True)
+
+    # If there is an exact match between the current conversation and one of the examples, remove it
+    retrieved_docs = [
+        (doc, score) for doc, score in retrieved_docs
+        if doc.metadata.get('conversation_hash') != hash(instance.conversation.messages)
+    ]
 
     return retrieved_docs
 

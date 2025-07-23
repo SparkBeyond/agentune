@@ -94,7 +94,7 @@ class RAGOutcomeDetector(OutcomeDetector):
         async def prepare_prompt_template_params(instance_idx):
             instance = instances[instance_idx]
             # Retrieve similar conversations for this instance
-            few_shot_examples = await indexing_and_retrieval.get_similar_finished_conversations(self.vector_store, instance.conversation, k=self.num_examples)
+            few_shot_examples = await indexing_and_retrieval.get_similar_finished_conversations(self.vector_store, instance.conversation, k=self.num_examples, instance=instance)
 
             formatted_conversation = indexing_and_retrieval.format_conversation(instance.conversation.messages)
             formatted_examples = format_examples(few_shot_examples)

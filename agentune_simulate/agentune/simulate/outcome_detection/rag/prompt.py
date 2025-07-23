@@ -108,7 +108,7 @@ def format_examples(examples: list[tuple[Document, float]]) -> str:
     
     for i, (doc, _) in enumerate(examples):
         messages_data = doc.metadata.get('full_conversation', '')
-        messages = converter.structure(messages_data, list[Message])
+        messages = converter.loads(messages_data, list[Message])
         conversation_text = indexing_and_retrieval.format_conversation(messages)
 
         outcome_info = doc.metadata.get('outcome', 'No outcome information available')
