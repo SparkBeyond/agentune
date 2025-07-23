@@ -61,7 +61,8 @@ Running a simulation with Agentune Simulate generates realistic conversations be
 
 1. **Quick Start** - [`getting_started.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/getting_started.ipynb) for a quick getting started example
 2. **Production Setup** - [`persistent_storage_example.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/persistent_storage_example.ipynb) for a closer to real life, scalable, persistent example  
-3. **Validate _Your_ Data** - Adapt the 2nd example to load _your_ conversations data and validate the simulation
+3. **Validate _Your_ Data** - Adapt the 2nd example to load _your_ conversations data and validate the simulation. 
+Here is an example of how to load conversations from tabular data: [`load_conversations_from_csv.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/load_conversations_from_csv.ipynb)
 4. **Connect Real Agent** - [`real_agent_integration.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_simulate/examples/real_agent_integration.ipynb) for integrating your existing agent systems
 
 📧 **Need help? Have feedback?** Contact us at [agentune-dev@sparkbeyond.com](mailto:agentune-dev@sparkbeyond.com)
