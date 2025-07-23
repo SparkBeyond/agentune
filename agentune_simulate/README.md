@@ -4,7 +4,7 @@
 [![PyPI version](https://badge.fury.io/py/agentune-simulate.svg)](https://pypi.org/project/agentune-simulate/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Twitter Follow](https://img.shields.io/twitter/follow/agentune_sb?style=social)](https://x.com/agentune_sb)
-[![Discord](https://img.shields.io/discord/1375004885845807114?color=7289da&label=discord&logo=discord&logoColor=white)](https://discord.gg/2Ahck8bh)
+[![Discord](https://img.shields.io/discord/1375004885845807114?color=7289da&label=discord&logo=discord&logoColor=white)](https://discord.gg/Hx5YYAaebz)
 
 ---
 
@@ -15,6 +15,8 @@ Many developers and data scientists struggle to test and validate AI agents effe
 Agentune Simulate creates a customer simulator (twin) based on a set of real conversations. It captures the essence of your customers' inquiries and the way they converse, allowing you to simulate conversations with your AI agent, ensuring it behaves as expected before deployment.
 
 Ready to deploy your improved AI agent? Use Agentune Simulate to validate it first against real customer interactions!
+
+**Need help?** Please contact us. We are committed to assist early adopters in making the most of it!
 
 ## How Does It Work?    
 
