@@ -32,6 +32,10 @@ Running a simulation with Agentune Simulate generates realistic conversations be
 
 ![Agentune Simulate Workflow](https://raw.githubusercontent.com/SparkBeyond/agentune/main/agentune_simulate/docs/images/agentune-simulate-validation-flow.png)
 
+## Testing & Costs
+
+We've tested Agentune Simulate with gpt-4o. In our tests, the cost per conversation was approximately **5-10 cents** per conversation.
+
 ## Quick Start
 
 ### Install Agentune Simulate
