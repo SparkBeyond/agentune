@@ -20,4 +20,5 @@ That is, we analyze what is driving each KPI up or down and propose decisions an
 
 We are looking to release the different modules that are part of this framework in the coming months. At start, we are now releasing the <a  href="https://github.com/SparkBeyond/agentune/tree/main/agentune_simulate/">Agentune Simulate</a> customer simulator.
 
-Looking to use Agentune and need help? Please contact us. We are committed to assist early adopters in making the most of it!
+Looking to use Agentune and need help? Please contact us at [agentune-dev@sparkbeyond.com](mailto:agentune-dev@sparkbeyond.com). 
+We are committed to assist early adopters in making the most of it!
