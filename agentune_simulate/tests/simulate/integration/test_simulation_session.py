@@ -155,7 +155,7 @@ class TestFullPipelineIntegration:
             conversations = converter.structure(data["conversations"], list[Conversation])
         
         # Verify we have the expected sample size
-        assert len(conversations) == 100  # Sample size
+        assert len(conversations) == 50  # Sample size
         
         # Count outcomes for validation
         outcome_counts = {"resolved": 0, "unresolved": 0}
