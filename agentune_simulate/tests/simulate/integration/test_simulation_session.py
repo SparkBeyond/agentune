@@ -1,5 +1,5 @@
 """
-Integration test for the full simulation pipeline using the converted DCH2 dataset.
+Integration test for the full simulation pipeline using the converted example dataset.
 
 This test validates the complete end-to-end workflow:
 1. Load real conversation data
@@ -52,14 +52,14 @@ class TestFullPipelineIntegration:
     """Integration tests for the complete simulation pipeline."""
 
     @pytest.fixture
-    def dch2_dataset_path(self) -> Path:
-        """Path to the sampled DCH2 dataset."""
-        return Path(__file__).parent.parent / "data" / "dch2_sampled_dataset.json"
+    def example_dataset_path(self) -> Path:
+        """Path to the sampled example dataset."""
+        return Path(__file__).parent.parent / "data" / "example_conversation_data.json"
 
     @pytest.fixture
-    def sample_conversations(self, dch2_dataset_path: Path) -> list[Conversation]:
-        """Load a sample of conversations from the DCH2 dataset."""
-        with open(dch2_dataset_path, encoding="utf-8") as f:
+    def sample_conversations(self, example_dataset_path: Path) -> list[Conversation]:
+        """Load a sample of conversations from the example dataset."""
+        with open(example_dataset_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Convert first 2 conversations to our models (very small for real LLM testing)
@@ -146,11 +146,11 @@ class TestFullPipelineIntegration:
             assert orig_conv.id.startswith("original_")
             assert orig_conv.conversation is not None
 
-    def test_dataset_statistics(self, dch2_dataset_path: Path):
+    def test_dataset_statistics(self, example_dataset_path: Path):
         """Test that the simplified dataset has expected properties."""
         
         # Load and convert data
-        with open(dch2_dataset_path, encoding="utf-8") as f:
+        with open(example_dataset_path, encoding="utf-8") as f:
             data = json.load(f)
             conversations = converter.structure(data["conversations"], list[Conversation])
         
