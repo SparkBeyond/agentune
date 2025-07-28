@@ -68,6 +68,15 @@ class KtsContext[K](ContextDefinition):
     date_col: Field # Should be of type timestamp
     value_cols: Sequence[Field] # can be used to restrict the available value columns from what's in the table
 
+    @staticmethod
+    def on_table(name: str, table: DuckdbTable, key_col: str, date_col: str, *value_cols: str) -> KtsContext[K]:
+        return KtsContext[K](
+            name, table,
+            table.schema[key_col],
+            table.schema[date_col],
+            tuple(table.schema[col] for col in value_cols)
+        )
+
     @property
     @override
     def index(self) -> DuckdbIndex:

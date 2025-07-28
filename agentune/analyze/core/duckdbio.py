@@ -39,8 +39,7 @@ class DuckdbTableSource(DatasetSource):
     @staticmethod
     def from_table(table: str, conn: DuckDBPyConnection) -> DuckdbTableSource:
         """Access the table once to determine its schema."""
-        with conn.cursor() as cursor:
-            table_with_schema = DuckdbTable.from_duckdb(table, cursor)
+        table_with_schema = DuckdbTable.from_duckdb(table, conn)
         return DuckdbTableSource(table_with_schema)
     
     def as_sink(self) -> DuckdbDatasetSink:
@@ -96,25 +95,33 @@ class DatasetSourceFromDuckdb(DatasetSource):
         return self._opener(conn)
 
         
-    # Convenient wrappers. If you want full control over e.g. the parameters to duckdb.read_csv, create an instance directly
-    # and pass the right `opener` function calling e.g. conn.read_csv with the parameters you want.
-    # 
-    # The sniff_xxx methods require a live connection because they need to open the source once to determine its schema
-    # before returning; this also means they are potentially blocking and need to be run on a sync thread.
+# Convenience wrappers. If you want full control over e.g. the parameters to duckdb.read_csv, create an instance directly
+# and pass the right `opener` function calling e.g. conn.read_csv with the parameters you want.
+# 
+# The sniff_xxx methods require a live connection because they need to open the source once to determine its schema
+# before returning; this also means they are potentially blocking and need to be run on a sync thread.
 
-    @staticmethod
-    def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection) -> DatasetSourceFromDuckdb:
-        """Open the source once to determine its schema."""
-        with conn.cursor() as cursor:
-            relation = opener(cursor)
-            schema = Schema.from_duckdb(relation)
-        return DatasetSourceFromDuckdb(schema, opener)
+def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection) -> DatasetSourceFromDuckdb:
+    """Open the source once to determine its schema."""
+    with conn.cursor() as cursor:
+        relation = opener(cursor)
+        schema = Schema.from_duckdb(relation)
+    return DatasetSourceFromDuckdb(schema, opener)
 
-    @staticmethod
-    def sniff_csv(path: Path | httpx.URL | str, conn: DuckDBPyConnection) -> DatasetSourceFromDuckdb:
-        if not isinstance(path, str):
-            path = str(path)
-        return DatasetSourceFromDuckdb.sniff_schema(lambda conn: conn.read_csv(path), conn)
+def sniff_csv(path: Path | httpx.URL | str, conn: DuckDBPyConnection) -> DatasetSourceFromDuckdb:
+    if not isinstance(path, str):
+        path = str(path)
+    return sniff_schema(lambda conn: conn.read_csv(path), conn)
+
+def ingest(conn: DuckDBPyConnection, table: DuckdbTable | str, data: DatasetSource) -> DuckdbTableSource:
+    if isinstance(table, str):
+        table = DuckdbTable(table, data.schema)
+    sink = DuckdbDatasetSink(table.name)
+    sink.write(data, conn)
+    return DuckdbTableSource.from_table(table.name, conn)
+
+def ingest_csv(conn: DuckDBPyConnection, table: DuckdbTable | str, path: Path | str) -> DuckdbTableSource:
+    return ingest(conn, table, sniff_csv(path, conn))
 
 
 @frozen 

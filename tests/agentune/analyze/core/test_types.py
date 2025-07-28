@@ -23,7 +23,7 @@ def test_types_and_schema() -> None:
         else:
             assert types.Dtype.from_polars(dtype.polars_type) == dtype
 
-    with contextlib.closing(DuckdbManager('conn')) as ddb_manager, ddb_manager.cursor() as conn:
+    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
         cols = [f'"col_{dtype.name}" {dtype.duckdb_type}' for dtype in all_types]
         conn.execute(f"create table tab ({', '.join(cols)})")
 

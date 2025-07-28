@@ -54,6 +54,8 @@ class FeatureSearchInputData:
             contexts=contexts
         )
 
+# TODO add user-specified params describing project, problem, etc. in freeform for LLM
+
 @frozen
 class FeatureSearchParams[TK: TargetKind]:
     generators: tuple[FeatureGenerator, ...]

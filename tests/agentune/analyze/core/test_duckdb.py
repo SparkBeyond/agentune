@@ -11,6 +11,7 @@ import pytest
 from agentune.analyze.core.database import (
     ArtIndex,
     DuckdbFilesystemDatabase,
+    DuckdbInMemoryDatabase,
     DuckdbManager,
     DuckdbTable,
 )
@@ -19,7 +20,7 @@ _logger = logging.getLogger(__name__)
 
 
 def test_tables_indexes() -> None:
-    with contextlib.closing(DuckdbManager('conn')) as ddb_manager, ddb_manager.cursor() as conn:
+    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
         conn.execute('CREATE TABLE tab (a INT, "quoted name" INT)')
         conn.execute('CREATE INDEX idx ON tab (a, "quoted name")')
         table = DuckdbTable.from_duckdb('tab', conn)
@@ -49,15 +50,15 @@ def test_duckdb_manager(tmp_path: Path) -> None:
         conn.sql('CREATE TABLE test (id INTEGER)')
         conn.sql('INSERT INTO test (id) VALUES (1)')
         
-    with contextlib.closing(DuckdbManager.create('test-threading')) as ddb_manager:
+    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager:
         with contextlib.closing(ddb_manager.cursor()) as conn:
             conn.sql('CREATE TABLE main (id INTEGER)')
             conn.sql('INSERT INTO main (id) VALUES (1)')
 
-        ddb_manager.attach(DuckdbFilesystemDatabase('testdb', dbpath))
+        ddb_manager.attach(DuckdbFilesystemDatabase(dbpath), name='testdb')
         
         def assert_correct(conn: duckdb.DuckDBPyConnection) -> None:
-            res = conn.sql('SELECT main.id id, testdb.test.id id2 FROM main JOIN testdb.test ON main.id = testdb.test.id')
+            res = conn.sql('SELECT main.id id, testdb.test.id id2 FROM memory.main main JOIN testdb.test ON main.id = testdb.test.id')
             assert res.fetchall() == [(1, 1)]
 
         assert_correct(ddb_manager.cursor())
@@ -68,16 +69,25 @@ def test_duckdb_manager(tmp_path: Path) -> None:
 
         asyncio.run(async_test())
 
-        with contextlib.closing(DuckdbManager(ddb_manager.name)) as ddb_manager_copy:
-            assert_correct(ddb_manager_copy.cursor()) # Previous databases still attached
-            
-            # Detaching affects all connections to that memory database
-            ddb_manager.detach('testdb')
-            with pytest.raises(duckdb.CatalogException):
-                assert_correct(ddb_manager_copy.cursor()) 
-            with pytest.raises(duckdb.CatalogException):
-                assert_correct(ddb_manager.cursor()) 
+        # Second in-memory database
+        memory2 = DuckdbInMemoryDatabase()
+        ddb_manager.attach(memory2, name='memory2')
 
-            ddb_manager_copy.attach(DuckdbFilesystemDatabase('testdb', dbpath))
-            assert_correct(ddb_manager_copy.cursor()) # Reattached
-            assert_correct(ddb_manager.cursor()) 
+        with contextlib.closing(ddb_manager.cursor()) as conn:
+            conn.execute('CREATE TABLE memory2.main (id INTEGER)')
+            conn.execute('INSERT INTO memory2.main (id) VALUES (100)')
+
+            res = conn.sql('SELECT id FROM main')
+            assert res.fetchall() == [(1,)] # Goes to main database
+            res = conn.sql('SELECT id FROM memory2.main')
+            assert res.fetchall() == [(100,)] # Goes to memory2 database
+
+        ddb_manager.detach('memory2')
+        with contextlib.closing(ddb_manager.cursor()) as conn:
+            res = conn.sql('SELECT id FROM main')
+            assert res.fetchall() == [(1,)] # Goes to main database
+            
+            with pytest.raises(duckdb.CatalogException, match='does not exist'):
+                conn.sql('SELECT id FROM memory2.main')
+
+       

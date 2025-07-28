@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import override
 
 import polars as pl
@@ -61,9 +61,15 @@ class Dataset(CopyToThread):
         """
         return Dataset(Schema.from_polars(df), df)
 
+    # TODO method from_pandas
+
+    def as_source(self) -> DatasetSource:
+        return DatasetSourceFromDataset(self)
+
     @override 
     def copy_to_thread(self) -> Dataset:
         return Dataset(self.schema, self.data.clone())
+
 
 class DatasetSource(CopyToThread):
     """A source of a dataset stream which can be read multiple times, and whose schema is known ahead of time."""
@@ -75,7 +81,6 @@ class DatasetSource(CopyToThread):
     @abstractmethod
     def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]: ...
 
-    @abstractmethod
     def to_arrow_reader(self, conn: DuckDBPyConnection) -> pa.RecordBatchReader:
         return pa.RecordBatchReader.from_batches(self.schema.to_arrow(), 
                                                  itertools.chain.from_iterable(dataset.data.to_arrow().to_batches() for dataset in self.open(conn)))
@@ -86,6 +91,58 @@ class DatasetSource(CopyToThread):
         """Read the entire source into memory."""
         return Dataset(self.schema, self.to_duckdb(conn).pl())
 
+@frozen
+class DatasetSourceFromIterable(DatasetSource):
+    schema: Schema
+    iterable: Iterable[Dataset]
+
+    @override
+    def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:
+        return iter(self.iterable)
+    
+    @override 
+    def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
+        # TODO need to implement the converse of restore_df_types
+        return conn.from_arrow(self.to_arrow_reader(conn))
+
+    @override
+    def to_dataset(self, conn: DuckDBPyConnection) -> Dataset:
+        iterator = iter(self.iterable)
+        df = next(iterator).data
+        for more in iterator:
+            df = df.vstack(more.data, in_place=True)
+        return Dataset(self.schema, df)
+
+    @override 
+    def copy_to_thread(self) -> DatasetSourceFromIterable:
+        return DatasetSourceFromIterable(self.schema, (dataset.copy_to_thread() for dataset in self.iterable))
+
+@frozen
+class DatasetSourceFromDataset(DatasetSource):
+    dataset: Dataset
+
+    @property
+    @override
+    def schema(self) -> Schema:
+        return self.dataset.schema
+    
+    @override
+    def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:
+        return iter([self.dataset])
+    
+    @override
+    def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
+        # TODO need to implement the converse of restore_df_types
+        return conn.from_arrow(self.dataset.data.to_arrow())
+
+    @override 
+    def to_dataset(self, conn: DuckDBPyConnection) -> Dataset:
+        return self.dataset
+
+    @override 
+    def copy_to_thread(self) -> DatasetSourceFromDataset:
+        return DatasetSourceFromDataset(self.dataset.copy_to_thread())
+        
     
 class DatasetSink(ABC):
     """Interface for writing data."""

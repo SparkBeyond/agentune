@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 from typing import override
 
@@ -49,6 +51,18 @@ class ConversationContext[K](ContextDefinition):
     timestamp_column: Field = field(validator=dtype_is(types.timestamp))
     role_column: Field = field(validator=dtype_is(types.string)) # TODO also suppport an enum
     content_column: Field = field(validator=dtype_is(types.string))
+
+    @staticmethod
+    def on_table(name: str, table: DuckdbTable, main_table_id_column: str, id_column: str, 
+                    timestamp_column: str, role_column: str, content_column: str) -> ConversationContext[K]:
+        return ConversationContext[K](
+            name, table, 
+            Field(main_table_id_column, table.schema[id_column].dtype),
+            table.schema[id_column],
+            table.schema[timestamp_column],
+            table.schema[role_column],
+            table.schema[content_column]
+        )
 
     @id_column.validator
     def _validate_id_column(self, _attribute: attrs.Attribute, value: Field) -> None:

@@ -17,15 +17,12 @@ class RunContext:
     def llm_context(self) -> LLMContext: return self.ser_context.llm_context
 
     @staticmethod
-    def create_default_context(ddb_manager: DuckdbManager | str,
+    def create_default_context(ddb_manager: DuckdbManager,
                                httpx_async_client: httpx.AsyncClient | None = None) -> RunContext:
         if not httpx_async_client:
             httpx_async_client = httpx.AsyncClient(http2=True)
         llm_context = LLMContext(httpx_async_client)
         ser_context = SerializationContext(llm_context)
-        if isinstance(ddb_manager, str):
-            ddb_manager = DuckdbManager.create(ddb_manager)
-
         return RunContext(ser_context, ddb_manager)
     
     async def close(self) -> None:

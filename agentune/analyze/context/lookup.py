@@ -19,6 +19,14 @@ class LookupContext[K](ContextDefinition):
     key_col: Field
     value_cols: tuple[Field, ...] # can be used to restrict the available value columns from what's in the table
 
+    @staticmethod
+    def on_table(name: str, table: DuckdbTable, key_col: str, *value_cols: str) -> LookupContext[K]:
+        return LookupContext[K](
+            name, table,
+            table.schema[key_col],
+            tuple(table.schema[col] for col in value_cols)
+        )
+
     @property
     @override
     def index(self) -> DuckdbIndex:
