@@ -46,7 +46,7 @@ class DuckdbTable:
         return conn.table(self.name)
 
     @staticmethod
-    def from_duckdb(name: str, conn: DuckDBPyConnection) -> DuckdbTable:
+    def from_duckdb(name: str, conn: DuckDBPyConnection) -> DuckdbTable:    
         return DuckdbTable(name, Schema.from_duckdb(conn.table(name)), ArtIndex.from_duckdb(conn, name))
 
 class DuckdbIndex(ABC): 
@@ -178,35 +178,7 @@ class DuckdbManager:
     This is the file basename for on-disk databases, and 'memory' for in-memory databases.
     This is a duckdb limitation. Databases attached later can use arbitrary names.
 
-    -----------------------
-
-    Notes on duckdb's own behavior (TODO try to confirm yet again that I'm right, find some references):
-
-    1. Every call to duckdb.connect(path) for a new database path creates a new 'database instance', which includes some 
-       per-DB-instance settings and state, and a threadpool (whose size can then be changed).
-       
-       Calling duckdb.connect(path) for a path that already has a live connection in the process returns 
-       a new connection to the same database instance; this works until all connections to the database instance
-       are explicitly closed or are garbage collected.
-
-    2. Once you have a connection, you can call its .cursor() method to get another connection to the same DB instance.
-       This is cheap.
-
-       Connections are blocking, so at minimum we need a cursor per thread. Also, some things happen at connection 
-       scope, and it's useful to create connections to scope various effects, like USE statements.
-
-    3. More databases can be attached to an existing connection; this does not create an additional threadpool.
-       
-       Attaching/detaching databases affects existing connections created via cursor() calls from each other;
-       only connections created by calling duckdb.connect() are unaffected. (Such connections can still share
-       the database instance.)
-
-    4. It's possible to reconnect to an in-memory database, as long as it exists, by calling duckdb.connect(f':memory:{name}').
-       However, it's not possible to attach an existing in-memory database to a connection; only new 'anonymous'
-       in-memory databases can be attached.
-
-    4. Each database (=catalog) can then have multiple schemas, as normal in SQL. 
-       See https://duckdb.org/docs/stable/sql/statements/attach#name-qualification
+    See also docs/duckdb.md for more information.
     """
 
     _conn: DuckDBPyConnection
