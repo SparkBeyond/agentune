@@ -70,7 +70,7 @@ class SimpleFeatureSearchRunner(FeatureSearchRunner):
         generated_features = []
         for generator in params.generators:
             _logger.info(f'Generating features with {generator}')
-            generated_features.extend(self._generate_features(input_data, input_data.contexts, generator))
+            generated_features.extend(self._generate_features(input_data, context, generator))
             _logger.info(f'Now have {len(generated_features)} features')
                     
         # Feature evaluation
@@ -109,30 +109,35 @@ class SimpleFeatureSearchRunner(FeatureSearchRunner):
         
         return results
     
-    def _generate_features(self, datasets: FeatureSearchInputData, contexts: TablesWithContextDefinitions, 
+    def _generate_features(self, data: FeatureSearchInputData, context: RunContext,
                            generator: FeatureGenerator) -> list[Feature]:
         if isinstance(generator, SyncFeatureGenerator):
-            return list(generator.generate(datasets.feature_search, contexts))
+            with context.ddb_manager.cursor() as conn:
+                return list(generator.generate(data.feature_search, data.target_column, data.contexts, conn))
         else:
             queue = Queue[Feature](self._queue_size)
             async def agenerate() -> None:
-                await queue.aconsume(
-                    generator.agenerate(datasets.feature_search, contexts)
-                )
+                with context.ddb_manager.cursor() as conn:
+                    await queue.aconsume(
+                        generator.agenerate(data.feature_search, data.target_column, data.contexts, conn)
+                    )
             asyncio.run(agenerate())
             queue.close()
             return list(queue)
         
-    def _transform_features(self, datasets: FeatureSearchInputData, contexts: TablesWithContextDefinitions, 
+    def _transform_features(self, data: FeatureSearchInputData, context: RunContext,
                             features: list[Feature], transformer: FeatureTransformer) -> list[Feature]:
         if isinstance(transformer, SyncFeatureTransformer):
-            return [transformed for feature in features for transformed in transformer.transform(datasets.feature_search, contexts, feature)]
+            with context.ddb_manager.cursor() as conn:
+                return [transformed for feature in features for transformed in 
+                        transformer.transform(data.feature_search, data.target_column, data.contexts, conn, feature)]
         else:
             queue = Queue[Feature](self._queue_size)
             async def atransform() -> None:
-                for feature in features:
-                    for transformed in await transformer.atransform(datasets.feature_search, contexts, feature):
-                        await queue.aput(transformed)
+                with context.ddb_manager.cursor() as conn:
+                    for feature in features:
+                        for transformed in await transformer.atransform(data.feature_search, data.target_column, data.contexts, conn, feature):
+                            await queue.aput(transformed)
             asyncio.run(atransform())
             queue.close()
             return list(queue)

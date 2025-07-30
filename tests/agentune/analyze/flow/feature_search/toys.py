@@ -105,18 +105,20 @@ class ToyAsyncFeature(FloatFeature):
     
 class ToySyncFeatureGenerator(SyncFeatureGenerator[ToySyncFeature]):
     @override
-    def generate(self, input: Dataset, contexts: TablesWithContextDefinitions) -> Iterator[ToySyncFeature]: 
-        for col1 in input.schema.cols:
-            for col2 in input.schema.cols:
+    def generate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+                 conn: DuckDBPyConnection) -> Iterator[ToySyncFeature]: 
+        for col1 in feature_search.schema.cols:
+            for col2 in feature_search.schema.cols:
                 if col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
                     yield ToySyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}', 
                                          f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
 
 class ToyAsyncFeatureGenerator(FeatureGenerator[ToyAsyncFeature]):
     @override
-    async def agenerate(self, input: Dataset, contexts: TablesWithContextDefinitions) -> AsyncIterator[ToyAsyncFeature]:
-        for col1 in input.schema.cols:
-            for col2 in input.schema.cols:
+    async def agenerate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+                        conn: DuckDBPyConnection) -> AsyncIterator[ToyAsyncFeature]:
+        for col1 in feature_search.schema.cols:
+            for col2 in feature_search.schema.cols:
                 if col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
                     await asyncio.sleep(0)
                     yield ToyAsyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}', 
@@ -124,7 +126,8 @@ class ToyAsyncFeatureGenerator(FeatureGenerator[ToyAsyncFeature]):
 
 class ToySyncFeatureTransformer(SyncFeatureTransformer[Feature, Feature]):
     @override
-    def transform(self, input: Dataset, contexts: TablesWithContextDefinitions, feature: Feature) -> list[Feature]:
+    def transform(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+                  conn: DuckDBPyConnection, feature: Feature) -> list[Feature]:
         if hash(str(feature)) < 2**16:
             return []
         else:
@@ -132,7 +135,8 @@ class ToySyncFeatureTransformer(SyncFeatureTransformer[Feature, Feature]):
 
 class ToyAsyncFeatureTransformer(FeatureTransformer[Feature, Feature]):
     @override
-    async def atransform(self, input: Dataset, contexts: TablesWithContextDefinitions, feature: Feature) -> list[Feature]:
+    async def atransform(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+                         conn: DuckDBPyConnection, feature: Feature) -> list[Feature]:
         await asyncio.sleep(0)
         if hash(str(feature)) < 2**16:
             return []
