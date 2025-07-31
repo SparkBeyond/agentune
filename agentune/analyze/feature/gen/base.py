@@ -28,10 +28,10 @@ class SyncFeatureGenerator[F: Feature](FeatureGenerator[F]):
         queue = Queue[F](1)
         with conn.cursor() as cursor:
             task = asyncio.to_thread(lambda: queue.consume(self.generate(feature_search.copy_to_thread(), target_column, contexts, cursor)))
-        async for item in queue:
-            yield item
-        await task
-    
+            async for item in queue:
+                yield item
+            await task
+
 
 class FeatureTransformer[FA: Feature, FB: Feature](ABC): 
     """Builds new features on top of an existing one.

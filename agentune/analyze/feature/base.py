@@ -177,14 +177,15 @@ class SyncFeature[T](Feature[T]):
 
     @override 
     async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
-                       conn: DuckDBPyConnection) -> T: 
-        # TODO here too, need to adapt the connection to a new thread
-        return await asyncio.to_thread(self.evaluate, args, contexts, conn.cursor())
+                       conn: DuckDBPyConnection) -> T:
+        with conn.cursor() as cursor:
+            return await asyncio.to_thread(self.evaluate, args, contexts, cursor)
 
     @override
     async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
-                              conn: DuckDBPyConnection) -> pl.Series: 
-        return await asyncio.to_thread(self.evaluate_batch, input, contexts, conn.cursor())
+                              conn: DuckDBPyConnection) -> pl.Series:
+        with conn.cursor() as cursor:
+            return await asyncio.to_thread(self.evaluate_batch, input, contexts, cursor)
     
 
 class SqlQueryFeature(Feature):

@@ -46,26 +46,27 @@ def test_tables_indexes() -> None:
 
 def test_duckdb_manager(tmp_path: Path) -> None:
     dbpath = tmp_path / 'test.db'
-    with contextlib.closing(duckdb.connect(dbpath)) as conn:
-        conn.sql('CREATE TABLE test (id INTEGER)')
-        conn.sql('INSERT INTO test (id) VALUES (1)')
+    with duckdb.connect(dbpath) as conn:
+        conn.execute('CREATE TABLE test (id INTEGER)')
+        conn.execute('INSERT INTO test (id) VALUES (1)')
         
     with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager:
-        with contextlib.closing(ddb_manager.cursor()) as conn:
-            conn.sql('CREATE TABLE main (id INTEGER)')
-            conn.sql('INSERT INTO main (id) VALUES (1)')
+        with ddb_manager.cursor() as conn:
+            conn.execute('CREATE TABLE main (id INTEGER)')
+            conn.execute('INSERT INTO main (id) VALUES (1)')
 
         ddb_manager.attach(DuckdbFilesystemDatabase(dbpath), name='testdb')
         
-        def assert_correct(conn: duckdb.DuckDBPyConnection) -> None:
-            res = conn.sql('SELECT main.id id, testdb.test.id id2 FROM memory.main main JOIN testdb.test ON main.id = testdb.test.id')
-            assert res.fetchall() == [(1, 1)]
+        def assert_correct() -> None:
+            with ddb_manager.cursor() as conn:
+                res = conn.sql('SELECT main.id id, testdb.test.id id2 FROM memory.main main JOIN testdb.test ON main.id = testdb.test.id')
+                assert res.fetchall() == [(1, 1)]
 
-        assert_correct(ddb_manager.cursor())
+        assert_correct()
 
         async def async_test() -> None:
-            assert_correct(ddb_manager.cursor())
-            await asyncio.to_thread(assert_correct, ddb_manager.cursor())
+            assert_correct()
+            await asyncio.to_thread(assert_correct)
 
         asyncio.run(async_test())
 
@@ -73,7 +74,7 @@ def test_duckdb_manager(tmp_path: Path) -> None:
         memory2 = DuckdbInMemoryDatabase()
         ddb_manager.attach(memory2, name='memory2')
 
-        with contextlib.closing(ddb_manager.cursor()) as conn:
+        with ddb_manager.cursor() as conn:
             conn.execute('CREATE TABLE memory2.main (id INTEGER)')
             conn.execute('INSERT INTO memory2.main (id) VALUES (100)')
 
@@ -83,11 +84,10 @@ def test_duckdb_manager(tmp_path: Path) -> None:
             assert res.fetchall() == [(100,)] # Goes to memory2 database
 
         ddb_manager.detach('memory2')
-        with contextlib.closing(ddb_manager.cursor()) as conn:
+        with ddb_manager.cursor() as conn:
             res = conn.sql('SELECT id FROM main')
             assert res.fetchall() == [(1,)] # Goes to main database
             
             with pytest.raises(duckdb.CatalogException, match='does not exist'):
                 conn.sql('SELECT id FROM memory2.main')
 
-       

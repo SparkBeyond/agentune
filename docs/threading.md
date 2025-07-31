@@ -74,5 +74,5 @@ If you need to share anything other than that, it must be explicilty handled in 
    wrapping the same data.
 2. Duckdb connection instances (DuckDBPyConnection) *are* threadsafe, but using them is blocking, so multiple
    threads can't use the same connection. Call .cursor() to cheaply get a new connection (with the same attached databases)
-   and send that to the other thread.
+   and send that to the other thread. Remember to close the new connection when done (as with all calls to .cursor()).
 

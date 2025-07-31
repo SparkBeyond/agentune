@@ -61,8 +61,9 @@ class SyncFeatureEvaluator[F: SyncFeature](FeatureEvaluator[F]):
 
     @override
     async def aevaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
-                        conn: DuckDBPyConnection, include_originals: bool) -> Dataset: 
-        return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), contexts, conn.cursor(), include_originals)
+                        conn: DuckDBPyConnection, include_originals: bool) -> Dataset:
+        with conn.cursor() as cursor:
+            return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), contexts, cursor, include_originals)
 
 # The following classes make up the API of EfficientEvaluator (which comes last)
 

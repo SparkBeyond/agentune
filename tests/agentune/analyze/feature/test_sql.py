@@ -25,8 +25,8 @@ class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
 
 def test_sql_feature() -> None:
     with duckdb.connect(':memory:TestSqlFeature') as conn:
-        conn.sql('CREATE TABLE context_table (key int, value int)')
-        conn.sql('INSERT INTO context_table VALUES (1, 2), (3, 4)')
+        conn.execute('CREATE TABLE context_table (key int, value int)')
+        conn.execute('INSERT INTO context_table VALUES (1, 2), (3, 4)')
 
         context_table = DuckdbTable.from_duckdb('context_table', conn)
         tables_with_contexts = TablesWithContextDefinitions.from_list([

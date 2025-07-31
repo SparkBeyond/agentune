@@ -103,9 +103,8 @@ class DatasetSourceFromDuckdb(DatasetSource):
 
 def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection) -> DatasetSourceFromDuckdb:
     """Open the source once to determine its schema."""
-    with conn.cursor() as cursor:
-        relation = opener(cursor)
-        schema = Schema.from_duckdb(relation)
+    relation = opener(conn)
+    schema = Schema.from_duckdb(relation)
     return DatasetSourceFromDuckdb(schema, opener)
 
 def sniff_csv(path: Path | httpx.URL | str, conn: DuckDBPyConnection) -> DatasetSourceFromDuckdb:
@@ -144,7 +143,7 @@ class DuckdbDatasetSink(DatasetSink):
             with conn.cursor() as cursor:
                 input_relation = dataset_source.to_duckdb(cursor)
                 cursor.register('input_relation', input_relation)
-                cursor.sql(f"CREATE OR REPLACE TABLE '{self.table_name}' AS SELECT * FROM input_relation") 
+                cursor.execute(f"CREATE OR REPLACE TABLE '{self.table_name}' AS SELECT * FROM input_relation")
         else:
             # Other sources' implementation of to_duckdb() might lose information about the column types, e.g. by going through an Arrow reader,
             # so we need to explicitly create the table with the right schema
@@ -153,7 +152,7 @@ class DuckdbDatasetSink(DatasetSink):
                     cursor.begin()
                     DuckdbTable(self.table_name, dataset_source.schema).create(cursor, if_not_exists=False, or_replace=True)
                     cursor.register('arrow_reader', arrow_reader)
-                    cursor.sql(f"CREATE OR REPLACE TABLE '{self.table_name}' AS SELECT * FROM arrow_reader")
+                    cursor.execute(f"CREATE OR REPLACE TABLE '{self.table_name}' AS SELECT * FROM arrow_reader")
                     cursor.commit()
                 except:
                     cursor.rollback()
@@ -220,12 +219,12 @@ class SplitDuckbTable:
         
         with transaction_scope(conn):
             conn.execute('SELECT setseed(?)', [random_seed / 100])
-            conn.sql(f'''ALTER TABLE "{table.name}" ADD COLUMN "{split_column_name}" {split_column_dtype.duckdb_type}
-                        DEFAULT CASE WHEN random() < {train_fraction} THEN 'train' ELSE 'test' END
-                        ''') # Can't use NOT NULL in ALTER TABLE, have to make the column not null separately
-            conn.sql(f'ALTER TABLE "{table.name}" ALTER COLUMN "{split_column_name}" SET NOT NULL')
-            conn.sql(f'ALTER TABLE "{table.name}" ALTER COLUMN "{split_column_name}" DROP DEFAULT')
-            conn.sql(f'CREATE INDEX "{table.name}_split_index" ON "{table.name}" ("{split_column_name}")') # TODO index naming to avoid collisions
+            conn.execute(f'''ALTER TABLE "{table.name}" ADD COLUMN "{split_column_name}" {split_column_dtype.duckdb_type}
+                             DEFAULT CASE WHEN random() < {train_fraction} THEN 'train' ELSE 'test' END
+                             ''') # Can't use NOT NULL in ALTER TABLE, have to make the column not null separately
+            conn.execute(f'ALTER TABLE "{table.name}" ALTER COLUMN "{split_column_name}" SET NOT NULL')
+            conn.execute(f'ALTER TABLE "{table.name}" ALTER COLUMN "{split_column_name}" DROP DEFAULT')
+            conn.execute(f'CREATE INDEX "{table.name}_split_index" ON "{table.name}" ("{split_column_name}")') # TODO index naming to avoid collisions
             split_table = SplitDuckbTable(DuckdbTable.from_duckdb(table.name, conn), split_column_name)
             split_table.split_category(conn, 'train', 'feature_search', feature_search_size, 'ROWS', random_seed)
             split_table.split_category(conn, 'train', 'feature_eval', feature_eval_size, 'ROWS', random_seed)

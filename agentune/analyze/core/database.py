@@ -161,7 +161,7 @@ class DuckdbManager:
     Attaching and detaching databases affects all connection instances previously returned by cursor().
         
     The default database (out of those attached) is always the first one; you can execute USE on a connection
-    to change it locally but this doesn't affect other connections.
+    to change it locally, but this doesn't affect other connections.
     (This limitation is required because otherwise all code calling connection.cursor() would have to re-apply
     the USE statement, and most code calls connection.cursor() and not the cursor() method of this class because
     it doesn't have a reference to this class.)
@@ -233,6 +233,11 @@ class DuckdbManager:
         del self._databases[name]
 
     def cursor(self) -> duckdb.DuckDBPyConnection:
+        """The caller must close the returned cursor at the end of the code scope that uses it.
+
+        The connection instance kept by this class is never exposed to callers; they can only get new cursors via this method.
+        The original connection is closed only when the close() method of this class is called.
+        """
         return self._conn.cursor()
 
     def close(self) -> None:

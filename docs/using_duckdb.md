@@ -16,25 +16,48 @@ Code MUST NOT do anything that would break if the same database had a different 
 
 ## Managing duckdb connection instances
 
-1. Every connection instance (acquired by calling `.cursor()` either on another connection or on DuckdbManager) MUST be scoped using `with`. That is, all new connections opened in a code scope (=inside a call to a function or an async function) MUST be closed when that call returns. 
+1. Every connection instance (acquired by calling `.cursor()` either on another connection or on DuckdbManager) MUST be scoped using `with`. In particular,all new connections opened in a code scope (=inside a call to a function or an async function) MUST be closed when that call returns. 
     
     This ensures that, after a run completes and the DuckdbManager instance itself is close()d, the database is really closed and all resources are freed (the duckdb threadpool, any in-memory data).
 
-2. Code that passes a connection instance to another thread MUST call .cursor() and pass that instead; a connection instance isn't threadsafe (and is blocking anyway).
+2. Code that passes a connection instance to another thread MUST call .cursor() and pass that instead; a connection instance isn't threadsafe (and is blocking anyway). The code is also responsible for closing the passed cursor when the operation on the other thread completes.
 
-3. Code that receives a connection instance as a parameter, and passes it on to some other function, SHOULD just pass it as is; there is no reason to create a new cursor per function call.
+3. Code that receives a connection instance as a parameter and passes it on to other functions but doesn't use it itself SHOULD just pass it as is, without creating new cursors.
 
-4. Code that uses a connection in any way (executing a statement, etc) MUST create a local cursor and use that instead. (A local cursor can be used for successive statements; you SHOULD NOT create a new cursor for each statement in simple sequential code without a reason.) 
+4. Code that uses a connection in any way (executing a statement, etc) can normally use the connection passed to it directly. However, it MUST create and use a local cursor instead, IF:
 
-5. Relation instances MUST be consumed quickly, deterministically, and exactly once, after being created. They MUST NOT be stored for later use (create them later instead) or passed to code that is complex enough that it might consume them twice accidentally.
+   1. It passes the connection to any other code in the middle of using it itself. (After other code uses a connection, you can't rely on the last result set still being open and unchanged.)
+   2. There's a chance it will close the connection (you shouldn't close the original connection passed to you).
+   3. It does anything affecting future use of the connection, like setting the default database (executing USE), creating temporary catalog objects, or registering objects for replacement scans.
+
+5. If in doubt, you can always create a local cursor. Creating and closing a cursor is very fast; at least two or three orders of magnitude faster than the simplest query you can run using that cursor.
+
+6. Relation instances MUST be consumed quickly, deterministically, and exactly once, after being created. They MUST NOT be stored for later use (create them later instead). Avoid writing code that accepts a Relation and is complex enough to try to consume it twice accidentally.
 
     There are valid three patterns of using Relations:
 
     1. Create and consume it yourself.
-    2. Create and return it it on request. This happens in methods like `to_duckdb` (of Dataset, DatasetSource, etc.). Such a function MUST take a Connection parameter, return a Relation backed by that same connection instance (not a cursor), not consume the Relation itself before returning it, and not use that connection in other ways that would manipulate its result set after the Relation is created. (They can create a separate cursor and use it as they see fit.)
+    2. Create and return it on request. This happens in methods like `to_duckdb` (of Dataset, DatasetSource, etc.). Such a function MUST take a Connection parameter, return a Relation backed by that same connection instance (not a cursor), not consume the Relation itself before returning it, and not use that connection in other ways that would manipulate its result set after the Relation is created. (They can create a separate cursor and use it as they see fit.)
     3. Call a function that returns a Relation (as above), passing in a Connection instance. Such code should behave as if it created the Relation itself (consume it promptly, do it all with a cursor, etc).
 
-The scope of "code" (that uses a connection, etc) depends on the good sense of the developer. You don't need to create an extra cursor when you, e.g., refactor one public function into a public function calling several private ones in sequence. What matters is code locality and complexity. Required effects (like closing a connection or consuming a result set) shouldn't rely on distant code (distant code is that which might be changed without considering the local code where you are), or on complex code (where it's not obvious what codepath will be taken, or the code itself is a parameter, like an abstract class or callback).
+7. When creating in-memory duckdb databases in tests, remember to use `duckdb.connect(':memory:')` to get a new database. Never use `duckdb.connect()` without parameters; this returns a connection to the 'default' in-memory database, which lives as long as the process does. 
+
+
+The scope of "code" (that uses a connection, etc) depends on the good sense of the developer; it is not always a single function. You don't need to create an extra cursor when you, e.g., refactor one public function into a public function calling several private ones in sequence. 
+
+What matters is code locality and complexity. Required effects (like closing a connection or consuming a result set) shouldn't rely on distant code (distant code is that which might be changed without considering the local code where you are), or on complex code (where it's not obvious what codepath will be taken, or the code itself is a parameter, like an abstract class or callback).
+
+## Other notes
+
+### `sql` vs `execute`
+
+Call `connection.sql()` only when you want to create a Relation instance. Call `connection.execute()` when executing non-query statements whose results you won't consume, and when using prepared parameters.
+
+It's possible to use `connection.sql()` with non-query statements; they are executed immediately without waiting for a method call like .fetchall(). And it's also possible to use `connection.execute()` to run a non-parameterized query (i.e. not a prepared statement). I find this confusing and prefer not to mix the two methods.
+
+### Replacement scans
+
+When using a replacement scan, you MUST explicitly call `connection.register`. Do not use the replacement scan automatic feature of looking up python variables to resolve unfamiliar names.
 
 ## TODO (missing docs)
 
