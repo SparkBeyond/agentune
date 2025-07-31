@@ -101,7 +101,8 @@ setup.setup()
 # There are two prospective Polars geospatial extensions: st_polars and geopolars.
 # st_polars requires using GEOMETRY and has a heavy-ish additional dependency, so I'm skipping it for now.
 # Geopolars is in alpha, and is blocked on Polars adding support for Arrow extension types (which will unblock many things).
-point = Dtype('point', duckdb.dtype('POINT_2D'), pl.Struct([pl.Field('x', pl.Float64), pl.Field('y', pl.Float64)]))
+# Point types are currently disabled / unsupported
+# point = Dtype('point', duckdb.dtype('POINT_2D'), pl.Struct([pl.Field('x', pl.Float64), pl.Field('y', pl.Float64)]))
 
 date = Dtype('date', ddt.DATE, pl.Date)
 time = Dtype('time', ddt.TIME, pl.Time)
@@ -166,7 +167,7 @@ class StructDtype(Dtype):
             fields
         )
 
-_simple_dtypes = [boolean, int8, int16, int32, int64, uint8, uint16, uint32, uint64, float32, float64, string, json, uuid, date, time, timestamp, point]
+_simple_dtypes = [boolean, int8, int16, int32, int64, uint8, uint16, uint32, uint64, float32, float64, string, json, uuid, date, time, timestamp] # , point]
 _simple_dtype_by_polars_type = {dtype.polars_type: dtype for dtype in _simple_dtypes
                                 if dtype is not json and dtype is not uuid} # those are erased to string
 _simple_dtype_by_duckdb_type_str = {str(dtype.duckdb_type): dtype for dtype in _simple_dtypes}

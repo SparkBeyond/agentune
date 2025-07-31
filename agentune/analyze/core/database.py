@@ -195,9 +195,7 @@ class DuckdbManager:
                 self._conn = duckdb.connect(path, read_only)
         self._databases = {main_database.default_name: main_database} 
         self._main_database = main_database
-
-        # TODO disable this, and the INSTALL in setup.py, while we don't have any code that uses the spatial extension
-        self._conn.load_extension('spatial')
+        # self._conn.load_extension('spatial')
 
     def databases(self) -> Mapping[str, DuckdbDatabase]:
         """Return all databases attached to this manager, by catalog name."""
