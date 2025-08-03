@@ -11,7 +11,7 @@ from agentune.analyze.core.duckdbio import SplitDuckbTable
 from agentune.analyze.feature.base import Classification, Feature, Regression, TargetKind
 from agentune.analyze.feature.eval.base import FeatureEvaluator
 from agentune.analyze.feature.gen.base import FeatureGenerator
-from agentune.analyze.feature.select.base import FeatureSelector
+from agentune.analyze.feature.select.base import EnrichedFeatureSelector, FeatureSelector
 from agentune.analyze.feature.stats import stats_calculators
 from agentune.analyze.feature.stats.base import (
     FeatureWithFullStats,
@@ -60,7 +60,7 @@ class FeatureSearchInputData:
 class FeatureSearchParams[TK: TargetKind]:
     generators: tuple[FeatureGenerator, ...]
     evaluators: tuple[type[FeatureEvaluator], ...]
-    selector: FeatureSelector[Feature, TK]
+    selector: FeatureSelector[Feature, TK] | EnrichedFeatureSelector
     # TODO declare a not-necessarily-sync version of these APIs, even if the only implementation right now is sync
     relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[TK] 
     feature_stats_calculator: CombinedSyncFeatureStatsCalculator = stats_calculators.default_feature_stats_calculator

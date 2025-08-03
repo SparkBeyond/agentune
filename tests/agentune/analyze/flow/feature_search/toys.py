@@ -3,7 +3,7 @@
 import asyncio
 import math
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import Any, Self, override
+from typing import Any, Self, cast, override
 
 import polars as pl
 from attrs import field, frozen
@@ -13,9 +13,17 @@ import agentune.analyze.util.copy
 from agentune.analyze.context.base import ContextDefinition, TablesWithContextDefinitions
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
-from agentune.analyze.core.dataset import Dataset
+from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.schema import Field, Schema
-from agentune.analyze.feature.base import Feature, FloatFeature, Regression, SyncFeature
+from agentune.analyze.feature.base import (
+    BoolFeature,
+    CategoricalFeature,
+    Feature,
+    FloatFeature,
+    NumericFeature,
+    Regression,
+    SyncFeature,
+)
 from agentune.analyze.feature.describe.base import FeatureDescriber, SyncFeatureDescriber
 from agentune.analyze.feature.eval.base import FeatureEvaluator, SyncFeatureEvaluator
 from agentune.analyze.feature.gen.base import (
@@ -24,7 +32,11 @@ from agentune.analyze.feature.gen.base import (
     SyncFeatureGenerator,
     SyncFeatureTransformer,
 )
-from agentune.analyze.feature.select.base import FeatureSelector, SyncFeatureSelector
+from agentune.analyze.feature.select.base import (
+    EnrichedFeatureSelector,
+    FeatureSelector,
+    SyncFeatureSelector,
+)
 from agentune.analyze.feature.stats.base import FeatureStats, FeatureWithFullStats
 from agentune.analyze.feature.stats.stats import (
     BooleanFeatureStats,
@@ -109,7 +121,8 @@ class ToySyncFeatureGenerator(SyncFeatureGenerator[ToySyncFeature]):
                  conn: DuckDBPyConnection) -> Iterator[ToySyncFeature]: 
         for col1 in feature_search.schema.cols:
             for col2 in feature_search.schema.cols:
-                if col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
+                if target_column not in (col1.name, col2.name) and \
+                        col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
                     yield ToySyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}', 
                                          f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
 
@@ -119,7 +132,8 @@ class ToyAsyncFeatureGenerator(FeatureGenerator[ToyAsyncFeature]):
                         conn: DuckDBPyConnection) -> AsyncIterator[ToyAsyncFeature]:
         for col1 in feature_search.schema.cols:
             for col2 in feature_search.schema.cols:
-                if col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
+                if target_column not in (col1.name, col2.name) and \
+                        col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
                     await asyncio.sleep(0)
                     yield ToyAsyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}', 
                                           f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
@@ -247,3 +261,28 @@ class ToyAsyncFeatureSelector(FeatureSelector[Feature, Regression]):
         average_metric = math.nan if len(self.features) == 0 \
             else sum(ToySyncFeatureSelector.some_metric(x.stats.feature) for x in self.features) / len(self.features)
         return [x for x in self.features if ToySyncFeatureSelector.some_metric(x.stats.feature) >= average_metric]
+
+class ToyAsyncEnrichedFeatureSelector(EnrichedFeatureSelector):
+    def some_metric(self, feature: Feature, enriched: pl.Series) -> float:
+        if isinstance(feature, NumericFeature):
+            return cast(float, enriched.mean())
+        elif isinstance(feature, CategoricalFeature):
+            return enriched.n_unique()
+        elif isinstance(feature, BoolFeature):
+            return cast(int, enriched.sum())
+        else:
+            raise TypeError(f'Unknown feature type: {type(feature)}')
+
+    @override
+    async def aselect_features(self, features: Sequence[Feature],
+                               enriched_data: DatasetSource, target_column: str,
+                               conn: DuckDBPyConnection) -> Sequence[Feature]:
+        await asyncio.sleep(0)
+        assert enriched_data.schema.names == [feature.name for feature in features] + [target_column]
+
+        dataset = enriched_data.to_dataset(conn)
+        average_metric = math.nan if len(features) == 0 \
+            else sum(self.some_metric(feature, dataset.data[feature.name])
+                     for feature in features) / len(features)
+        return [feature for feature in features
+                if self.some_metric(feature, dataset.data[feature.name]) >= average_metric]

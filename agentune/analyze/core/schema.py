@@ -49,6 +49,15 @@ class Schema:
     def drop(self, *names: str) -> Schema:
         return Schema(tuple(col for col in self.cols if col.name not in names))
 
+    def select(self, *cols: str) -> Schema:
+        return Schema(tuple(col for col in self.cols if col.name in cols))
+
+    def hstack(self, other: Schema) -> Schema:
+        common_names = set(self.names).intersection(other.names)
+        if common_names:
+            raise ValueError(f'Cannot hstack, duplicate column names: {common_names}, {self.names=}, {other.names=}')
+        return Schema(self.cols + other.cols)
+
     def __len__(self) -> int: 
         return len(tuple(self.cols))
 

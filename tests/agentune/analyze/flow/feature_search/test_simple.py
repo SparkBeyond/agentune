@@ -5,6 +5,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 from tests.agentune.analyze.flow.feature_search.toys import (
+    ToyAsyncEnrichedFeatureSelector,
     ToyAsyncFeatureEvaluator,
     ToyAsyncFeatureGenerator,
     ToySyncFeatureEvaluator,
@@ -67,14 +68,23 @@ def test_endtoend_low_level(test_csv_path: Path) -> None:
 
         input_data = ingest_data(ddb_manager)
 
-        input_params = RegressionFeatureSearchParams( # TODO also test classification
+        # Multiple generators, select based on stats
+        input_params1 = RegressionFeatureSearchParams( # TODO also test classification
             (ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator()),
             (ToySyncFeatureEvaluator, ToyAsyncFeatureEvaluator),
-            ToySyncFeatureSelector(),
+            ToySyncFeatureSelector()
         )
-
-        results = SimpleFeatureSearchRunner().run(run_context, input_data, input_params)
+        results1 = SimpleFeatureSearchRunner().run(run_context, input_data, input_params1)
+        _logger.info(results1)
         # TODO assert stuff
-        _logger.info(results)
 
+        # Single generator because we haven't implemented feature name deduplication yet, and EnrichedFeatureSelector
+        input_params2 = RegressionFeatureSearchParams( # TODO also test classification
+            (ToySyncFeatureGenerator(), ),
+            (ToySyncFeatureEvaluator, ToyAsyncFeatureEvaluator),
+            ToyAsyncEnrichedFeatureSelector()
+        )
+        results2 = SimpleFeatureSearchRunner().run(run_context, input_data, input_params2)
+        _logger.info(results2)
+        # TODO assert stuff
 

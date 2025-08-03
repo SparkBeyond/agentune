@@ -43,6 +43,21 @@ class Dataset(CopyToThread):
     
     def slice(self, offset: int, length: int | None) -> Dataset:
         return Dataset(self.schema, self.data.slice(offset, length))
+
+    def hstack(self, other: Dataset) -> Dataset:
+        return Dataset(self.schema.hstack(other.schema), self.data.hstack(other.data))
+
+    def vstack(self, other: pl.DataFrame | Dataset) -> Dataset:
+        if isinstance(other, Dataset):
+            if other.schema != self.schema:
+                raise ValueError('Cannot vstack, schema mismatch')
+            other = other.data
+        elif self.schema.to_polars() != other.schema:
+            raise ValueError('Cannot vstack, schema mismatch')
+        return Dataset(self.schema, self.data.vstack(other))
+
+    def select(self, *cols: str) -> Dataset:
+        return Dataset(self.schema.select(*cols), self.data.select(cols))
     
     @property
     def height(self) -> int:

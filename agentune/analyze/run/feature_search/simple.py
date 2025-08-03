@@ -1,10 +1,13 @@
 import asyncio
+import functools
 import itertools
 import logging
+from collections.abc import Sequence
 from typing import cast, override
 
 import duckdb
 from attrs import frozen
+from duckdb.duckdb import DuckDBPyConnection
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset
@@ -18,7 +21,12 @@ from agentune.analyze.feature.gen.base import (
     SyncFeatureGenerator,
     SyncFeatureTransformer,
 )
-from agentune.analyze.feature.select.base import FeatureSelector, SyncFeatureSelector
+from agentune.analyze.feature.select.base import (
+    EnrichedFeatureSelector,
+    FeatureSelector,
+    SyncEnrichedFeatureSelector,
+    SyncFeatureSelector,
+)
 from agentune.analyze.feature.stats.base import (
     FeatureStats,
     FeatureStatsCalculator,
@@ -80,7 +88,7 @@ class SimpleFeatureSearchRunner(FeatureSearchRunner):
         ] for evaluator in params.evaluators }
         del generated_features # free memory
 
-        evaluated_features = []
+        evaluated_features: list[EvaluatedFeatures] = []
         for evaluator_cls, features in features_by_evaluator.items():
             with context.ddb_manager.cursor() as conn:
                 if issubclass(evaluator_cls, SyncFeatureEvaluator):
@@ -89,22 +97,32 @@ class SimpleFeatureSearchRunner(FeatureSearchRunner):
                     evaluated_features.extend(self._evaluate_async_features(input_data, input_data.contexts, conn, evaluator_cls, features))
                 _logger.info(f'Evaluated {len(features)} with {evaluator_cls.__name__} on {input_data.feature_search.data.height} rows')
 
-        del features_by_evaluator # free memory
-        # _logger.info(f'Example feature stats: {evaluated_features[0].dataset}')
-
         # Feature stats calculation
         features_with_stats = self._calculate_full_stats(input_data, params.feature_stats_calculator, params.relationship_stats_calculator, evaluated_features)
         _logger.info(f'Calculated stats for {len(features_with_stats)} features')
-        del evaluated_features # free memory
 
         # Feature selection
-        selected_features = self._select_features(params.selector, features_with_stats)
-        _logger.info(f'Selected {len(selected_features)} features')
+        if isinstance(params.selector, EnrichedFeatureSelector):
+            # Each of the evaluated datasets includes the target column; we only want one of them
+            evaluated_without_target = [e.dataset.drop(input_data.target_column) for e in evaluated_features]
+            enriched_dataset = functools.reduce(Dataset.hstack, evaluated_without_target[:-1] + [evaluated_features[-1].dataset])
+            feature_candidates = [feature for evaluated in evaluated_features for feature in evaluated.features]
+            del evaluated_features # free memory
+            with context.ddb_manager.cursor() as conn:
+                selected_features = self._select_enriched_features(params.selector, feature_candidates,
+                                                                   enriched_dataset, input_data.target_column, conn)
+                stats_by_feature = {x.feature: x for x in features_with_stats}
+                selected_features_with_stats = [stats_by_feature[f] for f in selected_features]
+            del enriched_dataset
+        else:
+            del evaluated_features # free memory
+            selected_features_with_stats = self._select_features(params.selector, features_with_stats)
+        _logger.info(f'Selected {len(selected_features_with_stats)} features')
 
         # TODO evaluate on the right datasets; right now we only have the features as evaluated on the feature search dataset
         results = FeatureSearchResults(
-            features_with_train_stats=tuple(selected_features),
-            features_with_test_stats=tuple(selected_features),
+            features_with_train_stats=tuple(selected_features_with_stats),
+            features_with_test_stats=tuple(selected_features_with_stats),
         )
         
         return results
@@ -236,6 +254,18 @@ class SimpleFeatureSearchRunner(FeatureSearchRunner):
                     await selector.aadd_feature(feature_with_stats)
                 return list(await selector.aselect_final_features())
             return asyncio.run(aselect())
+
+    def _select_enriched_features(self, selector: EnrichedFeatureSelector,
+                                  features: list[Feature],
+                                  enriched_dataset: Dataset,
+                                  target_column: str,
+                                  conn: DuckDBPyConnection) -> Sequence[Feature]:
+        if isinstance(selector, SyncEnrichedFeatureSelector):
+            return selector.select_features(features, enriched_dataset.as_source(), target_column, conn)
+        else:
+            with conn.cursor() as cursor:
+                return asyncio.run(selector.aselect_features(features, enriched_dataset.as_source(), target_column, cursor))
+
         
     def _describe_features(self, describer: FeatureDescriber, selected_features: list[FeatureWithFullStats]) -> list[FeatureWithFullStats]:
         if isinstance(describer, SyncFeatureDescriber):

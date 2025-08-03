@@ -3,14 +3,14 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import override
 
+from duckdb.duckdb import DuckDBPyConnection
+
+from agentune.analyze.core.dataset import DatasetSource
 from agentune.analyze.feature.base import Feature, TargetKind
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
 
-# TODO add 'EnrichedFeatureSelector' that takes as input the full enriched output of the each feature on the feature search dataset,
-#  and the target column, and also the stats.
-#  Try to make an API that stores the data in duckdb and doesn't just pass Series around.
 
-class FeatureSelector[F: Feature, T: TargetKind](ABC): 
+class FeatureSelector[F: Feature, T: TargetKind](ABC):
     @abstractmethod
     async def aadd_feature(self, feature_with_stats: FeatureWithFullStats[F, T]) -> None: ...
 
@@ -32,3 +32,35 @@ class SyncFeatureSelector[F: Feature, T: TargetKind](FeatureSelector[F, T]):
     async def aselect_final_features(self) -> Sequence[FeatureWithFullStats[F, T]]:
         return await asyncio.to_thread(self.select_final_features)
 
+class EnrichedFeatureSelector(ABC):
+    """A FeatureSelector that requires the entire enriched feature output, not only statistics.
+
+    It operates on all features at once, which assumes there are relatively few features.
+
+    Although this interface could extend (and easily implement) the FeatureSelector interface,
+    it deliberately doesn't; code should be aware which kind of selector it's using,
+    because it matters a lot to resource management.
+    """
+
+    @abstractmethod
+    async def aselect_features(self, features: Sequence[Feature],
+                               enriched_data: DatasetSource, target_column: str,
+                               conn: DuckDBPyConnection) -> Sequence[Feature]:
+        """enriched_data contains a column for each feature; the column's name is the feature.name.
+
+        It also contains the target column.
+        """
+        ...
+
+class SyncEnrichedFeatureSelector(EnrichedFeatureSelector):
+    @abstractmethod
+    def select_features(self, features: Sequence[Feature],
+                        enriched_data: DatasetSource, target_column: str,
+                        conn: DuckDBPyConnection) -> Sequence[Feature]: ...
+
+    @override
+    async def aselect_features(self, features: Sequence[Feature],
+                               enriched_data: DatasetSource, target_column: str,
+                               conn: DuckDBPyConnection) -> Sequence[Feature]:
+        with conn.cursor() as cursor:
+            return await asyncio.to_thread(self.select_features, features, enriched_data, target_column, cursor)
