@@ -1,8 +1,13 @@
 import duckdb
 import polars as pl
 from attrs import frozen
+from mypyc.ir.ops import Sequence
 
-from agentune.analyze.context.base import TablesWithContextDefinitions, TableWithContextDefinitions
+from agentune.analyze.context.base import (
+    ContextDefinition,
+    TablesWithContextDefinitions,
+    TableWithContextDefinitions,
+)
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset
@@ -18,10 +23,10 @@ class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
     sql_query: str
     index_column_name: str = 'row_index_column'
 
-    name = 'test_sql_feature'
-    description = ''
-    code = ''
-    context_objects = ()
+    name: str = 'test_sql_feature'
+    description: str = ''
+    code: str = ''
+    context_objects: Sequence[ContextDefinition] = ()
 
 def test_sql_feature() -> None:
     with duckdb.connect(':memory:TestSqlFeature') as conn:
@@ -36,9 +41,9 @@ def test_sql_feature() -> None:
             )
         ])
         feature = IntSqlFeatureForTests(
-            Schema((Field('key', types.int32), )),
-            (context_table,),
-            '''
+            params=Schema((Field('key', types.int32), )),
+            context_tables=(context_table,),
+            sql_query='''
             SELECT context_table.value
             FROM main_table 
             LEFT JOIN context_table ON main_table.key = context_table.key

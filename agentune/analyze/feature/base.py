@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any, Literal, override
 
 import polars as pl
+from attrs import define
 from duckdb import DuckDBPyConnection
 from llama_index.core.llms import ChatMessage, ChatResponse
 
@@ -20,8 +21,16 @@ type Classification = Literal['classification']
 type Regression = Literal['regression']
 
 
+@define
 class Feature[T](ABC):
-    """Args:
+    """A feature calculates a value that can be used to predict the target in a dataset.
+
+    Implementation note:
+        This base class is annotated with @attrs.define, and all implementations must be attrs classes.
+        We rely on attrs.evolve() being able to change e.g. feature names and descriptions.
+        Only attributes that must be free parameters to the feature are explicitly declared as attributes.
+
+    Args:
         name: Used as the column/series name in outputs. Not guaranteed to be unique among Feature instances.
         description: Human-readable description of the feature.
         code: Python code that computes this feature. The code should define a function `evaluate` with the needed params. 
@@ -35,19 +44,14 @@ class Feature[T](ABC):
            that assumes all features have distinct T types.)
     """
 
+    name: str
+    description: str
+
     @property
     @abstractmethod
     def dtype(self) -> Dtype: ...
 
-    @property
-    @abstractmethod
-    def name(self) -> str: ...
-
-    @property
-    @abstractmethod
-    def description(self) -> str: ...
-
-    # TODO precise definition - 
+    # TODO precise definition -
     #  We have not yet decided whether the code needs to be strictly correct and/or guaranteed to evaluate and work.
     @property
     @abstractmethod

@@ -97,6 +97,10 @@ class SimpleFeatureSearchRunner(FeatureSearchRunner):
                     evaluated_features.extend(self._evaluate_async_features(input_data, input_data.contexts, conn, evaluator_cls, features))
                 _logger.info(f'Evaluated {len(features)} with {evaluator_cls.__name__} on {input_data.feature_search.data.height} rows')
 
+        # TODO deduplicate feature names; in the input to EnrichedSelector, if that is used,
+        #  and then on the final selected features (using the original names if they were renamed in step 1).
+        #  Delaying this because this code will be rewritten.
+
         # Feature stats calculation
         features_with_stats = self._calculate_full_stats(input_data, params.feature_stats_calculator, params.relationship_stats_calculator, evaluated_features)
         _logger.info(f'Calculated stats for {len(features_with_stats)} features')

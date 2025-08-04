@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import numpy as np
 import polars as pl
 import pytest
+from attrs import frozen
 
 from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import DuckdbTable
@@ -25,30 +26,18 @@ from agentune.analyze.feature.stats.stats_calculators import (
 
 
 # Simple Feature implementation for testing
+@frozen
 class SimpleNumericFeature(FloatFeature):
     """A simple Feature implementation for testing purposes."""
 
-    def __init__(self, name: str):
-        self._name = name
-        self._description = 'Test numeric feature'
-        self._code = 'def evaluate(df): return df[self.name]'
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def description(self) -> str:
-        return self._description
-
-    @property
-    def code(self) -> str:
-        return self._code
+    name: str
+    description: str = 'Test numeric feature'
+    code: str = 'def evaluate(df): return df[self.name]'
 
     @property
     def params(self) -> Schema:
         # Schema constructor expects Field objects
-        return Schema((Field(self._name, self.dtype),))
+        return Schema((Field(self.name, self.dtype),))
 
     @property
     def context_tables(self) -> Sequence[DuckdbTable]:
