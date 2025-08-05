@@ -30,6 +30,7 @@ class DuckdbTableSource(DatasetSource):
     This is required as the input type for some operations that can't work on generic DatasetSources, most often context data.
     """
     table: DuckdbTable
+    batch_size: int = 100000
 
     @property
     @override
@@ -51,7 +52,7 @@ class DuckdbTableSource(DatasetSource):
     
     @override 
     def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:
-        return duckdb_to_dataset_iterator(self.to_duckdb(conn))
+        return duckdb_to_dataset_iterator(self.to_duckdb(conn), batch_size=self.batch_size)
 
     @override
     def copy_to_thread(self) -> DuckdbTableSource:
@@ -59,7 +60,7 @@ class DuckdbTableSource(DatasetSource):
 
     @override 
     def to_arrow_reader(self, conn: DuckDBPyConnection) -> pa.RecordBatchReader:
-        return self.to_duckdb(conn).fetch_arrow_reader()
+        return self.to_duckdb(conn).fetch_arrow_reader(batch_size=self.batch_size)
 
     @staticmethod
     def sniff_schema(table_name: str, conn: DuckDBPyConnection) -> DuckdbTableSource:
@@ -76,11 +77,12 @@ class DatasetSourceFromDuckdb(DatasetSource):
     """
     schema: Schema
     _opener: DuckdbDatasetOpener
+    batch_size: int = 100000
 
     @override 
     def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:
         relation = self._opener(conn)
-        return duckdb_to_dataset_iterator(relation)
+        return duckdb_to_dataset_iterator(relation, batch_size=self.batch_size)
 
     @override
     def copy_to_thread(self) -> Self:
@@ -88,7 +90,7 @@ class DatasetSourceFromDuckdb(DatasetSource):
 
     @override 
     def to_arrow_reader(self, conn: DuckDBPyConnection) -> pa.RecordBatchReader:
-        return self._opener(conn).fetch_arrow_reader()
+        return self._opener(conn).fetch_arrow_reader(batch_size=self.batch_size)
 
     @override
     def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
@@ -123,6 +125,7 @@ def ingest_csv(conn: DuckDBPyConnection, table: DuckdbTable | str, path: Path | 
     return ingest(conn, table, sniff_csv(path, conn))
 
 
+# Should rename to DuckdbTableSink for consistency with DuckdbTableSource
 @frozen 
 class DuckdbDatasetSink(DatasetSink):
     """A sink that writes to a duckdb database.

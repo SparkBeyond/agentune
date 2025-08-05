@@ -9,7 +9,7 @@ from agentune.analyze.feature.dedup_names import _deduplicate, deduplicate_featu
 
 
 @frozen
-class TestFeature(IntFeature):
+class FeatureForTesting(IntFeature):
     name: str
     code: str = ''
     description: str = ''
@@ -23,7 +23,7 @@ def test_dedup_names() -> None:
     assert _deduplicate(['a', 'b', 'c', 'a', 'b', 'a_']) == ['a', 'b', 'c', 'a_', 'b_', 'a__']
 
     def features_with_names(names: list[str]) -> list[Feature]:
-        return [TestFeature(name) for name in names]
+        return [FeatureForTesting(name) for name in names]
 
     assert deduplicate_feature_names([]) == []
     assert deduplicate_feature_names(features_with_names(['a', 'b', 'c'])) == \

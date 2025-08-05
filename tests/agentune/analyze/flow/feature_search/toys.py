@@ -3,7 +3,7 @@
 import asyncio
 import math
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import Any, Self, cast, override
+from typing import Any, cast, override
 
 import polars as pl
 from attrs import field, frozen
@@ -25,7 +25,6 @@ from agentune.analyze.feature.base import (
     SyncFeature,
 )
 from agentune.analyze.feature.describe.base import FeatureDescriber, SyncFeatureDescriber
-from agentune.analyze.feature.eval.base import FeatureEvaluator, SyncFeatureEvaluator
 from agentune.analyze.feature.gen.base import (
     FeatureGenerator,
     FeatureTransformer,
@@ -168,58 +167,6 @@ class ToyAsyncFeatureDescriber(FeatureDescriber[Feature]):
         await asyncio.sleep(0)
         return f'{feature.name} described'
     
-@frozen
-class ToySyncFeatureEvaluator(SyncFeatureEvaluator[SyncFeature]):
-    features: tuple[SyncFeature, ...]
-
-    @override
-    @classmethod
-    def supports_feature(cls, feature: Feature) -> bool:
-        return isinstance(feature, SyncFeature)
-
-    @override 
-    @classmethod
-    def for_features(cls, features: Sequence[SyncFeature]) -> Self:
-        return cls(tuple(features))
-
-    @override
-    def evaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
-                 conn: DuckDBPyConnection, include_originals: bool) -> Dataset:
-        new_series = [feature.evaluate_batch(dataset, contexts, conn) for feature in self.features]
-        new_cols = tuple(Field(feature.name, feature.dtype) for feature in self.features)
-        if include_originals:
-            df = dataset.data.with_columns(**{col.name: series for col, series in zip(new_cols, new_series, strict=True)})
-            schema = Schema(dataset.schema.cols + new_cols)
-            return Dataset(schema, df)
-        else:
-            return Dataset(Schema(tuple(new_cols)), pl.DataFrame({col.name: series for col, series in zip(new_cols, new_series, strict=True)}))
-
-@frozen    
-class ToyAsyncFeatureEvaluator(FeatureEvaluator[Feature]):
-    features: tuple[Feature, ...]
-
-    @override
-    @classmethod
-    def supports_feature(cls, feature: Feature) -> bool:
-        return not isinstance(feature, SyncFeature)
-
-    @override 
-    @classmethod
-    def for_features(cls, features: Sequence[Feature]) -> Self:
-        return cls(tuple(features))
-    
-    @override
-    async def aevaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
-                        conn: DuckDBPyConnection, include_originals: bool) -> Dataset:
-        new_series = [await feature.aevaluate_batch(dataset, contexts, conn) for feature in self.features]
-        new_cols = tuple(Field(feature.name, feature.dtype) for feature in self.features)
-        if include_originals:
-            df = dataset.data.with_columns(**{col.name: series for col, series in zip(new_cols, new_series, strict=True)})
-            schema = Schema(dataset.schema.cols + new_cols)
-            return Dataset(schema, df)
-        else:
-            return Dataset(Schema(new_cols), pl.DataFrame({col.name: series for col, series in zip(new_cols, new_series, strict=True)}))
-
 
 @frozen
 class ToySyncFeatureSelector(SyncFeatureSelector[Feature, Regression]):

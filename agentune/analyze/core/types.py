@@ -27,6 +27,9 @@ class Dtype:
     def _python_type_default(self) -> type:
         # TODO check if this is correct when working directly with duckdb - there might not be a single answer for both!
         return self.polars_type.to_python()
+
+    def __str__(self) -> str:
+        return self.name
     
     def arrow_type(self) -> pa.DataType:
         # Clunky, but it works without hardcoding the coversions (though we might want to cache them?)

@@ -172,10 +172,10 @@ class DatasetSink(ABC):
         """
         ...
 
-def duckdb_to_dataset_iterator(relation: DuckDBPyRelation) -> Iterator[Dataset]:
+def duckdb_to_dataset_iterator(relation: DuckDBPyRelation, batch_size: int = 100000) -> Iterator[Dataset]:
     schema = Schema.from_duckdb(relation)
     return iter(Dataset(schema, restore_df_types(pl.DataFrame(batch), schema)) 
-                for batch in relation.fetch_arrow_reader())
+                for batch in relation.fetch_arrow_reader(batch_size=batch_size))
 
 def duckdb_to_dataset(relation: DuckDBPyRelation) -> Dataset:
     schema = Schema.from_duckdb(relation)

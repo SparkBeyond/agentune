@@ -71,6 +71,7 @@ ignore = [
     "PYI034",                           # `__iter__` methods... usually return `self` at runtime
     "B024",                             # ABC has no abstract methods (because it's empty)
     "TRY003",                           # Avoid specifying long messages outside the exception class
+    "TRY300",                           # No return inside try
     "A002",                             # `input` is shadowing a Python builtin
     "DTZ005",                           # `datetime.datetime.now()` called without a `tz` argument - it's fine to use naive dates and assume UTC
     "C901", "PLR0904", "PLR0912", "PLR0913", "PLR0914", "PLR0915",                 # Too complex, too many branches, etc

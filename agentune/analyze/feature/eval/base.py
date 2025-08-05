@@ -39,31 +39,28 @@ class FeatureEvaluator[F: Feature](ABC):
 
     @abstractmethod
     async def aevaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
-                        conn: DuckDBPyConnection, include_originals: bool) -> Dataset: 
+                        conn: DuckDBPyConnection) -> Dataset:
         """Args:
             dataset: includes all columns needed by all the features. Any additional columns are ignored.
             contexts: contains any context tables and objects needed by the features; any additional ones are ignored.
-            include_originals: whether to include the original columns of 'dataset' in the output dataset.
 
         Returns:
             A dataset with a column per feature, named with the feature's name.
-            If include_originals is True, the original columns are included as well, before the feature columns.
-
         """
         ...
 
 class SyncFeatureEvaluator[F: SyncFeature](FeatureEvaluator[F]):
     @abstractmethod
     def evaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
-                 conn: DuckDBPyConnection, include_originals: bool) -> Dataset: 
+                 conn: DuckDBPyConnection) -> Dataset:
         """See FeatureEvaluator.aevaluate for details."""
         ...
 
     @override
     async def aevaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
-                        conn: DuckDBPyConnection, include_originals: bool) -> Dataset:
+                        conn: DuckDBPyConnection) -> Dataset:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), contexts, cursor, include_originals)
+            return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), contexts, cursor)
 
 # The following classes make up the API of EfficientEvaluator (which comes last)
 

@@ -180,7 +180,7 @@ class SimpleFeatureSearchRunner(FeatureSearchRunner):
         evaluated_batches = []
         for sync_feature_batch in itertools.batched(sync_features, feature_batch_size):
             evaluator = evaluator_cls.for_features(list(sync_feature_batch))
-            evaluated = evaluator.evaluate(datasets.feature_search, contexts, conn, include_originals=False)
+            evaluated = evaluator.evaluate(datasets.feature_search, contexts, conn)
             evaluated_with_target = self._add_target_to_evaluated(datasets.feature_search, evaluated, datasets.target_column)
             evaluated_batches.append(EvaluatedFeatures(evaluated_with_target, list(sync_feature_batch)))
         return evaluated_batches
@@ -193,7 +193,7 @@ class SimpleFeatureSearchRunner(FeatureSearchRunner):
         async def aevaluate() -> None:
             for async_feature_batch in itertools.batched(async_features, feature_batch_size):
                 evaluator = evaluator_cls.for_features(list(async_feature_batch))
-                evaluated = await evaluator.aevaluate(datasets.feature_search, contexts, conn, include_originals=False)
+                evaluated = await evaluator.aevaluate(datasets.feature_search, contexts, conn)
                 evaluated_with_target = self._add_target_to_evaluated(datasets.feature_search, evaluated, datasets.target_column)  
                 await queue.aput(EvaluatedFeatures(evaluated_with_target, list(async_feature_batch)))
         _logger.info('running async evaluate')

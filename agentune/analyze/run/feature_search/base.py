@@ -10,6 +10,10 @@ from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.duckdbio import SplitDuckbTable
 from agentune.analyze.feature.base import Classification, Feature, Regression, TargetKind
 from agentune.analyze.feature.eval.base import FeatureEvaluator
+from agentune.analyze.feature.eval.universal import (
+    UniversalAsyncFeatureEvaluator,
+    UniversalSyncFeatureEvaluator,
+)
 from agentune.analyze.feature.gen.base import FeatureGenerator
 from agentune.analyze.feature.select.base import EnrichedFeatureSelector, FeatureSelector
 from agentune.analyze.feature.stats import stats_calculators
@@ -59,10 +63,13 @@ class FeatureSearchInputData:
 @frozen
 class FeatureSearchParams[TK: TargetKind]:
     generators: tuple[FeatureGenerator, ...]
-    evaluators: tuple[type[FeatureEvaluator], ...]
     selector: FeatureSelector[Feature, TK] | EnrichedFeatureSelector
     # TODO declare a not-necessarily-sync version of these APIs, even if the only implementation right now is sync
-    relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[TK] 
+    relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[TK]
+    # Must always include at least one evaluator willing to handle every feature generated.
+    # Normally this means including the two universal evaluators at the end of the list.
+    # Evaluators are tried in the order in which they appear.
+    evaluators: tuple[type[FeatureEvaluator], ...] = (UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator)
     feature_stats_calculator: CombinedSyncFeatureStatsCalculator = stats_calculators.default_feature_stats_calculator
 
 @frozen 

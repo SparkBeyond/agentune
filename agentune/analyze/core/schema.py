@@ -30,7 +30,7 @@ class Field:
 @frozen
 class Schema:
     cols: tuple[Field, ...]
-    _by_name: Mapping[str, Field] = field(init=False, eq=False, hash=False)
+    _by_name: Mapping[str, Field] = field(init=False, eq=False, hash=False, repr=False)
 
     @_by_name.default
     def _by_name_default(self) -> dict[str, Field]:

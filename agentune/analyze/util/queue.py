@@ -1,14 +1,22 @@
-import asyncio
-import contextlib
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Iterable, Iterator
 
 import janus
+from attrs import field, frozen
 from janus import AsyncQueueShutDown, SyncQueueEmpty, SyncQueueShutDown
 
 
-# Queue connecting sync and async. Also supports for and async for, which wait for the queue to be closed.
-# Future multiprocess work should also implement this interface.
 class Queue[T](Iterable[T], AsyncIterable[T]):
+    """Queue connecting sync and async. Also supports for and async for, which wait for the queue to be closed.
+
+    This wraps a janus.Queue, which has the same interfaces as python normal and asyncio Queues, adds some
+    high-level methods, and deliberately does not expose some other functionality; the semantics are slightly
+    different from the builtin and janus queues:
+
+    - There is no task_done() method. Whenever an item is removed from the queue (e.g. with `get` or `produce`),
+      task_done() is automatically called on the internal queue.
+    - There is no join() method (which requires task_done semantics). Instead, there is a wait_complete() method,
+      which returns as soon as the queue is empty.
+    """
     def __init__(self, maxsize: int = 1):
         self.maxsize = maxsize
         self._queue: janus.Queue[T] = janus.Queue(maxsize)
@@ -25,11 +33,15 @@ class Queue[T](Iterable[T], AsyncIterable[T]):
         self._queue.sync_q.put(item)
 
     def get(self) -> T:
-        return self._queue.sync_q.get()
+        ret = self._queue.sync_q.get()
+        self._queue.sync_q.task_done()
+        return ret
     
     def get_nowait(self) -> T | None:
         try:
-            return self._queue.sync_q.get_nowait()
+            ret = self._queue.sync_q.get_nowait()
+            self._queue.sync_q.task_done()
+            return ret
         except SyncQueueEmpty:
             return None
     
@@ -57,7 +69,9 @@ class Queue[T](Iterable[T], AsyncIterable[T]):
         await self._queue.async_q.put(item)
 
     async def aget(self) -> T:
-        return await self._queue.async_q.get()
+        ret = await self._queue.async_q.get()
+        self._queue.async_q.task_done()
+        return ret
     
     async def aget_batch(self, n: int) -> list[T]:
         ret = []
@@ -99,11 +113,16 @@ class Queue[T](Iterable[T], AsyncIterable[T]):
         async for x in self:
             await into(x)
 
-    # Wait for queue to empty. Does not close the queue.
     def wait_empty(self) -> None:
+        """Wait for the queue to be empty.
+
+        Does not close the queue; items can be added again later, and then you call wait_empty again.
+
+        Note that the semantics are different from python Queue.join(); this returns as soon as the queue is empty,
+        without a need for you to call task_done().
+        """
         self._queue.sync_q.join()
 
-    # Wait for queue to empty. Does not close the queue.
     async def await_empty(self) -> None:
         await self._queue.async_q.join()
 
@@ -125,32 +144,29 @@ class Queue[T](Iterable[T], AsyncIterable[T]):
         return self._queue.sync_q.qsize()
 
 
-# High level methods 
+# High level methods
 
-@contextlib.contextmanager
-def scoped_queue[T](maxsize: int = 1) -> Iterator[Queue[T]]:
-    queue = Queue[T](maxsize)
-    try:
-        yield queue
-    finally:
-        queue.close()
-        queue.wait_empty()
-
-@contextlib.asynccontextmanager
-async def ascoped_queue[T](maxsize: int = 1) -> AsyncIterator[Queue[T]]:
-    queue = Queue[T](maxsize)
-    try:
-        yield queue
-    finally:
-        queue.close()
-        await queue.await_empty()
-
-def sync_to_async_iter[T](iter: Iterator[T]) -> AsyncIterator[T]:
-    """Convert a sync iterator to an async iterator, scheduling the blocking calls to the sync iterator on a new thread.
+# Can't use contextlib.contextmanager, it doesn't support generics
+@frozen
+class ScopedQueue[T]:
+    """Generic context manager for Queue[T]."""
+    maxsize: int = 1
+    queue: Queue[T] = field(init=False)
+    @queue.default
+    def _queue(self) -> Queue[T]:
+        return Queue(maxsize=self.maxsize)
     
-    This method is defined as async to make it clear it should only be called from an async context.
-    """
-    queue = Queue[T]()
-    _ = asyncio.to_thread(queue.consume, iter)
-    return aiter(queue)
+    def __enter__(self) -> Queue[T]:
+        return self.queue
+    
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self.queue.close()
+        self.queue.wait_empty()
+
+    async def __aenter__(self) -> Queue[T]:
+        return self.queue
+    
+    async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self.queue.close()
+        await self.queue.await_empty()
 
