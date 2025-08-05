@@ -10,7 +10,7 @@ import pyarrow as pa
 from attrs import frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-from agentune.analyze.core.schema import Schema, restore_df_types
+from agentune.analyze.core.schema import Schema, restore_df_types, restore_relation_types
 from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.util.polarutil import df_field
 
@@ -117,8 +117,7 @@ class DatasetSourceFromIterable(DatasetSource):
     
     @override 
     def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
-        # TODO need to implement the converse of restore_df_types
-        return conn.from_arrow(self.to_arrow_reader(conn))
+        return restore_relation_types(conn.from_arrow(self.to_arrow_reader(conn)), self.schema)
 
     @override
     def to_dataset(self, conn: DuckDBPyConnection) -> Dataset:
@@ -147,8 +146,7 @@ class DatasetSourceFromDataset(DatasetSource):
     
     @override
     def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
-        # TODO need to implement the converse of restore_df_types
-        return conn.from_arrow(self.dataset.data.to_arrow())
+        return restore_relation_types(conn.from_arrow(self.dataset.data.to_arrow()), self.schema)
 
     @override 
     def to_dataset(self, conn: DuckDBPyConnection) -> Dataset:

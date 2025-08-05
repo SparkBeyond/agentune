@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import override
 
 import duckdb
 import duckdb.typing as ddt
@@ -64,6 +65,9 @@ class Dtype:
     def is_nested(self) -> bool:
         """Is a list, array, map, or struct."""
         return self.polars_type.is_nested()
+
+    def is_enum(self) -> bool:
+        return False
 
 boolean = Dtype('bool', ddt.BOOLEAN, pl.Boolean)
 
@@ -131,6 +135,10 @@ class EnumDtype(Dtype):
             pl.Enum(categories=values),
             values
         )
+
+    @override
+    def is_enum(self) -> bool:
+        return True
 
 @frozen(init=False)
 class ListDtype(Dtype):

@@ -5,7 +5,9 @@ import duckdb
 import polars as pl
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
-from agentune.analyze.core.dataset import Dataset, duckdb_to_polars
+from agentune.analyze.core import types
+from agentune.analyze.core.dataset import Dataset, DatasetSourceFromDataset, duckdb_to_polars
+from agentune.analyze.core.schema import Field
 from agentune.analyze.feature.base import SqlQueryFeature, SyncFeature
 
 
@@ -33,7 +35,15 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
             # Need to explicitly order the result to match the original df
             if self.index_column_name in input.data.columns:
                 raise ValueError(f'Input data already has a column named {self.index_column_name}')
-            cursor.register('main_table', input.data.with_row_index(self.index_column_name, input.data.width))
+
+            # Go through DatasetSourceFromDataset to make the registered relation have the right schema
+            input_with_index_data = input.data.with_row_index(self.index_column_name, input.data.width)
+            input_with_index_schema = input.schema + Field(self.index_column_name, types.uint32)
+            input_with_index = Dataset(input_with_index_schema, input_with_index_data)
+            input_relation = DatasetSourceFromDataset(input_with_index).to_duckdb(cursor)
+            cursor.register('main_table', input_relation)
+
+            # TODO remove asserts from production code
             result = duckdb_to_polars(cursor.sql(self.sql_query))
             assert result.width == 1, f'SQL query must return exactly one column but returned {result.width}'
             series = result.to_series(0)

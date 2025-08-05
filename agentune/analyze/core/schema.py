@@ -64,6 +64,12 @@ class Schema:
     def __getitem__(self, col_name: str) -> Field:
         return self._by_name[col_name]
 
+    def __add__(self, other: Schema | Field) -> Schema:
+        if isinstance(other, Schema):
+            return Schema(self.cols + other.cols)
+        else:
+            return Schema((*self.cols, other))
+
     def to_polars(self) -> pl.Schema:
         return pl.Schema((col.name, col.dtype.polars_type) for col in self.cols)
     
@@ -84,6 +90,7 @@ class Schema:
         return Schema(tuple(Field(col, Dtype.from_polars(dtype)) for col, dtype in pl_schema.items()))
 
 
+# TODO these two methods don't operate recursively on eg lists of enums
 def restore_df_types(df: pl.DataFrame, schema: Schema) -> pl.DataFrame:
     """Restore the correct types to a Polars dataframe created from a DuckDB relation, given the schema."""
     # Preserve enum types
@@ -92,6 +99,16 @@ def restore_df_types(df: pl.DataFrame, schema: Schema) -> pl.DataFrame:
             values = col.dtype.values
             df = df.cast({col.name: pl.Enum(categories=values)})
     return df
+
+def restore_relation_types(relation: DuckDBPyRelation, schema: Schema) -> DuckDBPyRelation:
+    """Given a relation that matches an 'erased' version of this schema, return a new relation
+    that casts its columns to the types specified in the schema.
+    """
+    if not any(dtype.is_enum() for dtype in schema.dtypes):
+        return relation
+
+    expr = ', '.join(f"'{field.name}'::{field.dtype.duckdb_type} as '{field.name}'" for field in schema.cols)
+    return relation.project(expr)
 
 
 def dtype_is(dtype: Dtype) -> Callable[[Any, attrs.Attribute, Field], None]:

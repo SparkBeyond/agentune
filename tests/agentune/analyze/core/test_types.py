@@ -3,7 +3,7 @@ import contextlib
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbManager
 from agentune.analyze.core.dataset import duckdb_to_polars
-from agentune.analyze.core.schema import Field, Schema
+from agentune.analyze.core.schema import Field, Schema, restore_relation_types
 
 
 def test_types_and_schema() -> None:
@@ -44,5 +44,11 @@ def test_types_and_schema() -> None:
         assert Schema.from_polars(df) == expected_schema
 
         bad_df = relation.pl()
-        assert Schema.from_polars(bad_df) != expected_schema, 'Direct export to polars loses even more types'
-            
+        assert Schema.from_polars(bad_df) != expected_schema, 'Direct export to polars loses type information'
+
+        relation = conn.from_arrow(df.to_arrow())
+        assert Schema.from_duckdb(relation) != expected_schema, 'Duckdb reading dataframe / arrow loses type information'
+
+        fixed_relation = restore_relation_types(relation, expected_schema)
+        assert Schema.from_duckdb(fixed_relation) == expected_schema
+
