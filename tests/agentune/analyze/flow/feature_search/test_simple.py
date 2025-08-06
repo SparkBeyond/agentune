@@ -12,11 +12,10 @@ from tests.agentune.analyze.flow.feature_search.toys import (
 )
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
-from agentune.analyze.core import duckdbio
 from agentune.analyze.core.database import DuckdbManager, DuckdbTable
 from agentune.analyze.core.dataset import DatasetSource
 from agentune.analyze.core.duckdbio import (
-    DuckdbDatasetSink,
+    DuckdbTableSink,
     SplitDuckbTable,
 )
 from agentune.analyze.run.base import RunContext
@@ -50,9 +49,9 @@ def test_endtoend_low_level(test_csv_path: Path) -> None:
     # Separate function to clearly separate concerns and also, everything inside it is blocking and needs to be run on a sync thread
     def ingest_data(ddb_manager: DuckdbManager) -> FeatureSearchInputData:
         with ddb_manager.cursor() as conn:
-            csv_input: DatasetSource = duckdbio.sniff_csv(test_csv_path, conn)
+            csv_input: DatasetSource = DatasetSource.from_csv(test_csv_path, conn)
             table_name = test_csv_path.name
-            DuckdbDatasetSink(table_name).write(csv_input, conn)
+            DuckdbTableSink(table_name).write(csv_input, conn)
             table = DuckdbTable.from_duckdb(table_name, conn)
             split = SplitDuckbTable.add_split_column(conn, table, 'split')
             with conn.cursor() as cursor:

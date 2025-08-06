@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import itertools
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Iterator
-from typing import override
+from collections.abc import Callable, Iterable, Iterator
+from io import StringIO, TextIOBase
+from pathlib import Path
+from typing import Any, override
 
+import httpx
 import polars as pl
 import pyarrow as pa
 from attrs import frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
+from tests.agentune.analyze.core import default_duckdb_batch_size
 
+from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Schema, restore_df_types, restore_relation_types
 from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.util.polarutil import df_field
@@ -106,6 +111,82 @@ class DatasetSource(CopyToThread):
         """Read the entire source into memory."""
         return Dataset(self.schema, self.to_duckdb(conn).pl())
 
+    @staticmethod
+    def from_dataset(dataset: Dataset) -> DatasetSourceFromDataset:
+        return DatasetSourceFromDataset(dataset)
+
+    @staticmethod
+    def from_datasets(schema: Schema, datasets: Iterable[Dataset]) -> DatasetSourceFromIterable:
+        return DatasetSourceFromIterable(schema, datasets)
+
+    @staticmethod
+    def from_table(table: DuckdbTable, batch_size: int = default_duckdb_batch_size) -> DatasetSource:
+        # Local import to avoid circle
+        from agentune.analyze.core.duckdbio import DuckdbTableSource
+        return DuckdbTableSource(table, batch_size)
+
+    @staticmethod
+    def from_table_name(table_name: str, conn: DuckDBPyConnection, batch_size: int = default_duckdb_batch_size) -> DatasetSource:
+        return DatasetSource.from_table(DuckdbTable.from_duckdb(table_name, conn), batch_size)
+
+    @staticmethod
+    def from_duckdb_parser(opener: Callable[[DuckDBPyConnection], DuckDBPyRelation],
+                           conn_or_schema: DuckDBPyConnection | Schema) -> DatasetSource:
+        """Read any data that duckdb can access by supplying an explicit query or method call on a Connection.
+
+        Args:
+             conn_or_schema: if the Schema is known, a DatasetSource is returned immediately.
+                             Otherwise, a connection must be given, and the dataset will be opened once
+                             (but not read fully) in order to find out its schema.
+        """
+        from agentune.analyze.core.duckdbio import DatasetSourceFromDuckdb, sniff_schema
+        if isinstance(conn_or_schema, DuckDBPyConnection):
+            return sniff_schema(opener, conn_or_schema)
+        else:
+            return DatasetSourceFromDuckdb(conn_or_schema, opener)
+
+    @staticmethod
+    def from_csv(path: Path | httpx.URL | str | StringIO | TextIOBase, conn: DuckDBPyConnection,
+                 **kwargs: Any) -> DatasetSource:
+        """Read CSV, from a local path or remote URL or from in-memory data or a stream.
+
+        CSV reading is implemented by duckdb and is highly configurable. You can read about the
+        possible arguments (that go in the **kwargs) at https://duckdb.org/docs/stable/data/csv/overview.html,
+        and see the python signature in `duckdb.read_csv`.
+        """
+        from agentune.analyze.core.duckdbio import sniff_schema
+        if isinstance(path, Path | httpx.URL):
+            path = str(path)
+        return sniff_schema(lambda conn: conn.read_csv(path, **kwargs), conn)
+
+    @staticmethod
+    def from_parquet(path: Path | httpx.URL | str, conn: DuckDBPyConnection,
+                     **kwargs: Any) -> DatasetSource:
+        """Read CSV, from a local path or remote URL or from in-memory data or a stream.
+
+        CSV reading is implemented by duckdb and is configurable. You can read about the
+        possible arguments (that go in the **kwargs) at https://duckdb.org/docs/stable/data/parquet/overview.html,
+        and see the python signature in `duckdb.read_parquet`.
+        """
+        from agentune.analyze.core.duckdbio import sniff_schema
+        if isinstance(path, Path | httpx.URL):
+            path = str(path)
+        return sniff_schema(lambda conn: conn.read_parquet(path, **kwargs), conn)
+
+    @staticmethod
+    def from_json(path: Path | httpx.URL | str, conn: DuckDBPyConnection, **kwargs: Any) -> DatasetSource:
+        """Read json, from a local path or remote URL or from in-memory data or a stream.
+
+        Json reading is implemented by duckdb and is configurable. You can read about the
+        possible arguments (that go in the **kwargs) at https://duckdb.org/docs/stable/data/json/overview.html,
+        and see the python signature in `duckdb.read_json`.
+        """
+        from agentune.analyze.core.duckdbio import sniff_schema
+        if isinstance(path, Path | httpx.URL):
+            path = str(path)
+        return sniff_schema(lambda conn: conn.read_json(path, **kwargs), conn)
+
+
 @frozen
 class DatasetSourceFromIterable(DatasetSource):
     schema: Schema
@@ -155,10 +236,15 @@ class DatasetSourceFromDataset(DatasetSource):
     @override 
     def copy_to_thread(self) -> DatasetSourceFromDataset:
         return DatasetSourceFromDataset(self.dataset.copy_to_thread())
-        
+
     
 class DatasetSink(ABC):
-    """Interface for writing data."""
+    """Interface for writing data.
+
+    Note that this interface does not know the expected schema.
+    Depending on the implementation, it might be able to write data with any schema,
+    or only with a specific one.
+    """
 
     @abstractmethod
     def write(self, dataset: DatasetSource, conn: DuckDBPyConnection) -> None:
@@ -170,7 +256,50 @@ class DatasetSink(ABC):
         """
         ...
 
-def duckdb_to_dataset_iterator(relation: DuckDBPyRelation, batch_size: int = 100000) -> Iterator[Dataset]:
+    @staticmethod
+    def into_duckdb_table(table_name: str, create_table: bool = True,
+                          or_replace: bool = True, delete_contents: bool = True) -> DatasetSink:
+        """See DuckdbDatasetSink for the arguments."""
+        # Local import to avoid circle
+        from agentune.analyze.core.duckdbio import DuckdbTableSink
+        return DuckdbTableSink(table_name, create_table, or_replace, delete_contents)
+
+    @staticmethod
+    def into_duckdb(writer: Callable[[DuckDBPyRelation], None]) -> DatasetSink:
+        """Wrap a custom function that takes a Relation and saves it somewhere."""
+        from agentune.analyze.core.duckdbio import DatasetSinkToDuckdb
+        return DatasetSinkToDuckdb(writer)
+
+    @staticmethod
+    def into_csv(path: Path | str, **kwargs: Any) -> DatasetSink:
+        """Write to a CSV local file or files.
+
+        CSV writing is implemented by duckdb and is highly configurable. You can read about the
+        possible arguments (that go in the **kwargs) at
+        https://duckdb.org/docs/stable/sql/statements/copy.html#csv-options,
+        and the Python API of `duckdb.Connection.write_csv`.
+        """
+        from agentune.analyze.core.duckdbio import DatasetSinkToDuckdb
+        if isinstance(path, Path):
+            path = str(path)
+        return DatasetSinkToDuckdb(lambda relation: relation.write_csv(path, **kwargs))
+
+    @staticmethod
+    def into_parquet(path: Path | str, **kwargs: Any) -> DatasetSink:
+        """Write to a Parquet local file or files.
+
+        Parquet writing is implemented by duckdb and is configurable. You can read about the
+        possible arguments (that go in the **kwargs) at
+        https://duckdb.org/docs/stable/sql/statements/copy.html#parquet-options,
+        and the Python API of `duckdb.Connection.write_parquet`.
+        """
+        from agentune.analyze.core.duckdbio import DatasetSinkToDuckdb
+        if isinstance(path, Path):
+            path = str(path)
+        return DatasetSinkToDuckdb(lambda relation: relation.write_parquet(path, **kwargs))
+
+
+def duckdb_to_dataset_iterator(relation: DuckDBPyRelation, batch_size: int = 10000) -> Iterator[Dataset]:
     schema = Schema.from_duckdb(relation)
     return iter(Dataset(schema, restore_df_types(pl.DataFrame(batch), schema)) 
                 for batch in relation.fetch_arrow_reader(batch_size=batch_size))

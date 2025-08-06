@@ -14,7 +14,7 @@ from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbManager, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSourceFromIterable
-from agentune.analyze.core.duckdbio import DuckdbDatasetSink, DuckdbTableSource
+from agentune.analyze.core.duckdbio import DuckdbTableSink, DuckdbTableSource
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.types import float64
 from agentune.analyze.feature.eval.base import FeatureEvaluator
@@ -163,7 +163,7 @@ async def test_run_stream(run_context: RunContext, sample_dataset: Dataset,
     dataset_source = DatasetSourceFromIterable(sample_dataset.schema, sample_datasets)
     with run_context.ddb_manager.cursor() as conn:
         enriched_dataset = await runner.run(features, sample_dataset, contexts, evaluators, conn)
-        dataset_sink = DuckdbDatasetSink('sink')
+        dataset_sink = DuckdbTableSink('sink')
         await runner.run_stream(features, dataset_source, contexts, dataset_sink, evaluators, conn)
 
     with run_context.ddb_manager.cursor() as conn:
@@ -199,7 +199,7 @@ async def test_larger_data_streaming(run_context: RunContext) -> None:
         evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
 
         source = DuckdbTableSource(DuckdbTable.from_duckdb('input', conn), batch_size=1000)
-        sink = DuckdbDatasetSink('sink')
+        sink = DuckdbTableSink('sink')
 
         runner = EnrichRunnerImpl()
         await runner.run_stream([feature1, feature2], source, TablesWithContextDefinitions({}), sink, evaluators, conn)

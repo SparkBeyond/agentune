@@ -1,0 +1,300 @@
+import contextlib
+import tempfile
+from collections.abc import Callable, Iterator
+from io import StringIO
+from pathlib import Path
+
+import polars as pl
+import pytest
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
+
+from agentune.analyze.core.database import DuckdbManager
+from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource
+
+
+@pytest.fixture
+def duckdb_conn() -> Iterator[DuckDBPyConnection]:
+    """Provide an in-memory DuckDB connection for tests."""
+    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
+        yield conn
+
+
+@pytest.fixture
+def sample_dataset() -> Dataset:
+    """Create a small sample dataset for testing."""
+    data = pl.DataFrame(
+        {
+            'id': [1, 2, 3, 4, 5],
+            'name': ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'],
+            'age': [25, 30, 35, 28, 32],
+            'salary': [50000.0, 60000.0, 75000.0, 55000.0, 62000.0],
+        }
+    )
+    return Dataset.from_polars(data)
+
+
+@pytest.fixture
+def large_dataset() -> Dataset:
+    """Create a larger dataset for testing chunked reading."""
+    size = 50000
+    data = pl.DataFrame(
+        {
+            'id': range(size),
+            'value': [i * 2.5 for i in range(size)],
+            'category': [f'cat_{i % 10}' for i in range(size)],
+        }
+    )
+    return Dataset.from_polars(data)
+
+
+@pytest.fixture
+def temp_dir() -> Iterator[Path]:
+    """Provide a temporary directory for file operations."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
+
+
+def test_dataset_from_csv_basic(duckdb_conn: DuckDBPyConnection, temp_dir: Path) -> None:
+    """Test basic CSV reading functionality and kwargs passthrough."""
+    csv_path = temp_dir / 'test.csv'
+    csv_content = 'id,name,value\n1,Alice,100\n2,Bob,200\n3,Charlie,300'
+    csv_path.write_text(csv_content)
+
+    source = DatasetSource.from_csv(csv_path, duckdb_conn)
+    dataset = source.to_dataset(duckdb_conn)
+
+    assert len(dataset) == 3
+    assert dataset.data['id'].to_list() == [1, 2, 3]
+    assert dataset.data['name'].to_list() == ['Alice', 'Bob', 'Charlie']
+    assert dataset.data['value'].to_list() == [100, 200, 300]
+
+    csv_path_pipe = temp_dir / 'test_pipe.csv'
+    csv_content_pipe = 'id|name|value\n1|Alice|100\n2|Bob|200'
+    csv_path_pipe.write_text(csv_content_pipe)
+
+    source_pipe = DatasetSource.from_csv(csv_path_pipe, duckdb_conn, delimiter='|')
+    dataset_pipe = source_pipe.to_dataset(duckdb_conn)
+
+    assert len(dataset_pipe) == 2
+    assert dataset_pipe.data['name'].to_list() == ['Alice', 'Bob']
+
+
+def test_dataset_from_csv_string(duckdb_conn: DuckDBPyConnection) -> None:
+    """Test CSV reading from string data instead of file."""
+    csv_content = 'product,price,category\nLaptop,999.99,Electronics\nChair,149.50,Furniture\nBook,12.99,Education'
+    
+    def make_csv_opener() -> Callable[[DuckDBPyConnection], DuckDBPyRelation]:
+        return lambda conn: conn.read_csv(StringIO(csv_content))
+    
+    source = DatasetSource.from_duckdb_parser(make_csv_opener(), duckdb_conn)
+    dataset = source.to_dataset(duckdb_conn)
+    
+    assert len(dataset) == 3
+    assert dataset.data['product'].to_list() == ['Laptop', 'Chair', 'Book']
+    assert dataset.data['price'].to_list() == [999.99, 149.50, 12.99]
+    assert dataset.data['category'].to_list() == ['Electronics', 'Furniture', 'Education']
+
+
+def test_dataset_from_parquet_basic(duckdb_conn: DuckDBPyConnection, temp_dir: Path, sample_dataset: Dataset) -> None:
+    """Test basic Parquet reading functionality and kwargs passthrough."""
+    parquet_path = temp_dir / 'test.parquet'
+    sample_dataset.data.write_parquet(parquet_path)
+
+    source = DatasetSource.from_parquet(parquet_path, duckdb_conn)
+    dataset = source.to_dataset(duckdb_conn)
+
+    assert len(dataset) == 5
+    assert dataset.data['id'].to_list() == [1, 2, 3, 4, 5]
+    assert dataset.data['name'].to_list() == ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve']
+    assert dataset.data['age'].to_list() == [25, 30, 35, 28, 32]
+    assert dataset.data['salary'].to_list() == [50000.0, 60000.0, 75000.0, 55000.0, 62000.0]
+
+    source_with_kwargs = DatasetSource.from_parquet(parquet_path, duckdb_conn, filename=True)
+    dataset_with_kwargs = source_with_kwargs.to_dataset(duckdb_conn)
+
+    assert len(dataset_with_kwargs) == 5
+
+
+def test_dataset_from_json_basic(duckdb_conn: DuckDBPyConnection, temp_dir: Path) -> None:
+    """Test basic JSON reading functionality and kwargs passthrough."""
+    json_path = temp_dir / 'test.json'
+    json_content = '''[
+        {"id": 1, "name": "Alice", "active": true},
+        {"id": 2, "name": "Bob", "active": false},
+        {"id": 3, "name": "Charlie", "active": true}
+    ]'''
+    json_path.write_text(json_content)
+
+    source = DatasetSource.from_json(json_path, duckdb_conn)
+    dataset = source.to_dataset(duckdb_conn)
+
+    assert len(dataset) == 3
+    assert dataset.data['id'].to_list() == [1, 2, 3]
+    assert dataset.data['name'].to_list() == ['Alice', 'Bob', 'Charlie']
+    assert dataset.data['active'].to_list() == [True, False, True]
+
+    source_with_format = DatasetSource.from_json(json_path, duckdb_conn, format='array')
+    dataset_with_format = source_with_format.to_dataset(duckdb_conn)
+
+    assert len(dataset_with_format) == 3
+
+def test_dataset_into_csv(duckdb_conn: DuckDBPyConnection, temp_dir: Path, sample_dataset: Dataset) -> None:
+    """Test CSV writing functionality and kwargs passthrough."""
+    csv_path = temp_dir / 'output.csv'
+
+    sink = DatasetSink.into_csv(csv_path)
+    sink.write(sample_dataset.as_source(), duckdb_conn)
+    assert csv_path.exists()
+    
+    source = DatasetSource.from_csv(csv_path, duckdb_conn)
+    roundtrip_dataset = source.to_dataset(duckdb_conn)
+    
+    assert len(roundtrip_dataset) == len(sample_dataset), 'CSV roundtrip length mismatch'
+    assert roundtrip_dataset.data.equals(sample_dataset.data), 'CSV roundtrip data mismatch'
+
+    csv_path_pipe = temp_dir / 'output_pipe.csv'
+    sink_pipe = DatasetSink.into_csv(csv_path_pipe, sep='|')
+    sink_pipe.write(sample_dataset.as_source(), duckdb_conn)
+    assert csv_path_pipe.exists()
+    
+    source_pipe = DatasetSource.from_csv(csv_path_pipe, duckdb_conn, delimiter='|')
+    roundtrip_pipe_dataset = source_pipe.to_dataset(duckdb_conn)
+    
+    assert len(roundtrip_pipe_dataset) == len(sample_dataset), 'Pipe-separated CSV roundtrip length mismatch'
+    assert roundtrip_pipe_dataset.data.equals(sample_dataset.data), 'Pipe-separated CSV roundtrip data mismatch'
+
+
+def test_dataset_into_parquet(duckdb_conn: DuckDBPyConnection, temp_dir: Path, sample_dataset: Dataset) -> None:
+    """Test Parquet writing functionality and kwargs passthrough."""
+    parquet_path = temp_dir / 'output.parquet'
+
+    sink = DatasetSink.into_parquet(parquet_path)
+    sink.write(sample_dataset.as_source(), duckdb_conn)
+    assert parquet_path.exists()
+
+    source = DatasetSource.from_parquet(parquet_path, duckdb_conn)
+    roundtrip_dataset = source.to_dataset(duckdb_conn)
+    
+    assert len(roundtrip_dataset) == len(sample_dataset), 'Parquet roundtrip length mismatch'
+    assert roundtrip_dataset.data.equals(sample_dataset.data), 'Parquet roundtrip data mismatch'
+
+    parquet_path_compressed = temp_dir / 'output_compressed.parquet'
+    sink_compressed = DatasetSink.into_parquet(parquet_path_compressed, compression='gzip')
+    sink_compressed.write(sample_dataset.as_source(), duckdb_conn)
+    assert parquet_path_compressed.exists()
+    
+    source_compressed = DatasetSource.from_parquet(parquet_path_compressed, duckdb_conn)
+    roundtrip_compressed_dataset = source_compressed.to_dataset(duckdb_conn)
+    
+    assert len(roundtrip_compressed_dataset) == len(sample_dataset), 'Compressed Parquet roundtrip length mismatch'
+    assert roundtrip_compressed_dataset.data.equals(sample_dataset.data), 'Compressed Parquet roundtrip data mismatch'
+
+
+def test_dataset_into_duckdb_table(duckdb_conn: DuckDBPyConnection, sample_dataset: Dataset) -> None:
+    """Test writing to DuckDB table with different modes."""
+    table_name = 'output_table'
+
+    sink_create = DatasetSink.into_duckdb_table(table_name)
+    sink_create.write(sample_dataset.as_source(), duckdb_conn)
+
+    result = duckdb_conn.execute(f'SELECT COUNT(*) FROM {table_name}').fetchone()
+    assert result is not None
+    assert result[0] == 5, 'Table should contain 5 rows after creation'
+
+    source = DatasetSource.from_table_name(table_name, duckdb_conn)
+    roundtrip_dataset = source.to_dataset(duckdb_conn)
+    
+    assert len(roundtrip_dataset) == len(sample_dataset), 'Table roundtrip length mismatch'
+    assert roundtrip_dataset.data.equals(sample_dataset.data), 'Table roundtrip data mismatch'
+
+    sink_append = DatasetSink.into_duckdb_table(
+        table_name, create_table=False, delete_contents=False
+    )
+    sink_append.write(sample_dataset.as_source(), duckdb_conn)
+
+    result_after_append = duckdb_conn.execute(f'SELECT COUNT(*) FROM {table_name}').fetchone()
+    assert result_after_append is not None
+    assert result_after_append[0] == 10, 'Table should contain 10 rows after append'
+    
+    source_after_append = DatasetSource.from_table_name(table_name, duckdb_conn)
+    append_dataset = source_after_append.to_dataset(duckdb_conn)
+    assert len(append_dataset) == 10, 'Appended dataset should have 10 rows'
+    
+    name_counts = {name: append_dataset.data['name'].to_list().count(name) for name in ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve']}
+    assert all(count == 2 for count in name_counts.values()), 'Each name should appear twice after append'
+
+    sink_replace = DatasetSink.into_duckdb_table(
+        table_name, create_table=False, delete_contents=True
+    )
+    sink_replace.write(sample_dataset.as_source(), duckdb_conn)
+
+    result_after_replace = duckdb_conn.execute(f'SELECT COUNT(*) FROM {table_name}').fetchone()
+    assert result_after_replace is not None
+    assert result_after_replace[0] == 5, 'Table should contain 5 rows after replace'
+    
+    source_after_replace = DatasetSource.from_table_name(table_name, duckdb_conn)
+    replace_dataset = source_after_replace.to_dataset(duckdb_conn)
+    assert len(replace_dataset) == len(sample_dataset), 'Replace dataset length mismatch'
+    assert replace_dataset.data.equals(sample_dataset.data), 'Replace dataset data mismatch'
+
+
+def test_dataset_from_table_with_batch_size(duckdb_conn: DuckDBPyConnection) -> None:
+    """Test reading from DuckDB table with custom batch_size."""
+    table_name = 'test_large_table'
+    size = 25000
+    duckdb_conn.execute(f'''
+        CREATE TABLE {table_name} AS 
+        SELECT 
+            row_number() OVER () as id,
+            'item_' || row_number() OVER () as name,
+            random() * 1000 as value
+        FROM generate_series(1, {size})
+    ''')
+
+    source_default = DatasetSource.from_table_name(table_name, duckdb_conn)
+    dataset_default = source_default.to_dataset(duckdb_conn)
+    assert len(dataset_default) == size
+
+    batch_size = 5000
+    source_custom = DatasetSource.from_table_name(table_name, duckdb_conn, batch_size=batch_size)
+    dataset_custom = source_custom.to_dataset(duckdb_conn)
+    assert len(dataset_custom) == size
+
+    chunks = list(source_custom.open(duckdb_conn))
+    assert len(chunks) > 1, 'Should create multiple chunks'
+    assert len(chunks) == (size + batch_size - 1) // batch_size, 'Expected chunk count'
+
+    for i, chunk in enumerate(chunks[:-1]):
+        assert len(chunk) == batch_size, f'Chunk {i} should be full size'
+
+    assert len(chunks[-1]) <= batch_size, 'Last chunk should have remaining rows'
+
+    total_rows = sum(len(chunk) for chunk in chunks)
+    assert total_rows == size, 'Total rows should match original dataset'
+
+def test_large_data_chunked_reading(duckdb_conn: DuckDBPyConnection, large_dataset: Dataset) -> None:
+    """Test chunked reading with large dataset to verify batch_size works correctly."""
+    table_name = 'large_table'
+    duckdb_conn.register('large_temp_data', large_dataset.data.to_arrow())
+    duckdb_conn.execute(f'CREATE TABLE {table_name} AS SELECT * FROM large_temp_data')
+
+    batch_size = 1000
+    source = DatasetSource.from_table_name(table_name, duckdb_conn, batch_size=batch_size)
+
+    chunks = list(source.open(duckdb_conn))
+    assert len(chunks) > 1, 'Should create multiple chunks'
+
+    total_rows = sum(len(chunk) for chunk in chunks)
+    assert total_rows == 50000, 'Total rows should match original dataset'
+
+    for chunk in chunks[:-1]:
+        assert len(chunk) == batch_size, 'All but last chunk should be full size'
+
+    assert len(chunks[-1]) <= batch_size, 'Last chunk should have remaining rows'
+
+    full_dataset = source.to_dataset(duckdb_conn)
+    assert len(full_dataset) == 50000, 'Full dataset should have correct size'
+
+    first_chunk_ids = chunks[0].data['id'].to_list()
+    full_dataset_ids = full_dataset.data['id'].head(len(first_chunk_ids)).to_list()
+    assert first_chunk_ids == full_dataset_ids, 'Chunk and full dataset should have consistent data'
