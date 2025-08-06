@@ -1,4 +1,3 @@
-import contextlib
 import logging
 from pathlib import Path
 
@@ -16,7 +15,6 @@ from agentune.analyze.core.database import DuckdbManager, DuckdbTable
 from agentune.analyze.core.dataset import DatasetSource
 from agentune.analyze.core.duckdbio import (
     DuckdbTableSink,
-    SplitDuckbTable,
 )
 from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.feature_search.base import (
@@ -24,6 +22,7 @@ from agentune.analyze.run.feature_search.base import (
     RegressionFeatureSearchParams,
 )
 from agentune.analyze.run.feature_search.simple import SimpleFeatureSearchRunner
+from agentune.analyze.run.ingest import sampling
 
 _logger = logging.getLogger(__name__)
 
@@ -40,46 +39,45 @@ def test_csv_path(tmp_path: Path) -> Path:
     df.write_csv(csv_path)
     return csv_path
 
-def test_endtoend_low_level(test_csv_path: Path) -> None:
+def test_endtoend_low_level(test_csv_path: Path, ddb_manager: DuckdbManager) -> None:
     # This is an example of the lower-level, explicit API, where ingest into duckdb is a separate step
     # and the user needs to manage the names of the databases and tables, whether to overwrite data if it's already there, etc
     # (we still have a TODO to separate context gen from the feature search runner into the ingest, and to 
     #  give the ingest an explicit runner interface)
 
-    # Separate function to clearly separate concerns and also, everything inside it is blocking and needs to be run on a sync thread
-    def ingest_data(ddb_manager: DuckdbManager) -> FeatureSearchInputData:
+    # Separate function to clearly separate concerns
+    def ingest_data() -> FeatureSearchInputData:
         with ddb_manager.cursor() as conn:
             csv_input: DatasetSource = DatasetSource.from_csv(test_csv_path, conn)
             table_name = test_csv_path.name
             DuckdbTableSink(table_name).write(csv_input, conn)
             table = DuckdbTable.from_duckdb(table_name, conn)
-            split = SplitDuckbTable.add_split_column(conn, table, 'split')
+            split = sampling.split_duckdb_table(conn, table.name)
             with conn.cursor() as cursor:
                 _logger.info(f'Split table: {cursor.sql(f'SELECT * FROM "{table.name}"')}')
             input_data = FeatureSearchInputData.from_split_table(split, 'target', TablesWithContextDefinitions.from_list([]), conn)
             return input_data
 
-    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager:
-        # Not attaching any on-disk databases
-        run_context = RunContext.create_default_context(ddb_manager)
+    # Not attaching any on-disk databases
+    run_context = RunContext.create_default_context(ddb_manager)
 
-        input_data = ingest_data(ddb_manager)
+    input_data = ingest_data()
 
-        # Multiple generators, select based on stats
-        input_params1 = RegressionFeatureSearchParams( # TODO also test classification
-            generators=(ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator()),
-            selector=ToySyncFeatureSelector()
-        )
-        results1 = SimpleFeatureSearchRunner().run(run_context, input_data, input_params1)
-        _logger.info(results1)
-        # TODO assert stuff
+    # Multiple generators, select based on stats
+    input_params1 = RegressionFeatureSearchParams( # TODO also test classification
+        generators=(ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator()),
+        selector=ToySyncFeatureSelector()
+    )
+    results1 = SimpleFeatureSearchRunner().run(run_context, input_data, input_params1)
+    _logger.info(results1)
+    # TODO assert stuff
 
-        # Single generator because we haven't implemented feature name deduplication yet, and EnrichedFeatureSelector
-        input_params2 = RegressionFeatureSearchParams( # TODO also test classification
-            generators=(ToySyncFeatureGenerator(), ),
-            selector=ToyAsyncEnrichedFeatureSelector()
-        )
-        results2 = SimpleFeatureSearchRunner().run(run_context, input_data, input_params2)
-        _logger.info(results2)
-        # TODO assert stuff
+    # Single generator because we haven't implemented feature name deduplication yet, and EnrichedFeatureSelector
+    input_params2 = RegressionFeatureSearchParams( # TODO also test classification
+        generators=(ToySyncFeatureGenerator(), ),
+        selector=ToyAsyncEnrichedFeatureSelector()
+    )
+    results2 = SimpleFeatureSearchRunner().run(run_context, input_data, input_params2)
+    _logger.info(results2)
+    # TODO assert stuff
 

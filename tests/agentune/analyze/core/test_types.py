@@ -1,12 +1,12 @@
-import contextlib
+
+from duckdb.duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
-from agentune.analyze.core.database import DuckdbManager
 from agentune.analyze.core.dataset import duckdb_to_polars
 from agentune.analyze.core.schema import Field, Schema, restore_relation_types
 
 
-def test_types_and_schema() -> None:
+def test_types_and_schema(conn: DuckDBPyConnection) -> None:
     """Test that types and values roundtrip between duckdb and polars, and that schema discovery works."""
     all_types = [
         *types._simple_dtypes,
@@ -23,32 +23,31 @@ def test_types_and_schema() -> None:
         else:
             assert types.Dtype.from_polars(dtype.polars_type) == dtype
 
-    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
-        cols = [f'"col_{dtype.name}" {dtype.duckdb_type}' for dtype in all_types]
-        conn.execute(f"create table tab ({', '.join(cols)})")
+    cols = [f'"col_{dtype.name}" {dtype.duckdb_type}' for dtype in all_types]
+    conn.execute(f"create table tab ({', '.join(cols)})")
 
-        relation = conn.table('tab')
-        schema = Schema.from_duckdb(relation)
-        assert schema.dtypes == all_types
+    relation = conn.table('tab')
+    schema = Schema.from_duckdb(relation)
+    assert schema.dtypes == all_types
 
-        df = duckdb_to_polars(relation)
-        
-        def expected_dtype(dtype: types.Dtype) -> types.Dtype:
-            if dtype in (types.json, types.uuid):
-                return types.string
-            else:
-                return dtype
-        
-        expected_schema = Schema(tuple(Field(col.name, expected_dtype(col.dtype)) for col in schema.cols))
+    df = duckdb_to_polars(relation)
 
-        assert Schema.from_polars(df) == expected_schema
+    def expected_dtype(dtype: types.Dtype) -> types.Dtype:
+        if dtype in (types.json, types.uuid):
+            return types.string
+        else:
+            return dtype
 
-        bad_df = relation.pl()
-        assert Schema.from_polars(bad_df) != expected_schema, 'Direct export to polars loses type information'
+    expected_schema = Schema(tuple(Field(col.name, expected_dtype(col.dtype)) for col in schema.cols))
 
-        relation = conn.from_arrow(df.to_arrow())
-        assert Schema.from_duckdb(relation) != expected_schema, 'Duckdb reading dataframe / arrow loses type information'
+    assert Schema.from_polars(df) == expected_schema
 
-        fixed_relation = restore_relation_types(relation, expected_schema)
-        assert Schema.from_duckdb(fixed_relation) == expected_schema
+    bad_df = relation.pl()
+    assert Schema.from_polars(bad_df) != expected_schema, 'Direct export to polars loses type information'
+
+    relation = conn.from_arrow(df.to_arrow())
+    assert Schema.from_duckdb(relation) != expected_schema, 'Duckdb reading dataframe / arrow loses type information'
+
+    fixed_relation = restore_relation_types(relation, expected_schema)
+    assert Schema.from_duckdb(fixed_relation) == expected_schema
 

@@ -8,7 +8,7 @@ Module separation (avioding circular imports):
 
 - database: classes DuckdbTable, DuckdbIndex, DuckdbManager.
 - dataset: classes Dataset, DatasetSource, DatasetSink.
-- duckdbio: implementations of DatasetSource and DatasetSink using duckdb, and other classes like SplitDuckbTable.
+- duckdbio: implementations of DatasetSource and DatasetSink using duckdb, and other classes like SplitDuckdbTable.
             Depends on database and dataset.
 
 - llm: classes LLMSpec, LLMContextManager; code to serialize LLM specs and deserialize them into live LLM instances

@@ -7,7 +7,6 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset, DatasetSource
-from agentune.analyze.core.duckdbio import SplitDuckbTable
 from agentune.analyze.feature.base import Classification, Feature, Regression, TargetKind
 from agentune.analyze.feature.eval.base import FeatureEvaluator
 from agentune.analyze.feature.eval.universal import (
@@ -25,6 +24,7 @@ from agentune.analyze.feature.stats.stats_calculators import (
     CombinedSyncRelationshipStatsCalculator,
 )
 from agentune.analyze.run.base import RunContext
+from agentune.analyze.run.ingest.sampling import SplitDuckdbTable
 
 # TODO remove the context indexing into the preprocessing phase
 
@@ -46,7 +46,7 @@ class FeatureSearchInputData:
             raise ValueError(f'Target column {self.target_column} not found')
         
     @staticmethod
-    def from_split_table(split_table: SplitDuckbTable, target_column: str,
+    def from_split_table(split_table: SplitDuckdbTable, target_column: str,
                          contexts: TablesWithContextDefinitions,
                          conn: DuckDBPyConnection) -> FeatureSearchInputData:
         return FeatureSearchInputData(

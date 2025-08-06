@@ -15,6 +15,7 @@ def transaction_scope(conn: DuckDBPyConnection) -> Iterator[DuckDBPyConnection]:
         conn.rollback()
         raise
 
+
 def read_results(conn: DuckDBPyConnection, batch_size: int = 100) -> list[tuple[Any, ...]]:
     result: list[tuple[Any, ...]] = []
     while True:

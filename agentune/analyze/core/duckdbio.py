@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Literal, Self, override
+from typing import Self, override
 
 import pyarrow as pa
 from attrs import frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from tests.agentune.analyze.core import default_duckdb_batch_size
 
-from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import (
     Dataset,
@@ -118,7 +117,7 @@ class DuckdbTableSink(DatasetSink):
     When using an existing table (create_table is False), its schema must match the input data.
     When recreating an existing table, the operation will fail if any other catalog objects reference it.
     Recreating a table does not preserve any indexes that were defined on it.
-    
+
     Args:
         table_name: table to insert data into
         create_table: if True, creates the target table.
@@ -133,7 +132,7 @@ class DuckdbTableSink(DatasetSink):
     create_table: bool = True
     or_replace: bool = True
     delete_contents: bool = True
-    
+
     @override
     def write(self, dataset_source: DatasetSource, conn: DuckDBPyConnection) -> None:
         # replacement scan! Note that this shadows any existing table named input_relation, so we need to
@@ -169,96 +168,4 @@ class DatasetSinkToDuckdb(DatasetSink):
     def write(self, dataset_source: DatasetSource, conn: DuckDBPyConnection) -> None:
         relation = dataset_source.to_duckdb(conn)
         self.writer(relation)
-
-
-# TODO make EnumDtype extend or provide an enum.Enum so we can refer to these values directly and not as strings
-split_column_dtype = types.EnumDtype('train', 'test', 'feature_search', 'feature_eval')
-
-@frozen
-class SplitDuckbTable:
-    """A table with a split column marking train/test/etc. datasets.
-    
-    NOTE that rows marked search are included in the train set for most purposes.
-    """
-    table: DuckdbTable
-    split_column_name: str
-
-    def __attrs_post_init__(self) -> None:
-        if self.split_column_name not in self.table.schema.names:
-            raise ValueError(f'Split column {self.split_column_name} not found in table {self.table.name}')
-        if self.table.schema[self.split_column_name].dtype != split_column_dtype:
-            raise ValueError(f'Split column {self.split_column_name} has dtype {self.table.schema[self.split_column_name].dtype}, expected {split_column_dtype}')
-
-    @property
-    def schema(self) -> Schema:
-        return self.table.schema
-    
-    @property    
-    def schema_without_split_column(self) -> Schema:
-        return self.table.schema.drop(self.split_column_name)
-
-    def split_category(self, conn: DuckDBPyConnection, category: str,
-                       new_subcategory: str, count: float, sample_type: Literal['PERCENT', 'ROWS'], 
-                       random_seed: int = 42) -> None:
-        """In an existing split table, mark some of a category's rows as a different category.
-
-        Args:
-            count: interpreted as a percentage (of the existing rows in the category, not of the whole table)
-                   if sample_type is 'PERCENT', or as an absolute number of rows if sample_type is 'ROWS'.
-
-        """
-        conn.execute(f'''WITH train_rows(id) AS MATERIALIZED ( -- materialize to make the sampling stable
-                            SELECT rowid FROM "{self.table.name}"
-                            WHERE "{self.split_column_name}" = $1
-                            USING SAMPLE reservoir({count} {sample_type}) REPEATABLE ({random_seed})
-                        )
-                        UPDATE "{self.table.name}" 
-                        SET "{self.split_column_name}" = $2 
-                        WHERE rowid IN (SELECT id FROM train_rows)''', [category, new_subcategory])
-    
-    @staticmethod
-    def add_split_column(conn: DuckDBPyConnection, table: DuckdbTable, split_column_name: str,
-                         train_fraction: float = 0.8, feature_search_size: int = 10000, 
-                         feature_eval_size: int = 100000,
-                         random_seed: int = 42) -> SplitDuckbTable:
-        """Add a split column to a table:
-        1. Mark train_fraction of the rows as train and the rest as test
-        2. Out of train, mark feature_search_size rows as feature_search (this is an absolute cap, not a fraction)
-        3. Out of remaining (non feature search) train, mark feature_eval_size rows as feature_eval
-        """
-        if train_fraction <= 0 or train_fraction >= 1:
-            raise ValueError(f'train_fraction must be between 0 and 1, got {train_fraction}')
-        
-        with transaction_scope(conn):
-            conn.execute('SELECT setseed(?)', [random_seed / 100])
-            conn.execute(f'''ALTER TABLE "{table.name}" ADD COLUMN "{split_column_name}" {split_column_dtype.duckdb_type}
-                             DEFAULT CASE WHEN random() < {train_fraction} THEN 'train' ELSE 'test' END
-                             ''') # Can't use NOT NULL in ALTER TABLE, have to make the column not null separately
-            conn.execute(f'ALTER TABLE "{table.name}" ALTER COLUMN "{split_column_name}" SET NOT NULL')
-            conn.execute(f'ALTER TABLE "{table.name}" ALTER COLUMN "{split_column_name}" DROP DEFAULT')
-            conn.execute(f'CREATE INDEX "{table.name}_split_index" ON "{table.name}" ("{split_column_name}")') # TODO index naming to avoid collisions
-            split_table = SplitDuckbTable(DuckdbTable.from_duckdb(table.name, conn), split_column_name)
-            split_table.split_category(conn, 'train', 'feature_search', feature_search_size, 'ROWS', random_seed)
-            split_table.split_category(conn, 'train', 'feature_eval', feature_eval_size, 'ROWS', random_seed)
-            return split_table
-    
-    def _split_as_source(self, *split_names: str) -> DatasetSource:
-        # Unfortunately conn.execute, the method that does prepared statements, returns a Connection and not a Relation,
-        # so I can't use it here without writing more infra code. But the split names are from an enum and don't require escaping,
-        # so this isn't particularly dangerous.
-        split_names_set = '(' + ', '.join(f"'{name}'" for name in split_names) + ')'
-        return DatasetSourceFromDuckdb(self.schema_without_split_column, 
-                                       lambda conn: conn.sql(f'SELECT * FROM "{self.table.name}" WHERE "{self.split_column_name}" in {split_names_set}'))
-    
-    def train(self) -> DatasetSource:
-        return self._split_as_source('train', 'feature_search', 'feature_eval')
-    
-    def test(self) -> DatasetSource:
-        return self._split_as_source('test')
-    
-    def feature_search(self) -> DatasetSource:
-        return self._split_as_source('feature_search')
-
-    def feature_eval(self) -> DatasetSource:
-        return self._split_as_source('feature_eval')
 

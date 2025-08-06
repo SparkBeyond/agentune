@@ -25,6 +25,6 @@ class RunContext:
         ser_context = SerializationContext(llm_context)
         return RunContext(ser_context, ddb_manager)
     
-    async def close(self) -> None:
+    async def aclose(self) -> None:
         self.ddb_manager.close()
         await self.llm_context.httpx_async_client.aclose()
