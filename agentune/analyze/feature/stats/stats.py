@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attrs import frozen
+from attrs import field, frozen
 from frozendict import frozendict
 
 from agentune.analyze.feature.base import (
@@ -11,6 +11,7 @@ from agentune.analyze.feature.base import (
     Regression,
 )
 from agentune.analyze.feature.stats.base import FeatureStats, RelationshipStats
+from agentune.analyze.util.attrutil import frozendict_converter
 
 
 # --- Concrete feature-stats subclasses ---
@@ -41,7 +42,7 @@ class CategoricalFeatureStats(FeatureStats[CategoricalFeature]):
     n_total: int
     n_missing: int
     unique_count: int
-    value_counts: frozendict[str, int]
+    value_counts: frozendict[str, int] = field(converter=frozendict_converter)
     # entropy
 
 

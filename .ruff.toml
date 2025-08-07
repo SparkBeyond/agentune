@@ -78,6 +78,7 @@ ignore = [
     "PIE808",                           # Unnecessary `start` argument in `range`
     "S311",                             # Use of `random` module
     "RUF002",                           # "Ambiguous" Unicode characters (like the scary lowercase sigma, σ)
+    "B008",                             # No function calls in the definition of a function's default argument
 
     # Rules we may want to enforce in the future but are ignored for now
     "S101",                             # Use of assert

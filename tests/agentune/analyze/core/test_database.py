@@ -11,6 +11,7 @@ from duckdb.duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.database import (
     ArtIndex,
+    DuckdbConfig,
     DuckdbFilesystemDatabase,
     DuckdbInMemoryDatabase,
     DuckdbManager,
@@ -91,3 +92,26 @@ def test_duckdb_manager(tmp_path: Path) -> None:
             with pytest.raises(duckdb.CatalogException, match='does not exist'):
                 conn.sql('SELECT id FROM memory2.main')
 
+def test_duckdb_manager_config() -> None:
+    with duckdb.connect(':memory') as conn:
+        assert conn.sql("SELECT current_setting('python_enable_replacements')").fetchone() == (True, ), \
+            "Sanity check of duckdb's own default"
+
+    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
+        assert not DuckdbConfig().python_enable_replacements, \
+            "Sanity check of what we're testing"
+        assert conn.sql("SELECT current_setting('python_enable_replacements')").fetchone() == (False, ), \
+            'Default value of setting set in DuckdbConnectionConfig overrides duckdb default'
+
+        default_threads = cast(int, conn.sql("SELECT current_setting('threads')").fetchall()[0][0])
+        assert default_threads > 1, "Sanity check of what we're testing (fails on a single core machine, sorry)"
+
+    with (contextlib.closing(DuckdbManager.in_memory(DuckdbConfig(threads=1))) as ddb_manager,
+          ddb_manager.cursor() as conn):
+        assert conn.sql("SELECT current_setting('threads')").fetchone() == (1, ), \
+            'Setting threads in DuckdbConfig works'
+
+    with (contextlib.closing(DuckdbManager.in_memory(DuckdbConfig(kwargs={'threads': 1}))) as ddb_manager,
+          ddb_manager.cursor() as conn):
+        assert conn.sql("SELECT current_setting('threads')").fetchone() == (1, ), \
+            'Setting threads in DuckdbConfig.kwargs works'

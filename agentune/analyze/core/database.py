@@ -5,13 +5,16 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import override
 
+import cattrs
 import duckdb
 from attr import define
-from attrs import frozen
+from attrs import field, frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
+from frozendict import frozendict
 
 import agentune.analyze.core.setup
 from agentune.analyze.core.schema import Schema
+from agentune.analyze.util.attrutil import frozendict_converter
 
 
 @frozen
@@ -147,6 +150,35 @@ class DuckdbFilesystemDatabase(DuckdbDatabase):
     def default_name(self) -> str:
         return self.path.stem
 
+@frozen
+class DuckdbConfig:
+    """Connection options supported by DuckdDB.
+
+    They are documented at https://duckdb.org/docs/stable/configuration/overview.html.
+    A few are declared here for ease of use; you can pass any additional ones
+    in the config dict.
+
+    The attributes defined in this class override keys of the same name placed in the config dict.
+    Attributes set to None will let the duckdb default value take effect.
+
+    Changing settings can, of course, make agentune code not work correctly.
+    """
+    memory_limit: str | None = None # Default is 80% of available system RAM
+    threads: int | None = None # Default is the number of CPU cores
+
+    # Settings agentune deliberately modifies from defaults. These are extra likely to break our code
+    # if you change them. We do not test agentune with different values of these settings.
+    python_enable_replacements: bool | None = False
+
+    kwargs: frozendict[str, object] = field(factory=frozendict, converter=frozendict_converter)
+
+    def to_config_dict(self) -> dict[str, object]:
+        set_fields = { k: v for k, v
+                       in cattrs.Converter().unstructure_attrs_asdict(self).items()
+                       if v is not None and k != 'kwargs' }
+        return { **self.kwargs, **set_fields}
+
+
 @define(init=False, eq=False, hash=False)
 class DuckdbManager:
     """Manages duckdb databases and connections, and relatedly, the size and creation of the duckbd threadpool(s).
@@ -185,15 +217,15 @@ class DuckdbManager:
     _main_database: DuckdbDatabase
     _databases: dict[str, DuckdbDatabase] # By catalog name
 
-    def __init__(self, main_database: DuckdbDatabase):
+    def __init__(self, main_database: DuckdbDatabase, config: DuckdbConfig = DuckdbConfig()):
         agentune.analyze.core.setup.setup()
 
         match main_database:
             case DuckdbInMemoryDatabase():
-                self._conn = duckdb.connect(':memory:')
+                self._conn = duckdb.connect(':memory:', config=config.to_config_dict())
             case DuckdbFilesystemDatabase(path, read_only):
-                self._conn = duckdb.connect(path, read_only)
-        self._databases = {main_database.default_name: main_database} 
+                self._conn = duckdb.connect(path, read_only, config=config.to_config_dict())
+        self._databases = {main_database.default_name: main_database}
         self._main_database = main_database
         # self._conn.load_extension('spatial')
 
@@ -244,12 +276,13 @@ class DuckdbManager:
     # Convenience methods
 
     @staticmethod
-    def in_memory() -> DuckdbManager:
-        return DuckdbManager(DuckdbInMemoryDatabase())
+    def in_memory(config: DuckdbConfig = DuckdbConfig()) -> DuckdbManager:
+        return DuckdbManager(DuckdbInMemoryDatabase(), config)
 
     @staticmethod
-    def on_disk(path: Path, read_only: bool = False) -> DuckdbManager:
-        return DuckdbManager(DuckdbFilesystemDatabase( path, read_only))
+    def on_disk(path: Path, read_only: bool = False,
+                config: DuckdbConfig = DuckdbConfig()) -> DuckdbManager:
+        return DuckdbManager(DuckdbFilesystemDatabase(path, read_only), config)
 
     def get_table(self, name: str) -> DuckdbTable:
         with self.cursor() as conn:

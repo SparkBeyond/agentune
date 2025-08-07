@@ -135,7 +135,7 @@ class DuckdbTableSink(DatasetSink):
 
     @override
     def write(self, dataset_source: DatasetSource, conn: DuckDBPyConnection) -> None:
-        # replacement scan! Note that this shadows any existing table named input_relation, so we need to
+        # Note that this shadows any existing table named input_relation, so we need to
         # make sure self.table_name isn't named that TODO nonce names
         # dataset_source.to_duckdb() is presumed safe to use in the sense that it should preserve all the column types
         with conn.cursor() as cursor, transaction_scope(cursor):

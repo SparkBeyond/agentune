@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from typing import Self
 
-from attrs import frozen
+from attrs import field, frozen
+from frozendict import frozendict
 
 from agentune.analyze.core.database import DuckdbIndex, DuckdbTable
+from agentune.analyze.util.attrutil import frozendict_converter
 
 
 # TODO a better name for this 
@@ -40,7 +42,7 @@ class TableWithContextDefinitions:
 
 @frozen
 class TablesWithContextDefinitions:
-    tables: Mapping[str, TableWithContextDefinitions]
+    tables: frozendict[str, TableWithContextDefinitions] = field(converter=frozendict_converter)
 
     @classmethod
     def from_list(cls, tables: Sequence[TableWithContextDefinitions]) -> Self:

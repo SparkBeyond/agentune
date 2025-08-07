@@ -27,9 +27,6 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
     @override
     def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
                        conn: duckdb.DuckDBPyConnection) -> pl.Series:
-        # TODO execute 'SET python_enable_replacements = false' once we have a proper duckdb connection manager 
-        # - unintended replacement scans are very scary! 
-
         # Separate cursor to register the main table
         with conn.cursor() as cursor:
             # Need to explicitly order the result to match the original df

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Any
 
 import attrs
@@ -8,8 +8,10 @@ import polars as pl
 import pyarrow as pa
 from attrs import field, frozen
 from duckdb import DuckDBPyRelation
+from frozendict import frozendict
 
 from agentune.analyze.core.types import Dtype, EnumDtype
+from agentune.analyze.util.attrutil import frozendict_converter
 
 # We define these types instad of using pl.Field and pl.Schema because we might want to support e.g. semantic types in the future.
 
@@ -30,7 +32,7 @@ class Field:
 @frozen
 class Schema:
     cols: tuple[Field, ...]
-    _by_name: Mapping[str, Field] = field(init=False, eq=False, hash=False, repr=False)
+    _by_name: frozendict[str, Field] = field(init=False, eq=False, hash=False, repr=False, converter=frozendict_converter)
 
     @_by_name.default
     def _by_name_default(self) -> dict[str, Field]:

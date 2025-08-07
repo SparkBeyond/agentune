@@ -5,7 +5,6 @@ from typing import cast, override
 import numpy as np
 import polars as pl
 from attrs import field, frozen
-from frozendict import frozendict
 from scipy.stats import f_oneway, pearsonr, spearmanr
 from sklearn.feature_selection import mutual_info_classif
 
@@ -156,7 +155,7 @@ class CategoricalStatsCalculator(SyncFeatureStatsCalculator[CategoricalFeature])
         all_counts = { k: counts.get(k, 0) for k in feature.categories }
 
         return CategoricalFeatureStats(
-            n_total=n_total, n_missing=n_missing, unique_count=len(counts), value_counts=frozendict(all_counts)
+            n_total=n_total, n_missing=n_missing, unique_count=len(counts), value_counts=all_counts
         )
 
 
