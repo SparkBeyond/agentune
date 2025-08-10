@@ -10,11 +10,11 @@ from agentune.analyze.core.database import DuckdbTable
 def test_conversation_context() -> None:
     with duckdb.connect(':memory:lookup') as conn:
         conn.execute('create table main(id integer)')
-        conn.execute('create table conversation(id integer, timestamp timestamp, role varchar, content varchar)')
+        conn.execute('create table conversation(conv_id integer, timestamp timestamp, role varchar, content varchar)')
 
         def insert_conversation(id: int, conversation: Conversation) -> None:
             conn.execute('insert into main(id) values ($1)', [id])
-            conn.executemany('insert into conversation(id, timestamp, role, content) values ($1, $2, $3, $4)', 
+            conn.executemany('insert into conversation(conv_id, timestamp, role, content) values ($1, $2, $3, $4)',
                 [[id, m.timestamp, m.role, m.content] for m in conversation.messages]
             )
 
@@ -47,7 +47,7 @@ def test_conversation_context() -> None:
             'conversations',
             context_table,
             main_table.schema['id'],
-            context_table.schema['id'],
+            context_table.schema['conv_id'],
             context_table.schema['timestamp'],
             context_table.schema['role'],
             context_table.schema['content'],

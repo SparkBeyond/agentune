@@ -110,7 +110,7 @@ class ConversationContext[K](ContextDefinition):
         conn.execute(f'''SELECT "{self.id_column.name}", "{self.timestamp_column.name}", "{self.role_column.name}", "{self.content_column.name}"
                          FROM "{self.table.name}"
                          WHERE "{self.id_column.name}" IN $1
-                         ORDER BY "{self.main_table_id_column.name}", "{self.timestamp_column.name}"''', [ids])
+                         ORDER BY "{self.id_column.name}", "{self.timestamp_column.name}"''', [ids])
 
         messages: list[Message] = []
         conversation_id = None
