@@ -109,7 +109,7 @@ def restore_relation_types(relation: DuckDBPyRelation, schema: Schema) -> DuckDB
     if not any(dtype.is_enum() for dtype in schema.dtypes):
         return relation
 
-    expr = ', '.join(f"'{field.name}'::{field.dtype.duckdb_type} as '{field.name}'" for field in schema.cols)
+    expr = ', '.join(f'"{field.name}"::{field.dtype.duckdb_type} as "{field.name}"' for field in schema.cols)
     return relation.project(expr)
 
 

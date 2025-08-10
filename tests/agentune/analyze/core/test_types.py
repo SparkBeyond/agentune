@@ -1,9 +1,15 @@
 
+import logging
+
+import polars as pl
 from duckdb.duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
-from agentune.analyze.core.dataset import duckdb_to_polars
+from agentune.analyze.core.database import DuckdbManager
+from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource, duckdb_to_polars
 from agentune.analyze.core.schema import Field, Schema, restore_relation_types
+
+_logger = logging.getLogger(__name__)
 
 
 def test_types_and_schema(conn: DuckDBPyConnection) -> None:
@@ -50,4 +56,23 @@ def test_types_and_schema(conn: DuckDBPyConnection) -> None:
 
     fixed_relation = restore_relation_types(relation, expected_schema)
     assert Schema.from_duckdb(fixed_relation) == expected_schema
+
+def test_restore_relation_types(ddb_manager: DuckdbManager) -> None:
+    enum_type = types.EnumDtype('a', 'b')
+    dataset = Dataset.from_polars(
+        pl.DataFrame({
+            'int': [0, 1, 2, 3, 4, 5],
+            'enum': ['a', 'b', 'a', 'b', 'a', 'b'],
+        }, schema={
+            'int': types.int64.polars_type,
+            'enum': enum_type.polars_type
+        })
+    )
+
+    with ddb_manager.cursor() as conn:
+        DatasetSink.into_duckdb_table('sink').write(dataset.as_source(), conn)
+        reread = DatasetSource.from_table_name('sink', conn).to_dataset(conn)
+        assert reread.schema == dataset.schema
+        assert reread.data.equals(dataset.data)
+
 
