@@ -26,7 +26,7 @@ class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
     name: str = 'test_sql_feature'
     description: str = ''
     code: str = ''
-    context_objects: Sequence[ContextDefinition] = ()
+    context_definitions: Sequence[ContextDefinition] = ()
 
 def test_sql_feature() -> None:
     with duckdb.connect(':memory:TestSqlFeature') as conn:
@@ -37,7 +37,7 @@ def test_sql_feature() -> None:
         tables_with_contexts = TablesWithContextDefinitions.from_list([
             TableWithContextDefinitions(
                 context_table,
-                context_definitions=()
+                context_definitions={}
             )
         ])
         feature = IntSqlFeatureForTests(

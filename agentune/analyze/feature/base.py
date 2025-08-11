@@ -77,8 +77,8 @@ class Feature[T](ABC):
 
     @property
     @abstractmethod
-    def context_objects(self) -> Sequence[ContextDefinition]: 
-        """Context objects used by the feature (via python methods on the context objects).
+    def context_definitions(self) -> Sequence[ContextDefinition]:
+        """Context definitions used by the feature (via python methods on the context definitions).
         This affects the parameters to evaluate().
         Specifying a context with only the value columns you will use may, in future, allow us
         to improve performance.

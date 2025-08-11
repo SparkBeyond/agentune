@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import itertools
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
-from typing import Self
 
 from attrs import field, frozen
 from frozendict import frozendict
@@ -22,9 +22,9 @@ class ContextDefinition(ABC):
     @property
     @abstractmethod
     def name(self) -> str: 
-        """The context object name; not the same as the backing relation name.
-        Context object names are expected to be unique within some scope, e.g. a pipeline run,
-        even when defining multiple context objects for the same table.
+        """The context definition name; not the same as the backing table name.
+        Context definition names are expected to be unique within some scope, e.g. a pipeline run,
+        even when defining multiple contexts on the same table.
         """
         ...
 
@@ -38,15 +38,49 @@ class ContextDefinition(ABC):
 @frozen
 class TableWithContextDefinitions:
     table: DuckdbTable
-    context_definitions: tuple[ContextDefinition, ...]
+    context_definitions: frozendict[str, ContextDefinition] = field(converter=frozendict_converter)
+
+    def __getitem__(self, name: str) -> ContextDefinition:
+        return self.context_definitions[name]
+
+    def __iter__(self) -> Iterator[ContextDefinition]:
+        return iter(self.context_definitions.values())
+
+    def __len__(self) -> int:
+        return len(self.context_definitions)
+
+    @staticmethod
+    def from_list(context_definitions: Sequence[ContextDefinition]) -> TableWithContextDefinitions:
+        tables = [c.table for c in context_definitions]
+        if len(set(tables)) != 1:
+            raise ValueError(f'Context definitions do not all refer to the same table: {set(tables)}')
+        if len({c.name for c in context_definitions}) != len(context_definitions):
+            raise ValueError('Context definitions have duplicate names')
+
+        return TableWithContextDefinitions(
+            tables[0],
+            frozendict({c.name: c for c in context_definitions})
+        )
+
 
 @frozen
 class TablesWithContextDefinitions:
     tables: frozendict[DuckdbName, TableWithContextDefinitions] = field(converter=frozendict_converter)
 
-    @classmethod
-    def from_list(cls, tables: Sequence[TableWithContextDefinitions]) -> Self:
-        return cls({t.table.name: t for t in tables})
+    @staticmethod
+    def from_list(tables: Sequence[TableWithContextDefinitions]) -> TablesWithContextDefinitions:
+        if len({t.table.name for t in tables}) != len(tables):
+            raise ValueError('Tables have duplicate names')
+        return TablesWithContextDefinitions(frozendict({
+            t.table.name: t for t in tables
+        }))
+
+    @staticmethod
+    def group(context_definitions: Sequence[ContextDefinition]) -> TablesWithContextDefinitions:
+        return TablesWithContextDefinitions(frozendict(dict(
+            itertools.groupby(context_definitions, lambda c: c.table.name)
+        )))
+
 
     def __getitem__(self, name: DuckdbName) -> TableWithContextDefinitions:
         return self.tables[name]

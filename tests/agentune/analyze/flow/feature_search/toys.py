@@ -66,7 +66,7 @@ class ToySyncFeature(SyncFeature, FloatFeature):
     
     @property
     @override
-    def context_objects(self) -> list[ContextDefinition]:
+    def context_definitions(self) -> list[ContextDefinition]:
         return []
         
     @override
@@ -101,7 +101,7 @@ class ToyAsyncFeature(FloatFeature):
     
     @property
     @override
-    def context_objects(self) -> list[ContextDefinition]:
+    def context_definitions(self) -> list[ContextDefinition]:
         return []
         
     @override

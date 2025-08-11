@@ -16,7 +16,7 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
     """A feature implemented as a single SQL query.
 
     The query can address the main table under the name 'main_table' and the context tables under their 
-    relation names (which are not the same as the context object names!).
+    relation names (which are not the same as the context definition names!).
     TODO Context tables can also be named main_table; need to put it in a separate schema.
 
     Remember that you still have to extend one of the feature type interfaces (IntFeature, etc).

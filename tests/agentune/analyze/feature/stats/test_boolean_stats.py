@@ -44,7 +44,7 @@ class SimpleBoolFeature(BoolFeature):
         return []
 
     @property
-    def context_objects(self) -> Sequence[ContextDefinition]:
+    def context_definitions(self) -> Sequence[ContextDefinition]:
         return []
 
 

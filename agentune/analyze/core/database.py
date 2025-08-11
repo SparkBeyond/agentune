@@ -92,7 +92,7 @@ class DuckdbIndex(ABC):
 
     # TODO we'll rely on zonemaps a lot for performance of eg time series; 
     #  therefore we need a method for (re)writing a table in the optimal order once we 
-    #  know what context objects we want. (We can of course guess ahead of time and always sort on the datetime
+    #  know what context definitions we want. (We can of course guess ahead of time and always sort on the datetime
     #  column if there is one, when inserting data, but that's not perfect; sorting is expensive and there might 
     #  be multiple datetime columns.)
 

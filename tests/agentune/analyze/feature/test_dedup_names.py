@@ -15,7 +15,7 @@ class FeatureForTesting(IntFeature):
     description: str = ''
     params: Schema = Schema(())
     context_tables: tuple[DuckdbTable, ...] = ()
-    context_objects: tuple[ContextDefinition, ...] = ()
+    context_definitions: tuple[ContextDefinition, ...] = ()
 
 def test_dedup_names() -> None:
     assert _deduplicate([]) == []
