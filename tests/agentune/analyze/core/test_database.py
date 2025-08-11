@@ -93,7 +93,7 @@ def test_duckdb_manager(tmp_path: Path) -> None:
                 conn.sql('SELECT id FROM memory2.main')
 
 def test_duckdb_manager_config() -> None:
-    with duckdb.connect(':memory') as conn:
+    with duckdb.connect(':memory:') as conn:
         assert conn.sql("SELECT current_setting('python_enable_replacements')").fetchone() == (True, ), \
             "Sanity check of duckdb's own default"
 
