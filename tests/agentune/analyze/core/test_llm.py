@@ -54,13 +54,13 @@ async def test_llm_cache() -> None:
         assert llm_spec is not llm_spec2
         assert llm is llm2, 'Cached instance is returned'
 
-        llm_instance_hash = object.__hash__(llm)
+        llm_instance_id = id(llm)
         
         del llm
         del llm2
         gc.collect()
 
         llm3 = llm_context.from_spec(llm_spec)
-        assert object.__hash__(llm3) != llm_instance_hash, 'New instance is created'
+        assert id(llm3) != llm_instance_id, 'New instance is created'
 
 
