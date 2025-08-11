@@ -7,7 +7,7 @@ from typing import Self
 from attrs import field, frozen
 from frozendict import frozendict
 
-from agentune.analyze.core.database import DuckdbIndex, DuckdbTable
+from agentune.analyze.core.database import DuckdbIndex, DuckdbName, DuckdbTable
 from agentune.analyze.util.attrutil import frozendict_converter
 
 
@@ -42,13 +42,13 @@ class TableWithContextDefinitions:
 
 @frozen
 class TablesWithContextDefinitions:
-    tables: frozendict[str, TableWithContextDefinitions] = field(converter=frozendict_converter)
+    tables: frozendict[DuckdbName, TableWithContextDefinitions] = field(converter=frozendict_converter)
 
     @classmethod
     def from_list(cls, tables: Sequence[TableWithContextDefinitions]) -> Self:
         return cls({t.table.name: t for t in tables})
 
-    def __getitem__(self, name: str) -> TableWithContextDefinitions:
+    def __getitem__(self, name: DuckdbName) -> TableWithContextDefinitions:
         return self.tables[name]
     
     def __iter__(self) -> Iterator[TableWithContextDefinitions]:

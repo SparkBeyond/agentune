@@ -11,7 +11,7 @@ from tests.agentune.analyze.flow.feature_search.toys import (
 )
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
-from agentune.analyze.core.database import DuckdbManager, DuckdbTable
+from agentune.analyze.core.database import DuckdbManager, DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import DatasetSource
 from agentune.analyze.core.duckdbio import (
     DuckdbTableSink,
@@ -49,12 +49,12 @@ def test_endtoend_low_level(test_csv_path: Path, ddb_manager: DuckdbManager) -> 
     def ingest_data() -> FeatureSearchInputData:
         with ddb_manager.cursor() as conn:
             csv_input: DatasetSource = DatasetSource.from_csv(test_csv_path, conn)
-            table_name = test_csv_path.name
+            table_name = DuckdbName.qualify(test_csv_path.name, conn)
             DuckdbTableSink(table_name).write(csv_input, conn)
             table = DuckdbTable.from_duckdb(table_name, conn)
             split = sampling.split_duckdb_table(conn, table.name)
             with conn.cursor() as cursor:
-                _logger.info(f'Split table: {cursor.sql(f'SELECT * FROM "{table.name}"')}')
+                _logger.info(f'Split table: {cursor.sql(f'SELECT * FROM {table.name}')}')
             input_data = FeatureSearchInputData.from_split_table(split, 'target', TablesWithContextDefinitions.from_list([]), conn)
             return input_data
 

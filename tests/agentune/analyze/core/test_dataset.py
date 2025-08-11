@@ -7,6 +7,7 @@ import polars as pl
 import pytest
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
+from agentune.analyze.core.database import DuckdbName
 from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource
 
 
@@ -183,7 +184,7 @@ def test_dataset_into_parquet(conn: DuckDBPyConnection, temp_dir: Path, sample_d
 
 def test_dataset_into_duckdb_table(conn: DuckDBPyConnection, sample_dataset: Dataset) -> None:
     """Test writing to DuckDB table with different modes."""
-    table_name = 'output_table'
+    table_name = DuckdbName.qualify('output_table', conn)
 
     sink_create = DatasetSink.into_duckdb_table(table_name)
     sink_create.write(sample_dataset.as_source(), conn)

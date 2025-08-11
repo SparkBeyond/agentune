@@ -1,5 +1,29 @@
 # Rules for using duckdb in this codebase
 
+## Duckdb object names and quoting in queries
+
+'Catalog objects' include tables, views, indexes, etc. 
+
+In the codebase, objects are identified by instances of DuckdbName. A name is always fully qualified, i.e. the database and schema names are known,
+as in "database.schema.foo". 
+
+To create a qualified name, you can call `DuckdbName.qualify(object_name, conn)` to use the connection's default database and schema.
+High-level methods that accept a name and a connection SHOULD accept a (DuckdbName | str) and, if passed a string,
+qualify it using the connection.
+
+When writing queries (for conn.sql() or conn.execute()), always use DuckdbName and not a bare string. Stringify the object directly;
+do not add quotes - it will add quotes automatically.
+
+When specifying *column* names in a query, if the names are dynamic (runtime parametrs), you MUST add quotes around them.
+
+Example:
+
+```python
+name: DuckdbName = ...
+column: str = 'col1'
+conn.sql(f'SELECT "{column}" from {name}')
+```
+
 ## Naming duckdb databases
 
 As described in duckdb.md, we can control the catalog name of the all attached databases *except* the first one, the one connected to by the `duckdb.connect` call. This leaves two alternatives:

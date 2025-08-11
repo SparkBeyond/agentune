@@ -11,7 +11,7 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from tests.agentune.analyze.core import default_duckdb_batch_size
 
-from agentune.analyze.core.database import DuckdbTable
+from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import (
     Dataset,
     DatasetSink,
@@ -41,7 +41,7 @@ class DuckdbTableSource(DatasetSource):
     
     @override
     def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
-        return conn.table(self.table.name)
+        return conn.table(str(self.table.name))
     
     @override 
     def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:
@@ -56,7 +56,7 @@ class DuckdbTableSource(DatasetSource):
         return self.to_duckdb(conn).fetch_arrow_reader(batch_size=self.batch_size)
 
     @staticmethod
-    def sniff_schema(table_name: str, conn: DuckDBPyConnection) -> DuckdbTableSource:
+    def sniff_schema(table_name: DuckdbName, conn: DuckDBPyConnection) -> DuckdbTableSource:
         """Look at the table once to determine its schema."""
         return DuckdbTableSource(DuckdbTable.from_duckdb(table_name, conn))
 
@@ -99,10 +99,18 @@ def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection) -> Datas
     schema = Schema.from_duckdb(relation)
     return DatasetSourceFromDuckdb(schema, opener)
 
-def ingest(conn: DuckDBPyConnection, table: DuckdbTable | str, data: DatasetSource) -> DuckdbTableSource:
-    if isinstance(table, str):
-        table = DuckdbTable(table, data.schema)
-    sink = DuckdbTableSink(table.name)
+def ingest(conn: DuckDBPyConnection, table: DuckdbTable | DuckdbName | str, data: DatasetSource) -> DuckdbTableSource:
+    match table:
+        case DuckdbTable():
+            table_name = table.name
+        case DuckdbName():
+            table_name = table
+            table = DuckdbTable(table, data.schema)
+        case str():
+            table_name = DuckdbName.qualify(table, conn)
+            table = DuckdbTable(table_name, data.schema)
+
+    sink = DuckdbTableSink(table_name)
     sink.write(data, conn)
     return DuckdbTableSource(table)
 
@@ -115,7 +123,7 @@ class DuckdbTableSink(DatasetSink):
     """A sink that writes to a duckdb database.
 
     When using an existing table (create_table is False), its schema must match the input data.
-    When recreating an existing table, the operation will fail if any other catalog objects reference it.
+    When recreating an existing table, the operation will fail if any other objects (such as constraints) reference it.
     Recreating a table does not preserve any indexes that were defined on it.
 
     Args:
@@ -128,7 +136,7 @@ class DuckdbTableSink(DatasetSink):
                          If False, the new data will be appended instead.
                          Has no effect if create_table is True.
     """
-    table_name: str
+    table_name: DuckdbName
     create_table: bool = True
     or_replace: bool = True
     delete_contents: bool = True
@@ -144,15 +152,15 @@ class DuckdbTableSink(DatasetSink):
 
             if self.create_table:
                 replace = 'OR REPLACE' if self.or_replace else ''
-                cursor.execute(f"CREATE {replace} TABLE '{self.table_name}' AS SELECT * FROM input_relation")
+                cursor.execute(f'CREATE {replace} TABLE {self.table_name} AS SELECT * FROM input_relation')
             else:
                 existing_table = DuckdbTable.from_duckdb(self.table_name, cursor)
                 if existing_table.schema != dataset_source.schema:
                     raise ValueError(f'Cannot write data with schema {dataset_source.schema} to table {self.table_name} '
                                      f'which has the schema {existing_table.schema}')
                 if self.delete_contents:
-                    cursor.execute(f"DELETE FROM '{self.table_name}'")
-                cursor.execute(f"INSERT INTO '{self.table_name}' SELECT * FROM input_relation")
+                    cursor.execute(f'DELETE FROM {self.table_name}')
+                cursor.execute(f'INSERT INTO {self.table_name} SELECT * FROM input_relation')
 
 
 @frozen(eq=False, hash=False)

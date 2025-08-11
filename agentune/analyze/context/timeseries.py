@@ -11,7 +11,12 @@ from duckdb import DuckDBPyConnection
 from agentune.analyze.context.base import (
     ContextDefinition,
 )
-from agentune.analyze.core.database import ArtIndex, DuckdbIndex, DuckdbTable
+from agentune.analyze.core.database import (
+    ArtIndex,
+    DuckdbIndex,
+    DuckdbName,
+    DuckdbTable,
+)
 from agentune.analyze.core.dataset import Dataset, duckdb_to_dataset
 from agentune.analyze.core.schema import Field
 
@@ -81,7 +86,7 @@ class KtsContext[K](ContextDefinition):
     @override
     def index(self) -> DuckdbIndex:
         return ArtIndex(
-            name=f'art_by_{self.key_col.name}',
+            name=DuckdbName(f'art_by_{self.key_col.name}', self.table.name.database, self.table.name.schema),
             cols=(self.key_col.name, )
         )
 
@@ -106,13 +111,13 @@ class KtsContext[K](ContextDefinition):
                 WITH 
                     key_exists AS (
                         SELECT exists(
-                            SELECT 1 FROM "{self.table.name}" WHERE "{self.key_col.name}" = $key
+                            SELECT 1 FROM {self.table.name} WHERE "{self.key_col.name}" = $key
                         ) AS key_exists
                     ),
                     main_table as (
                         SELECT "{self.date_col.name}",
                                 {", ".join(f'"{col}"' for col in value_cols)}
-                        FROM "{self.table.name}"
+                        FROM {self.table.name}
                         WHERE "{self.key_col.name}" = $key
                             AND "{self.date_col.name}" {start_op} $start
                             AND "{self.date_col.name}" {end_op} $end

@@ -14,7 +14,7 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from tests.agentune.analyze.core import default_duckdb_batch_size
 
-from agentune.analyze.core.database import DuckdbTable
+from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.schema import Schema, restore_df_types, restore_relation_types
 from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.util.polarutil import df_field
@@ -74,6 +74,11 @@ class Dataset(CopyToThread):
     def empty(self) -> Dataset:
         return Dataset(self.schema, self.data.clear())
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Dataset):
+            return False
+        return self.schema == other.schema and self.data.equals(other.data)
+
     @staticmethod
     def from_polars(df: pl.DataFrame) -> Dataset:
         """Note that some schema information is not represented in a polars DataFrame.
@@ -126,7 +131,7 @@ class DatasetSource(CopyToThread):
         return DuckdbTableSource(table, batch_size)
 
     @staticmethod
-    def from_table_name(table_name: str, conn: DuckDBPyConnection, batch_size: int = default_duckdb_batch_size) -> DatasetSource:
+    def from_table_name(table_name: DuckdbName | str, conn: DuckDBPyConnection, batch_size: int = default_duckdb_batch_size) -> DatasetSource:
         return DatasetSource.from_table(DuckdbTable.from_duckdb(table_name, conn), batch_size)
 
     @staticmethod
@@ -257,12 +262,20 @@ class DatasetSink(ABC):
         ...
 
     @staticmethod
-    def into_duckdb_table(table_name: str, create_table: bool = True,
+    def into_duckdb_table(table_name: DuckdbName,
+                          create_table: bool = True,
                           or_replace: bool = True, delete_contents: bool = True) -> DatasetSink:
         """See DuckdbDatasetSink for the arguments."""
         # Local import to avoid circle
         from agentune.analyze.core.duckdbio import DuckdbTableSink
         return DuckdbTableSink(table_name, create_table, or_replace, delete_contents)
+
+    @staticmethod
+    def into_unqualified_duckdb_table(table_name: str, conn: DuckDBPyConnection,
+                                      create_table: bool = True,
+                                      or_replace: bool = True, delete_contents: bool = True) -> DatasetSink:
+        """See DuckdbDatasetSink for the arguments."""
+        return DatasetSink.into_duckdb_table(DuckdbName.qualify(table_name, conn), create_table, or_replace, delete_contents)
 
     @staticmethod
     def into_duckdb(writer: Callable[[DuckDBPyRelation], None]) -> DatasetSink:

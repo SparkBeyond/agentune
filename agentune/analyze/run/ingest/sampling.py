@@ -7,7 +7,7 @@ from attrs import field, frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
-from agentune.analyze.core.database import DuckdbTable
+from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import DatasetSource
 from agentune.analyze.core.duckdbio import DatasetSourceFromDuckdb
 from agentune.analyze.core.schema import Schema
@@ -48,47 +48,47 @@ class SplitDuckdbTable:
 
     def train(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT * FROM "{self.table.name}" WHERE "{self.is_train_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT * FROM {self.table.name} WHERE "{self.is_train_col_name}"'))
 
     def test(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT * FROM "{self.table.name}" WHERE NOT "{self.is_train_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT * FROM {self.table.name} WHERE NOT "{self.is_train_col_name}"'))
 
     def feature_search(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT * FROM "{self.table.name}" WHERE "{self.is_feature_search_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT * FROM {self.table.name} WHERE "{self.is_feature_search_col_name}"'))
 
     def feature_eval(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT * FROM "{self.table.name}" WHERE "{self.is_feature_eval_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT * FROM {self.table.name} WHERE "{self.is_feature_eval_col_name}"'))
 
     def drop_split_columns(self, conn: DuckDBPyConnection) -> None:
         with transaction_scope(conn):
-            conn.execute(f'''ALTER TABLE "{self.table.name}" DROP COLUMN "{self.is_train_col_name}";''')
-            conn.execute(f'''ALTER TABLE "{self.table.name}" DROP COLUMN "{self.is_feature_search_col_name}";''')
-            conn.execute(f'''ALTER TABLE "{self.table.name}" DROP COLUMN "{self.is_feature_eval_col_name}";''')
+            conn.execute(f'''ALTER TABLE {self.table.name} DROP COLUMN "{self.is_train_col_name}";''')
+            conn.execute(f'''ALTER TABLE {self.table.name} DROP COLUMN "{self.is_feature_search_col_name}";''')
+            conn.execute(f'''ALTER TABLE {self.table.name} DROP COLUMN "{self.is_feature_eval_col_name}";''')
 
 
-def _add_train_sample(conn: DuckDBPyConnection, table_name: str, is_train_col_name: str,
+def _add_train_sample(conn: DuckDBPyConnection, table_name: DuckdbName, is_train_col_name: str,
                       new_col_name: str, count: int) -> None:
     """Intermediate step: add a new column which is true for a random sample of up to `count` train rows."""
-    conn.execute(f'''ALTER TABLE "{table_name}"
+    conn.execute(f'''ALTER TABLE {table_name}
                      ADD COLUMN "{new_col_name}" BOOLEAN
                      DEFAULT false''')
-    conn.execute(f'ALTER TABLE "{table_name}" ALTER COLUMN "{new_col_name}" SET NOT NULL')
+    conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{new_col_name}" SET NOT NULL')
     # 'USING SAMPLE RESERVOIR(count ROWS)' is not stable because duckdb is multithreaded,
     # so we use hash(rowid).
-    conn.execute(f'''UPDATE "{table_name}"
+    conn.execute(f'''UPDATE {table_name}
                      SET "{new_col_name}" = true
                      WHERE "{is_train_col_name}" AND rowid IN (
-                        SELECT rowid FROM "{table_name}"
+                        SELECT rowid FROM {table_name}
                         WHERE "{is_train_col_name}"
                         ORDER BY hash(rowid), rowid -- in case of hash collisions
                         LIMIT $1
                      )''', [count])
-    conn.execute(f'ALTER TABLE "{table_name}" ALTER COLUMN "{new_col_name}" DROP DEFAULT')
+    conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{new_col_name}" DROP DEFAULT')
 
-def split_duckdb_table(conn: DuckDBPyConnection, table_name: str,
+def split_duckdb_table(conn: DuckDBPyConnection, table_name: DuckdbName | str,
                        train_fraction: float = 0.8, feature_search_size: int = 10000,
                        feature_eval_size: int = 100000,
                        is_train_col_name: str = '_is_train',
@@ -102,6 +102,9 @@ def split_duckdb_table(conn: DuckDBPyConnection, table_name: str,
     if train_fraction < 0 or train_fraction > 1:
         raise ValueError(f'train_fraction must be between 0 and 1, got {train_fraction}')
 
+    if isinstance(table_name, str):
+        table_name = DuckdbName.qualify(table_name, conn)
+
     # Ideally this would be a single transaction, but data updates and schema changes can't be interleaved in one transaction.
     # So we need at least three transactions.
     # TODO I should have a try/except and drop any created columns on error - this code is fragile and errors are possible.
@@ -114,12 +117,12 @@ def split_duckdb_table(conn: DuckDBPyConnection, table_name: str,
         # Tables that had undergone deletions and insertions won't have the same rowids as tables with the same data
         # inserted in one go, but SQL has no notion of row order, so this is already much better than another database
         # would give us.
-        conn.execute(f'''ALTER TABLE "{table_name}"
+        conn.execute(f'''ALTER TABLE {table_name}
                          ADD COLUMN "{is_train_col_name}" BOOLEAN
                          DEFAULT false''') # Accessing rowid or other columns not allowed in DEFAULT clause, so we can't do this in one go
-        conn.execute(f'ALTER TABLE "{table_name}" ALTER COLUMN "{is_train_col_name}" DROP DEFAULT')
-        conn.execute(f'ALTER TABLE "{table_name}" ALTER COLUMN "{is_train_col_name}" SET NOT NULL')
-        conn.execute(f'''UPDATE "{table_name}"
+        conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{is_train_col_name}" DROP DEFAULT')
+        conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{is_train_col_name}" SET NOT NULL')
+        conn.execute(f'''UPDATE {table_name}
                          SET "{is_train_col_name}" = true
                          WHERE hash(rowid) % 1000 < ?''', [int(train_fraction * 1000)])
 

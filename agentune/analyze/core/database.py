@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from typing import override
 
@@ -18,13 +18,42 @@ from agentune.analyze.util.attrutil import frozendict_converter
 
 
 @frozen
+class DuckdbName:
+    """A fully qualified name of a database object (table, index, view, ...) for use in duckdb statements.
+
+    Qualified names are needed to use multiple databases and/or schemas.
+
+    In SQL queries and statements, instances should be stringified and NOT additionally quoted;
+    str(DuckdbName) takes care of quoting.
+
+    A fully qualified name's stringification includes all of its components, because we don't know if it will be used
+    in a context where the default database or schema is the same as the one explicitly specified here.
+
+    There is currently no implementation of parsing a qualified string into a DuckdbName,
+    because we want to encourage the code to use (and construct) DuckdbNames explicitly and not use strings.
+    """
+
+    name: str
+    database: str
+    schema: str = 'main'
+
+    def __str__(self) -> str:
+        return f'"{self.database}"."{self.schema}"."{self.name}"'
+
+    @staticmethod
+    def qualify(name: str, conn: DuckDBPyConnection) -> DuckdbName:
+        """Fill in the current database and schema names from the connection."""
+        schema, database = conn.sql('SELECT current_schema(), current_database()').fetchall()[0]
+        return DuckdbName(name, database, schema)
+
+
+@frozen
 class DuckdbTable:
     """A table in a DuckDB database.
     
     This represents a table in a real database, not any other relation that  DuckDB knows how to read.
     """
-    # TODO add catalog/schema names
-    name: str
+    name: DuckdbName
     schema: Schema
     indexes: tuple[DuckdbIndex, ...] = ()
 
@@ -32,9 +61,9 @@ class DuckdbTable:
         if_not = 'IF NOT EXISTS' if if_not_exists else ''
         replace = 'OR REPLACE' if or_replace else ''
         col_specs = [f'"{c.name}" {c.dtype.duckdb_type}' for c in self.schema.cols]
-        conn.execute(f'CREATE {replace} TABLE {if_not} "{self.name}" ({', '.join(col_specs)})')
+        conn.execute(f'CREATE {replace} TABLE {if_not} {self.name} ({', '.join(col_specs)})')
 
-        existing_index_names = {index.name for index in ArtIndex.from_duckdb(conn, self.name)}
+        existing_index_names = {index.name for index in ArtIndex.from_duckdb(self.name, conn)}
         for index in self.indexes:
             # Running CREATE INDEX IF NOT EXISTS is expensive; even if it already exists, duckdb first builds a new index
             # and then discards it. So we query ourselves to see if it already exists.
@@ -43,14 +72,17 @@ class DuckdbTable:
                     continue
                 if or_replace:
                     # Create index does not support 'or_replace'; we drop and replace it manually in that case
-                    conn.execute(f'DROP INDEX "{index.name}"')
+                    index.drop(conn)
             index.create(conn, self.name, if_not_exists)
 
-        return conn.table(self.name)
+        return conn.table(str(self.name))
 
     @staticmethod
-    def from_duckdb(name: str, conn: DuckDBPyConnection) -> DuckdbTable:    
-        return DuckdbTable(name, Schema.from_duckdb(conn.table(name)), ArtIndex.from_duckdb(conn, name))
+    def from_duckdb(name: DuckdbName | str, conn: DuckDBPyConnection) -> DuckdbTable:
+        if isinstance(name, str):
+            name = DuckdbName.qualify(name, conn)
+        return DuckdbTable(name, Schema.from_duckdb(conn.table(str(name))), ArtIndex.from_duckdb(name, conn))
+
 
 class DuckdbIndex(ABC): 
     """A table index definition.
@@ -66,22 +98,22 @@ class DuckdbIndex(ABC):
 
     @property
     @abstractmethod
-    def name(self) -> str: ...
+    def name(self) -> DuckdbName: ...
 
     @abstractmethod
-    def create(self, conn: DuckDBPyConnection, table_name: str, if_not_exists: bool = True) -> None: ...
+    def create(self, conn: DuckDBPyConnection, table_name: DuckdbName | str, if_not_exists: bool = True) -> None: ...
 
-    # TODO specify the database, schema and table name separately.
-    #  In the query implementation, we have to pass those three separately.
-    #  (Requiring a fully qualified name to be passed in isn't any simpler.)
-    @staticmethod
     @abstractmethod
-    def from_duckdb(conn: DuckDBPyConnection, name: str) -> Sequence[DuckdbIndex]: ...
+    def drop(self, conn: DuckDBPyConnection) -> None: ...
+
+    # TODO implement this by returning indexes of all supported types
+    #@staticmethod
+    #def from_duckdb(name: DuckdbName | str, conn: DuckDBPyConnection) -> Sequence[DuckdbIndex]: ...
 
 
 @frozen
 class ArtIndex(DuckdbIndex):
-    name: str
+    name: DuckdbName
     cols: tuple[str, ...]
 
     # TODO documented warning: ART indexes must currently be able to fit in memory during index creation.
@@ -90,35 +122,52 @@ class ArtIndex(DuckdbIndex):
     # (I think this doesn't apply if we create an index on an empty table and then insert into it?)
 
     @override
-    def create(self, conn: DuckDBPyConnection, table_name: str, if_not_exists: bool = True) -> None:
+    def create(self, conn: DuckDBPyConnection, table_name: DuckdbName | str, if_not_exists: bool = True) -> None:
+        if isinstance(table_name, str):
+            table_name = DuckdbName.qualify(table_name, conn)
+
+        if isinstance(table_name, DuckdbName) and (table_name.database != self.name.database or table_name.schema != self.name.schema):
+            raise ValueError(f'Cannot create index {self.name} on table ({table_name}) in a different database or schema')
+
         # First check if the index already exists; if so, do nothing.
         #  The docs say that IF NOT EXISTS is currently badly implemented; it will spend the time building
         #  the new index anyway, and only then discard it if it already exists.
-        if if_not_exists and self.name in {index.name for index in ArtIndex.from_duckdb(conn, table_name)}:
+        if if_not_exists and self.name in {index.name for index in ArtIndex.from_duckdb(table_name, conn)}:
             return
         
         col_specs = ', '.join(f'"{col}"' for col in self.cols)
-        conn.execute(f'CREATE INDEX "{self.name}" ON "{table_name}" ({col_specs})')
+        # The index name canont be fully qualified in a CREATE INDEX statement.
+        # The table name is qualified and that is enough to place the index into the same database and schema as the table.
+        conn.execute(f'CREATE INDEX "{self.name.name}" ON {table_name} ({col_specs})')
 
     @override
+    def drop(self, conn: DuckDBPyConnection) -> None:
+        conn.execute(f'DROP INDEX {self.name}')
+
     @staticmethod
-    def from_duckdb(conn: DuckDBPyConnection, name: str) -> tuple[DuckdbIndex, ...]:
+    def from_duckdb(table_name: DuckdbName | str, conn: DuckDBPyConnection) -> tuple[DuckdbIndex, ...]:
+        if isinstance(table_name, str):
+            table_name = DuckdbName.qualify(table_name, conn)
+
         # There's no explicit column in the result specifying the index type, and I haven't found a way to get it.
         # I filter out rtree (spatial) indexes, but if a third type of index shows up, this will report it as an ART index.
-        results = conn.execute("SELECT index_name, expressions::VARCHAR[] from duckdb_indexes() "
-                               "WHERE table_name = ? AND sql NOT ILIKE '%USING RTREE%'", [name]).fetchmany()
-        # duckdb quotes names iff quoting is required; we standardize on unquoted names in python
+        results = conn.execute("""SELECT index_name, expressions::VARCHAR[] from duckdb_indexes() 
+                               WHERE table_name = ? AND database_name = ? AND schema_name = ? 
+                               AND sql NOT ILIKE '%USING RTREE%'""",
+                               [table_name.name, table_name.database, table_name.schema]).fetchmany()
+        # duckdb quotes names in the output of this query iff quoting is required
         return tuple(
-            ArtIndex(result[0].strip('"'), tuple(col.strip('"') for col in result[1]))
+            ArtIndex(DuckdbName.qualify(result[0].strip('"'), conn), tuple(col.strip('"') for col in result[1]))
             for result in results
         )
+
 
 
 class DuckdbDatabase(ABC):
     @property
     @abstractmethod
     def default_name(self) -> str:
-        """The duckdb default for the catalog name under which the database is attached.
+        """The duckdb default for the database name under which the database is attached.
         
         This is the name used for the first database opened by a DuckdbManager instance;
         databases attached later can override the name used.
@@ -215,7 +264,7 @@ class DuckdbManager:
 
     _conn: DuckDBPyConnection
     _main_database: DuckdbDatabase
-    _databases: dict[str, DuckdbDatabase] # By catalog name
+    _databases: dict[str, DuckdbDatabase] # By database name
 
     def __init__(self, main_database: DuckdbDatabase, config: DuckdbConfig = DuckdbConfig()):
         agentune.analyze.core.setup.setup()
@@ -230,7 +279,7 @@ class DuckdbManager:
         # self._conn.load_extension('spatial')
 
     def databases(self) -> Mapping[str, DuckdbDatabase]:
-        """Return all databases attached to this manager, by catalog name."""
+        """Return all databases attached to this manager, by database name."""
         return dict(self._databases)
 
     def attach(self, db: DuckdbDatabase, name: str | None = None) -> None:
@@ -238,7 +287,7 @@ class DuckdbManager:
         
         Args:
             db: The database to attach.
-            name: The catalog name under which to attach the database. If None, the duckdb default is used.
+            name: The name under which to attach the database. If None, the duckdb default is used.
         """
         if name is None:
             name = db.default_name
@@ -284,7 +333,7 @@ class DuckdbManager:
                 config: DuckdbConfig = DuckdbConfig()) -> DuckdbManager:
         return DuckdbManager(DuckdbFilesystemDatabase(path, read_only), config)
 
-    def get_table(self, name: str) -> DuckdbTable:
+    def get_table(self, name: DuckdbName) -> DuckdbTable:
         with self.cursor() as conn:
             return DuckdbTable.from_duckdb(name, conn)
     

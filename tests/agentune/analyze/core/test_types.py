@@ -70,7 +70,7 @@ def test_restore_relation_types(ddb_manager: DuckdbManager) -> None:
     )
 
     with ddb_manager.cursor() as conn:
-        DatasetSink.into_duckdb_table('sink').write(dataset.as_source(), conn)
+        DatasetSink.into_unqualified_duckdb_table('sink', conn).write(dataset.as_source(), conn)
         reread = DatasetSource.from_table_name('sink', conn).to_dataset(conn)
         assert reread.schema == dataset.schema
         assert reread.data.equals(dataset.data)

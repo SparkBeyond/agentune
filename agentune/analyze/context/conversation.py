@@ -11,7 +11,12 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core import types
-from agentune.analyze.core.database import ArtIndex, DuckdbIndex, DuckdbTable
+from agentune.analyze.core.database import (
+    ArtIndex,
+    DuckdbIndex,
+    DuckdbName,
+    DuckdbTable,
+)
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field, dtype_is
 from agentune.analyze.util.duckdbutil import results_iter
@@ -74,14 +79,14 @@ class ConversationContext[K](ContextDefinition):
     @override
     def index(self) -> DuckdbIndex:
         return ArtIndex(
-            name=f'art_by_{self.id_column.name}',
+            name=DuckdbName(f'art_by_{self.id_column.name}', self.table.name.database, self.table.name.schema),
             cols=(self.id_column.name, )
         )
 
     def get_conversation(self, conn: DuckDBPyConnection, id: K) -> Conversation | None:
         """Get a single conversation, given the id (from the primary table)."""
         conn.execute(f'''SELECT "{self.timestamp_column.name}", "{self.role_column.name}", "{self.content_column.name}"
-                        FROM "{self.table.name}"
+                        FROM {self.table.name}
                         WHERE "{self.id_column.name}" = $1
                         ORDER BY "{self.timestamp_column.name}"''', [id])
         results = tuple(Message(
@@ -108,7 +113,7 @@ class ConversationContext[K](ContextDefinition):
             ids = ids.to_list()
         
         conn.execute(f'''SELECT "{self.id_column.name}", "{self.timestamp_column.name}", "{self.role_column.name}", "{self.content_column.name}"
-                         FROM "{self.table.name}"
+                         FROM {self.table.name}
                          WHERE "{self.id_column.name}" IN $1
                          ORDER BY "{self.id_column.name}", "{self.timestamp_column.name}"''', [ids])
 

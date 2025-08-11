@@ -6,17 +6,22 @@ from typing import cast
 
 import attrs
 import duckdb
+import polars as pl
 import pytest
 from duckdb.duckdb import DuckDBPyConnection
 
+from agentune.analyze.core import types
 from agentune.analyze.core.database import (
     ArtIndex,
     DuckdbConfig,
     DuckdbFilesystemDatabase,
     DuckdbInMemoryDatabase,
     DuckdbManager,
+    DuckdbName,
     DuckdbTable,
 )
+from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource
+from agentune.analyze.core.schema import Field, Schema
 
 _logger = logging.getLogger(__name__)
 
@@ -25,10 +30,10 @@ def test_tables_indexes(conn: DuckDBPyConnection) -> None:
     conn.execute('CREATE TABLE tab (a INT, "quoted name" INT)')
     conn.execute('CREATE INDEX idx ON tab (a, "quoted name")')
     table = DuckdbTable.from_duckdb('tab', conn)
-    assert table.indexes == (ArtIndex(name='idx', cols=('a', 'quoted name')),)
+    assert table.indexes == (ArtIndex(name=DuckdbName.qualify('idx', conn), cols=('a', 'quoted name')),)
 
-    new_index = attrs.evolve(cast(ArtIndex, table.indexes[0]), name='idx2')
-    table2 = attrs.evolve(table, name='tab2', indexes=(new_index,))
+    new_index = attrs.evolve(cast(ArtIndex, table.indexes[0]), name=DuckdbName.qualify('idx2', conn))
+    table2 = attrs.evolve(table, name=DuckdbName.qualify('tab2', conn), indexes=(new_index,))
     table2.create(conn)
     assert DuckdbTable.from_duckdb('tab2', conn) == table2
 
@@ -115,3 +120,45 @@ def test_duckdb_manager_config() -> None:
           ddb_manager.cursor() as conn):
         assert conn.sql("SELECT current_setting('threads')").fetchone() == (1, ), \
             'Setting threads in DuckdbConfig.kwargs works'
+
+def test_qualified_names() -> None:
+    assert str(DuckdbName('a b', 'c d', 'e.f')) == '"c d"."e.f"."a b"'
+
+    def dotest(conn: DuckDBPyConnection, database_name: str, schema_name: str) -> None:
+        table_name = DuckdbName('foo bar.baz', database_name, schema_name)
+        conn.execute(f'CREATE TABLE {table_name} (id INTEGER)')
+        with conn.cursor() as cursor:
+            cursor.execute(f'USE "{database_name}"."{schema_name}"')
+            table = DuckdbTable.from_duckdb('foo bar.baz', cursor)
+            assert table.name == DuckdbName('foo bar.baz', database_name, schema_name)
+            assert table.name == DuckdbName.qualify('foo bar.baz', cursor)
+
+        table2 = DuckdbTable(
+            DuckdbName('a.b', database_name, schema_name),
+            Schema((Field('foo', types.int32),)),
+            indexes=(ArtIndex(DuckdbName('my index', database_name, schema_name), ('foo',)),)
+        )
+        table2.create(conn)
+        with conn.cursor() as cursor:
+            cursor.execute(f'USE "{database_name}"."{schema_name}"')
+
+            assert DuckdbTable.from_duckdb('a.b', cursor) == table2
+            assert ArtIndex.from_duckdb('a.b', cursor) == (ArtIndex(DuckdbName.qualify('my index', cursor), ('foo',)), )
+
+        dataset = Dataset.from_polars(pl.DataFrame({'id': [1, 2, 3]}))
+        DatasetSink.into_duckdb_table(table_name).write(dataset.as_source(), conn)
+        assert DatasetSource.from_table_name(table_name, conn).to_dataset(conn) == dataset
+
+    # Test once on the current database, and once on a secondary one whose name needs to be
+    # explicitly specified
+    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
+        dotest(conn, 'memory', 'main')
+
+    # Reconnect to get a clean main database
+    with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
+        ddb_manager.attach(DuckdbInMemoryDatabase(), name='memory two')
+        conn.execute('CREATE SCHEMA "memory two"."custom schema"')
+        dotest(conn, 'memory two', 'custom schema')
+
+
+
