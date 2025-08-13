@@ -1,4 +1,5 @@
 import datetime
+import logging
 import random
 
 import duckdb
@@ -6,9 +7,11 @@ import duckdb
 from agentune.analyze.context.conversation import Conversation, ConversationContext, Message
 from agentune.analyze.core.database import DuckdbTable
 
+_logger = logging.getLogger(__name__)
+
 
 def test_conversation_context() -> None:
-    with duckdb.connect(':memory:lookup') as conn:
+    with duckdb.connect(':memory:') as conn:
         conn.execute('create table main(id integer)')
         conn.execute('create table conversation(conv_id integer, timestamp timestamp, role varchar, content varchar)')
 
@@ -60,6 +63,11 @@ def test_conversation_context() -> None:
         assert 1000 not in conversations
         assert context.get_conversation(conn, 1000) is None
 
-        for ids in [ [], [1], [1000], [1, 5, 58, 18, 43, 101, 30, 502, 8] ]:
-            assert context.get_conversations(ids, conn) == tuple(conversations.get(id) for id in ids)
-        
+        conversation_ids = list(conversations.keys())
+        shuffled_ids = conversation_ids.copy()
+        rnd.shuffle(shuffled_ids)
+        for ids in [ [], [1000], [ rnd.choice(conversation_ids), 1000 ], rnd.choices(conversation_ids, k=20), shuffled_ids ]:
+            convs = context.get_conversations(ids, conn)
+            expected = tuple(conversations.get(id) for id in ids)
+            assert convs == expected
+

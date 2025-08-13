@@ -111,6 +111,9 @@ class ConversationContext[K](ContextDefinition):
         
         if isinstance(ids, pl.Series):
             ids = ids.to_list()
+
+        if len(ids) == 0:
+            return ()
         
         conn.execute(f'''SELECT "{self.id_column.name}", "{self.timestamp_column.name}", "{self.role_column.name}", "{self.content_column.name}"
                          FROM {self.table.name}
@@ -126,7 +129,7 @@ class ConversationContext[K](ContextDefinition):
                     conversations[conversation_id] = Conversation(tuple(messages))
                 messages = []
                 conversation_id = row_conversation_id
-            messages.append(Message(timestamp, role, content))
+            messages.append(Message(role, timestamp, content))
         if conversation_id is not None:
             conversations[conversation_id] = Conversation(tuple(messages))
 
