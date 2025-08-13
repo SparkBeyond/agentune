@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 from duckdb.duckdb import DuckDBPyConnection
-from tests.agentune.analyze.flow.feature_search.toys import ToyAsyncFeature, ToySyncFeature
+from tests.agentune.analyze.run.feature_search.toys import ToyAsyncFeature, ToySyncFeature
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset

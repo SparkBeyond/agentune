@@ -93,11 +93,12 @@ class DatasetSourceFromDuckdb(DatasetSource):
         return self._opener(conn)
 
 
-def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection) -> DatasetSourceFromDuckdb:
+def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection,
+                 batch_size: int = default_duckdb_batch_size) -> DatasetSourceFromDuckdb:
     """Open the source once to determine its schema."""
     relation = opener(conn)
     schema = Schema.from_duckdb(relation)
-    return DatasetSourceFromDuckdb(schema, opener)
+    return DatasetSourceFromDuckdb(schema, opener, batch_size)
 
 def ingest(conn: DuckDBPyConnection, table: DuckdbTable | DuckdbName | str, data: DatasetSource) -> DuckdbTableSource:
     match table:
@@ -161,6 +162,12 @@ class DuckdbTableSink(DatasetSink):
                 if self.delete_contents:
                     cursor.execute(f'DELETE FROM {self.table_name}')
                 cursor.execute(f'INSERT INTO {self.table_name} SELECT * FROM input_relation')
+
+    def as_table(self, conn: DuckDBPyConnection) -> DuckdbTable:
+        return DuckdbTable.from_duckdb(self.table_name, conn)
+
+    def as_source(self, conn: DuckDBPyConnection, batch_size: int = default_duckdb_batch_size) -> DuckdbTableSource:
+        return DuckdbTableSource(self.as_table(conn), batch_size)
 
 
 @frozen(eq=False, hash=False)

@@ -13,7 +13,7 @@ import polars as pl
 import pytest
 from attrs import define, field, frozen
 from duckdb import DuckDBPyConnection
-from tests.agentune.analyze.flow.feature_search.toys import ToyAsyncFeature
+from tests.agentune.analyze.run.feature_search.toys import ToyAsyncFeature
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset

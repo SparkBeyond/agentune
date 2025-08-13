@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import polars as pl
 import pytest
 from duckdb.duckdb import DuckDBPyConnection
-from tests.agentune.analyze.flow.feature_search.toys import (
+from tests.agentune.analyze.run.feature_search.toys import (
     ToyAsyncFeature,
     ToySyncFeature,
 )
@@ -203,3 +203,37 @@ async def test_larger_data_streaming(conn: DuckDBPyConnection) -> None:
     assert sink_dataset.data['a+b'].sort().equals(expected_sums)
     assert sink_dataset.data['a+b_'].sort().equals(expected_sums)
 
+@pytest.mark.asyncio
+async def test_keep_input_cols(conn: DuckDBPyConnection) -> None:
+    conn.execute('CREATE TABLE input(a int, b int)')
+    conn.execute('INSERT INTO input SELECT x, y FROM unnest(range(100)) AS t1(x) CROSS JOIN unnest(range(100)) AS t2(y)')
+
+    feature1 = ToySyncFeature('a', 'b', 'a+b', '', '')
+    feature2 = ToyAsyncFeature('a', 'b', 'a+b', '', '')
+    evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
+
+    source = DuckdbTableSource(DuckdbTable.from_duckdb('input', conn), batch_size=1000)
+    sink = DuckdbTableSink.into_unqualified_duckdb_table('sink', conn)
+
+    runner = EnrichRunnerImpl()
+
+    source_dataset = source.to_dataset(conn)
+    enriched_dataset = await runner.run([feature1, feature2], source_dataset,
+                                        TablesWithContextDefinitions({}), evaluators, conn,
+                                        keep_input_columns=['a'])
+    assert enriched_dataset.schema.names == ['a', 'a+b', 'a+b_']
+    assert enriched_dataset.schema.dtypes == [types.int32, types.float64, types.float64]
+    assert enriched_dataset.data['a'].equals(source_dataset.data['a'])
+
+    await runner.run_stream([feature1, feature2], source, TablesWithContextDefinitions({}), sink, evaluators, conn,
+                            keep_input_columns=['a'])
+
+    sink_table = DuckdbTable.from_duckdb('sink', conn)
+    sink_dataset = DuckdbTableSource(sink_table).to_dataset(conn)
+    assert sink_dataset.schema.names == ['a', 'a+b', 'a+b_']
+    assert sink_dataset.schema.dtypes == [types.int32, types.float64, types.float64]
+
+    expected_sums = pl.Series(float(x+y) for x in range(100) for y in range(100)).sort()
+    assert sink_dataset.data['a'].equals(source.select('a').to_dataset(conn).data['a'])
+    assert sink_dataset.data['a+b'].sort().equals(expected_sums)
+    assert sink_dataset.data['a+b_'].sort().equals(expected_sums)

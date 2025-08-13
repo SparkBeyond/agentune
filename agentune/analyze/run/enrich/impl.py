@@ -30,6 +30,8 @@ class _EvaluatedFeatures:
     dataset: Dataset
     features: list[Feature]
 
+
+@frozen
 class EnrichRunnerImpl(EnrichRunner):
     """Simple implementation of EnrichRunner that evaluates features by evaluator groups.
     
@@ -40,19 +42,22 @@ class EnrichRunnerImpl(EnrichRunner):
     @override
     async def run(self, features: Sequence[Feature], dataset: Dataset, contexts: TablesWithContextDefinitions,
                   evaluators: Sequence[type[FeatureEvaluator]], conn: DuckDBPyConnection,
+                  keep_input_columns: Sequence[str] = (),
                   deduplicate_names: bool = True) -> Dataset:
         features = self._maybe_deduplicate_feature_names(features, deduplicate_names)
         features_by_evaluator = self._group_features_by_evaluator(features, evaluators)
         all_evaluated = await self._evaluate_all_groups(
             conn, dataset, contexts, features_by_evaluator
         )
-        return self._combine_evaluated_features(all_evaluated, features)
+        return self._combine_evaluated_features(all_evaluated, features,
+                                                dataset.select(*keep_input_columns) if keep_input_columns else None)
 
     @override
     async def run_stream(self, features: Sequence[Feature], dataset_source: DatasetSource, contexts: TablesWithContextDefinitions,
                          dataset_sink: DatasetSink, evaluators: Sequence[type[FeatureEvaluator]], conn: DuckDBPyConnection,
+                         keep_input_columns: Sequence[str] = (),
                          deduplicate_names: bool = True) -> None:
-        """This 'Simple' (i.e. naive) runner has performance issues:
+        """This naive implementation has performance issues:
         - The buffer size (i.e. the size of the Datasets in the DatasetSource stream) is set by the `input` creator,
           possibly the user, and can't be adjusted to the features or evaluators involved
         - Async features evaluated in parallel means we wait for the slowest to finish before moving to the
@@ -61,7 +66,8 @@ class EnrichRunnerImpl(EnrichRunner):
           while waiting for the slow ones. A sliding window over rows being processed would be better.
         """
         renamed_features = self._maybe_deduplicate_feature_names(features, deduplicate_names)
-        schema = Schema(tuple(Field(feature.name, feature.dtype) for feature in renamed_features))
+        schema = Schema(tuple(field for field in dataset_source.schema.cols if field.name in keep_input_columns) + \
+            tuple(Field(feature.name, feature.dtype) for feature in renamed_features))
 
         # Separate input and output connections to run on different threads
         with (conn.cursor() as input_conn, conn.cursor() as output_conn, \
@@ -76,7 +82,7 @@ class EnrichRunnerImpl(EnrichRunner):
             output_task = asyncio.create_task(asyncio.to_thread(dataset_sink.write, output_source, output_conn))
 
             async for dataset in input_queue:
-                result = await self.run(features, dataset, contexts, evaluators, conn, deduplicate_names)
+                result = await self.run(features, dataset, contexts, evaluators, conn, keep_input_columns, deduplicate_names)
                 await output_queue.aput(result)
             output_queue.close()
             await input_queue.await_empty()
@@ -184,7 +190,8 @@ class EnrichRunnerImpl(EnrichRunner):
     def _combine_evaluated_features(
         self,
         all_evaluated: Sequence[_EvaluatedFeatures],
-        original_features: Sequence[Feature]
+        original_features: Sequence[Feature],
+        keep_input_dataset: Dataset | None
     ) -> Dataset:
         """Combine evaluated features into single dataset, preserving original feature order."""
         feature_to_column = {}
@@ -199,6 +206,11 @@ class EnrichRunnerImpl(EnrichRunner):
 
         result_columns = []
         result_fields = []
+
+        if keep_input_dataset:
+            for field in keep_input_dataset.schema.cols:
+                result_fields.append(field)
+                result_columns.append(keep_input_dataset.data[field.name])
 
         for feature in original_features:
             if feature not in feature_to_column:

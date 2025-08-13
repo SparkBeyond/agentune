@@ -79,6 +79,7 @@ ignore = [
     "S311",                             # Use of `random` module
     "RUF002",                           # "Ambiguous" Unicode characters (like the scary lowercase sigma, σ)
     "B008",                             # No function calls in the definition of a function's default argument
+    "UP037",                            # Don't use string type annotations - they can be necessary when avoiding a circular import
 
     # Rules we may want to enforce in the future but are ignored for now
     "S101",                             # Use of assert

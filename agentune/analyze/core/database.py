@@ -312,6 +312,8 @@ class DuckdbManager:
         del self._databases[name]
 
     def cursor(self) -> duckdb.DuckDBPyConnection:
+        # TODO is a Connection threadsafe enough for .cursor() to be called on it concurrently from parallel threads,
+        #  even if that (main) Connection never runs anything else? Or do we need to lock this or use a threadlocal?
         """The caller must close the returned cursor at the end of the code scope that uses it.
 
         The connection instance kept by this class is never exposed to callers; they can only get new cursors via this method.

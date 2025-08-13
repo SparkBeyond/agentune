@@ -1,6 +1,7 @@
 # Toy implementations of all unit types
 
 import asyncio
+import logging
 import math
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any, cast, override
@@ -34,6 +35,7 @@ from agentune.analyze.feature.gen.base import (
 from agentune.analyze.feature.select.base import (
     EnrichedFeatureSelector,
     FeatureSelector,
+    SyncEnrichedFeatureSelector,
     SyncFeatureSelector,
 )
 from agentune.analyze.feature.stats.base import FeatureStats, FeatureWithFullStats
@@ -42,6 +44,8 @@ from agentune.analyze.feature.stats.stats import (
     CategoricalFeatureStats,
     NumericFeatureStats,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 @frozen
@@ -137,6 +141,15 @@ class ToyAsyncFeatureGenerator(FeatureGenerator[ToyAsyncFeature]):
                     yield ToyAsyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}', 
                                           f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
 
+@frozen
+class ToyPrebuiltFeaturesGenerator(SyncFeatureGenerator[Feature]):
+    features: tuple[Feature, ...]
+
+    @override
+    def generate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions,
+                 conn: DuckDBPyConnection) -> Iterator[Feature]:
+        yield from self.features
+
 class ToySyncFeatureTransformer(SyncFeatureTransformer[Feature, Feature]):
     @override
     def transform(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
@@ -209,6 +222,19 @@ class ToyAsyncFeatureSelector(FeatureSelector[Feature, Regression]):
             else sum(ToySyncFeatureSelector.some_metric(x.stats.feature) for x in self.features) / len(self.features)
         return [x for x in self.features if ToySyncFeatureSelector.some_metric(x.stats.feature) >= average_metric]
 
+@frozen
+class ToyAllFeatureSelector(SyncFeatureSelector):
+    _added_features: list[FeatureWithFullStats] = field(factory=list, eq=False, hash=False, init=False)
+
+    @override
+    def add_feature(self, feature_with_stats: FeatureWithFullStats) -> None:
+        self._added_features.append(feature_with_stats)
+
+    @override
+    def select_final_features(self) -> Sequence[FeatureWithFullStats]:
+        return self._added_features
+
+
 class ToyAsyncEnrichedFeatureSelector(EnrichedFeatureSelector):
     def some_metric(self, feature: Feature, enriched: pl.Series) -> float:
         if isinstance(feature, NumericFeature):
@@ -225,7 +251,31 @@ class ToyAsyncEnrichedFeatureSelector(EnrichedFeatureSelector):
                                enriched_data: DatasetSource, target_column: str,
                                conn: DuckDBPyConnection) -> Sequence[Feature]:
         await asyncio.sleep(0)
-        assert enriched_data.schema.names == [feature.name for feature in features] + [target_column]
+        assert set(enriched_data.schema.names) == set([feature.name for feature in features] + [target_column])
+
+        dataset = enriched_data.to_dataset(conn)
+        average_metric = math.nan if len(features) == 0 \
+            else sum(self.some_metric(feature, dataset.data[feature.name])
+                     for feature in features) / len(features)
+        return [feature for feature in features
+                if self.some_metric(feature, dataset.data[feature.name]) >= average_metric]
+
+class ToySyncEnrichedFeatureSelector(SyncEnrichedFeatureSelector):
+    def some_metric(self, feature: Feature, enriched: pl.Series) -> float:
+        if isinstance(feature, NumericFeature):
+            return cast(float, enriched.mean())
+        elif isinstance(feature, CategoricalFeature):
+            return enriched.n_unique()
+        elif isinstance(feature, BoolFeature):
+            return cast(int, enriched.sum())
+        else:
+            raise TypeError(f'Unknown feature type: {type(feature)}')
+
+    @override
+    def select_features(self, features: Sequence[Feature],
+                        enriched_data: DatasetSource, target_column: str,
+                        conn: DuckDBPyConnection) -> Sequence[Feature]:
+        assert set(enriched_data.schema.names) == set([feature.name for feature in features] + [target_column])
 
         dataset = enriched_data.to_dataset(conn)
         average_metric = math.nan if len(features) == 0 \

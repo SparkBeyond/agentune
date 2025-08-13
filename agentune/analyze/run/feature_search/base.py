@@ -24,9 +24,10 @@ from agentune.analyze.feature.stats.stats_calculators import (
     CombinedSyncRelationshipStatsCalculator,
 )
 from agentune.analyze.run.base import RunContext
+from agentune.analyze.run.enrich.base import EnrichRunner
+from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
 from agentune.analyze.run.ingest.sampling import SplitDuckdbTable
 
-# TODO remove the context indexing into the preprocessing phase
 
 @frozen
 class FeatureSearchInputData:
@@ -38,10 +39,13 @@ class FeatureSearchInputData:
     contexts: TablesWithContextDefinitions
 
     def __attrs_post_init__(self) -> None:
-        if self.feature_search.schema != self.train.schema:
-            raise ValueError('Feature search dataset schema must match train dataset schema')
-        if self.feature_search.schema != self.test.schema:
-            raise ValueError('Feature search dataset schema must match test dataset schema')
+        if self.train.schema != self.test.schema:
+            raise ValueError('Train schema must match test schema')
+        if self.train.schema != self.feature_search.schema:
+            raise ValueError('Train schema must match feature search schema')
+        if self.train.schema != self.feature_eval.schema:
+            raise ValueError('Train schema must match feature eval schema')
+
         if self.target_column not in self.feature_search.schema.names:
             raise ValueError(f'Target column {self.target_column} not found')
         
@@ -64,13 +68,13 @@ class FeatureSearchInputData:
 class FeatureSearchParams[TK: TargetKind]:
     generators: tuple[FeatureGenerator, ...]
     selector: FeatureSelector[Feature, TK] | EnrichedFeatureSelector
-    # TODO declare a not-necessarily-sync version of these APIs, even if the only implementation right now is sync
     relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[TK]
     # Must always include at least one evaluator willing to handle every feature generated.
     # Normally this means including the two universal evaluators at the end of the list.
     # Evaluators are tried in the order in which they appear.
     evaluators: tuple[type[FeatureEvaluator], ...] = (UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator)
     feature_stats_calculator: CombinedSyncFeatureStatsCalculator = stats_calculators.default_feature_stats_calculator
+    enrich_runner: EnrichRunner = EnrichRunnerImpl()
 
 @frozen 
 class RegressionFeatureSearchParams(FeatureSearchParams[Regression]):
@@ -96,8 +100,11 @@ class FeatureSearchResults[TK: TargetKind]:
         return tuple(f.feature for f in self.features_with_test_stats)
 
 
-class FeatureSearchRunner(ABC):
-    # TODO the real one needs to be async but that's harder to implement so it's sync for now
+class FeatureSearchRunner[TK: TargetKind](ABC):
+    """The current implementation is not specialized per TargetKind, but including the type parameter in the class signature
+    makes the code much simpler than passing it to every method along the way.
+    """
+
     @abstractmethod
-    def run[TK: TargetKind](self, context: RunContext, data: FeatureSearchInputData, 
-                                  params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]: ...
+    async def run(self, run_context: RunContext, data: FeatureSearchInputData,
+                  params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]: ...

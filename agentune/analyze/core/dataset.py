@@ -5,7 +5,10 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator
 from io import StringIO, TextIOBase
 from pathlib import Path
-from typing import Any, override
+from typing import TYPE_CHECKING, Any, override
+
+if TYPE_CHECKING:
+    from agentune.analyze.core.duckdbio import DuckdbTableSink
 
 import httpx
 import polars as pl
@@ -116,6 +119,12 @@ class DatasetSource(CopyToThread):
         """Read the entire source into memory."""
         return Dataset(self.schema, self.to_duckdb(conn).pl())
 
+    def select(self, *cols: str, batch_size: int = default_duckdb_batch_size) -> DatasetSource:
+        new_schema = self.schema.select(*cols)
+        def opener(conn: DuckDBPyConnection) -> DuckDBPyRelation:
+            return self.to_duckdb(conn).select(*[f'"{col}"' for col in cols])
+        return DatasetSource.from_duckdb_parser(opener, new_schema, batch_size)
+
     @staticmethod
     def from_dataset(dataset: Dataset) -> DatasetSourceFromDataset:
         return DatasetSourceFromDataset(dataset)
@@ -136,7 +145,8 @@ class DatasetSource(CopyToThread):
 
     @staticmethod
     def from_duckdb_parser(opener: Callable[[DuckDBPyConnection], DuckDBPyRelation],
-                           conn_or_schema: DuckDBPyConnection | Schema) -> DatasetSource:
+                           conn_or_schema: DuckDBPyConnection | Schema,
+                           batch_size: int = default_duckdb_batch_size) -> DatasetSource:
         """Read any data that duckdb can access by supplying an explicit query or method call on a Connection.
 
         Args:
@@ -146,9 +156,9 @@ class DatasetSource(CopyToThread):
         """
         from agentune.analyze.core.duckdbio import DatasetSourceFromDuckdb, sniff_schema
         if isinstance(conn_or_schema, DuckDBPyConnection):
-            return sniff_schema(opener, conn_or_schema)
+            return sniff_schema(opener, conn_or_schema, batch_size)
         else:
-            return DatasetSourceFromDuckdb(conn_or_schema, opener)
+            return DatasetSourceFromDuckdb(conn_or_schema, opener, batch_size)
 
     @staticmethod
     def from_csv(path: Path | httpx.URL | str | StringIO | TextIOBase, conn: DuckDBPyConnection,
@@ -264,7 +274,7 @@ class DatasetSink(ABC):
     @staticmethod
     def into_duckdb_table(table_name: DuckdbName,
                           create_table: bool = True,
-                          or_replace: bool = True, delete_contents: bool = True) -> DatasetSink:
+                          or_replace: bool = True, delete_contents: bool = True) -> "DuckdbTableSink":
         """See DuckdbDatasetSink for the arguments."""
         # Local import to avoid circle
         from agentune.analyze.core.duckdbio import DuckdbTableSink
@@ -273,7 +283,7 @@ class DatasetSink(ABC):
     @staticmethod
     def into_unqualified_duckdb_table(table_name: str, conn: DuckDBPyConnection,
                                       create_table: bool = True,
-                                      or_replace: bool = True, delete_contents: bool = True) -> DatasetSink:
+                                      or_replace: bool = True, delete_contents: bool = True) -> "DuckdbTableSink":
         """See DuckdbDatasetSink for the arguments."""
         return DatasetSink.into_duckdb_table(DuckdbName.qualify(table_name, conn), create_table, or_replace, delete_contents)
 

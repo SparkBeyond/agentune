@@ -37,7 +37,8 @@ class Schema:
     @_by_name.default
     def _by_name_default(self) -> dict[str, Field]:
         # duckdb allows duplicate names of columns in a relation, but polars doesn't allow duplicate column names in a DataFrame
-        assert len({col.name for col in self.cols}) == len(tuple(self.cols)), 'Duplicate column names'
+        assert len({col.name for col in self.cols}) == len(tuple(self.cols)), \
+            f'Duplicate column names: {self.names}'
         return {col.name: col for col in self.cols}
 
     @property
