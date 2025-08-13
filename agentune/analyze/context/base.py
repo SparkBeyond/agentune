@@ -77,9 +77,10 @@ class TablesWithContextDefinitions:
 
     @staticmethod
     def group(context_definitions: Sequence[ContextDefinition]) -> TablesWithContextDefinitions:
-        return TablesWithContextDefinitions(frozendict(dict(
-            itertools.groupby(context_definitions, lambda c: c.table.name)
-        )))
+        return TablesWithContextDefinitions(frozendict({
+            name: TableWithContextDefinitions.from_list(list(group))
+            for name, group in itertools.groupby(context_definitions, lambda c: c.table.name)
+        }))
 
 
     def __getitem__(self, name: DuckdbName) -> TableWithContextDefinitions:
