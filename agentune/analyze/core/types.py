@@ -20,9 +20,9 @@ type PolarsDataType = pl.DataType | polars.datatypes.DataTypeClass
 @frozen
 class Dtype:
     name: str
-    duckdb_type: ddt.DuckDBPyType = field()
-    polars_type: PolarsDataType = field()
-    python_type: type = field(init=False)
+    duckdb_type: ddt.DuckDBPyType = field(eq=False, hash=False)
+    polars_type: PolarsDataType = field(eq=False, hash=False)
+    python_type: type = field(init=False, eq=False, hash=False)
 
     @python_type.default
     def _python_type_default(self) -> type:

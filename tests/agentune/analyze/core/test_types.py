@@ -29,6 +29,9 @@ def test_types_and_schema(conn: DuckDBPyConnection) -> None:
         else:
             assert types.Dtype.from_polars(dtype.polars_type) == dtype
 
+    dtype_set = set(all_types)
+    assert len(dtype_set) == len(all_types), 'Dtypes must be hashable and comparable'
+
     cols = [f'"col_{dtype.name}" {dtype.duckdb_type}' for dtype in all_types]
     conn.execute(f"create table tab ({', '.join(cols)})")
 
