@@ -7,8 +7,10 @@ import polars as pl
 import pytest
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
+from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbName
 from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource
+from agentune.analyze.core.schema import Field, Schema
 
 
 @pytest.fixture
@@ -290,3 +292,120 @@ def test_large_data_chunked_reading(conn: DuckDBPyConnection, large_dataset: Dat
     first_chunk_ids = chunks[0].data['id'].to_list()
     full_dataset_ids = full_dataset.data['id'].head(len(first_chunk_ids)).to_list()
     assert first_chunk_ids == full_dataset_ids, 'Chunk and full dataset should have consistent data'
+
+def test_cast() -> None:
+    data = pl.DataFrame(
+        {
+            'id': [1, 2, 3, 4, 5],
+            'name': ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'],
+            'salary': [1.5, 7.8, 9.10, 1000.0, None],
+        }
+    )
+    dataset = Dataset.from_polars(data)
+
+    dataset2 = dataset.cast({'id': types.float32, 'name': types.EnumDtype('Alice', 'Bob', 'Charlie', 'Diana', 'Eve')})
+    assert dataset2.schema == Schema(
+        (
+            Field('id', types.float32),
+            Field('name', types.EnumDtype('Alice', 'Bob', 'Charlie', 'Diana', 'Eve')),
+            Field('salary', types.float64),
+        )
+    )
+    assert dataset2.data.equals(pl.DataFrame(
+        {
+            'id': [1.0, 2.0, 3.0, 4.0, 5.0],
+            'name': ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'],
+            'salary': [1.5, 7.8, 9.10, 1000.0, None],
+        },
+        schema = {
+            'id': types.float32.polars_type,
+            'name': types.EnumDtype('Alice', 'Bob', 'Charlie', 'Diana', 'Eve').polars_type,
+            'salary': types.float64.polars_type,
+        }
+    ))
+
+def test_cast_no_such_column(sample_dataset: Dataset) -> None:
+    with pytest.raises(ValueError, match='not in schema'):
+        sample_dataset.cast({'id2': types.float32})
+
+def test_cast_invalid_values(sample_dataset: Dataset) -> None:
+    with pytest.raises(pl.exceptions.InvalidOperationError, match=r'conversion from \`str\` to \`enum\` failed'):
+        sample_dataset.cast({'name': types.EnumDtype('Alice', 'Bob', 'Charlie')})
+
+    with pytest.raises(pl.exceptions.InvalidOperationError, match=r'conversion from \`str\` to \`i32\` failed'):
+        sample_dataset.cast({'name': types.int32})
+
+def test_cast_nonstrict(sample_dataset: Dataset) -> None:
+    dataset = sample_dataset.cast({'name': types.float32}, strict=False)
+    assert dataset.schema['name'] == Field('name', types.float32)
+    assert dataset.data['name'].to_list() == [None, None, None, None, None]
+
+    dataset2 = sample_dataset.cast({'name': types.EnumDtype('Alice', 'Bob', 'Charlie')}, strict=False)
+    assert dataset2.data['name'].to_list() == [ 'Alice', 'Bob', 'Charlie', None, None ]
+
+def test_from_csv_basic(conn: DuckDBPyConnection) -> None:
+    """Test basic CSV reading from string data."""
+    csv_content = '''id,name,value
+1,Alice,100.5
+2,Bob,200.0
+3,Charlie,300.75'''
+    csv_io = StringIO(csv_content)
+    
+    source = DatasetSource.from_csv(csv_io, conn)
+    dataset = source.to_dataset(conn)
+    
+    assert len(dataset) == 3
+    assert dataset.data['id'].to_list() == [1, 2, 3]
+    assert dataset.data['name'].to_list() == ['Alice', 'Bob', 'Charlie']
+    assert dataset.data['value'].to_list() == [100.5, 200.0, 300.75]
+
+
+def test_from_csv_separator_override(conn: DuckDBPyConnection) -> None:
+    """Test CSV reading with custom separator."""
+    csv_content = '''id|name|value
+1|Alice|100.5
+2|Bob|200.0
+3|Charlie|300.75'''
+    csv_io = StringIO(csv_content)
+    
+    source = DatasetSource.from_csv(csv_io, conn, delimiter='|')
+    dataset = source.to_dataset(conn)
+    
+    assert len(dataset) == 3
+    assert dataset.data['id'].to_list() == [1, 2, 3]
+    assert dataset.data['name'].to_list() == ['Alice', 'Bob', 'Charlie']
+    assert dataset.data['value'].to_list() == [100.5, 200.0, 300.75]
+
+
+def test_from_csv_separator_mismatch(conn: DuckDBPyConnection) -> None:
+    """Test CSV reading failure when separator doesn't match the data."""
+    csv_content = '''id,name,value
+1,Alice,100.5
+2,Bob,200.0
+3,Charlie,300.75'''
+    csv_io = StringIO(csv_content)
+    
+    source = DatasetSource.from_csv(csv_io, conn, delimiter='|')
+    dataset = source.to_dataset(conn)
+    
+    # With wrong delimiter, should parse as single column
+    assert len(dataset) == 3
+    assert len(dataset.schema.cols) == 1
+    # The entire row becomes one column since delimiter doesn't match
+    assert dataset.data.columns == ['id,name,value']
+
+
+def test_from_json_stringio(conn: DuckDBPyConnection) -> None:
+    """Test JSON reading from StringIO."""
+    json_content = '''{"id": 1, "name": "Alice", "active": true}
+{"id": 2, "name": "Bob", "active": false}
+{"id": 3, "name": "Charlie", "active": true}'''
+    json_io = StringIO(json_content)
+    
+    source = DatasetSource.from_json(json_io, conn)
+    dataset = source.to_dataset(conn)
+    
+    assert len(dataset) == 3
+    assert dataset.data['id'].to_list() == [1, 2, 3]
+    assert dataset.data['name'].to_list() == ['Alice', 'Bob', 'Charlie']
+    assert dataset.data['active'].to_list() == [True, False, True]

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from pathlib import Path
 from typing import Self, override
 
 import pyarrow as pa
@@ -114,10 +113,6 @@ def ingest(conn: DuckDBPyConnection, table: DuckdbTable | DuckdbName | str, data
     sink = DuckdbTableSink(table_name)
     sink.write(data, conn)
     return DuckdbTableSource(table)
-
-def ingest_csv(conn: DuckDBPyConnection, table: DuckdbTable | str, path: Path | str) -> DuckdbTableSource:
-    return ingest(conn, table, DatasetSource.from_csv(path, conn))
-
 
 @frozen
 class DuckdbTableSink(DatasetSink):

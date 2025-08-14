@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import math
 from pathlib import Path
 from typing import cast
 
@@ -159,6 +160,41 @@ def test_qualified_names() -> None:
         ddb_manager.attach(DuckdbInMemoryDatabase(), name='memory two')
         conn.execute('CREATE SCHEMA "memory two"."custom schema"')
         dotest(conn, 'memory two', 'custom schema')
+
+
+def test_casts(conn: DuckDBPyConnection) -> None:
+    conn.execute('CREATE TABLE tab (a INT16, b FLOAT8, c VARCHAR)')
+    conn.executemany('INSERT INTO tab VALUES (?, ?, ?)', [
+        (1, 1.0, 'a'),
+        (None, 2.0, 'b'),
+        (3, math.nan, 'c')
+    ])
+    table = DuckdbTable.from_duckdb('tab', conn)
+    dataset = DatasetSource.from_table(table).to_dataset(conn)
+
+    table2 = table.alter_column_types({'a': types.float64, 'c': types.string}, conn)
+    dataset2 =  DatasetSource.from_table(table2).to_dataset(conn)
+    assert dataset2 != dataset
+    assert dataset2 == dataset.cast({'a': types.float64})
+
+    # Lossy default semantics of int to bool cast
+    table3 = table2.alter_column_types({'a': types.boolean}, conn)
+    dataset3 = DatasetSource.from_table(table3).to_dataset(conn)
+    assert dataset3.data['a'].to_list() == [True, None, True]
+
+    # This much even duckdb won't let us do
+    with pytest.raises(duckdb.ConversionException):
+        table3.alter_column_types({'c': types.EnumDtype('a', 'c')}, conn)
+    assert DuckdbTable.from_duckdb('tab', conn) == table3, 'Did not do anything'
+
+    # In lax mode, nulls will be substituted
+    table4 = table3.alter_column_types({
+        'a': types.int32,
+        'c': types.EnumDtype('a', 'c')
+    }, conn, set_invalid_to_null=True)
+    dataset4 = DatasetSource.from_table(table4).to_dataset(conn)
+    assert dataset4.data['a'].to_list() == [1, None, 1]
+    assert dataset4.data['c'].to_list() == ['a', None, 'c']
 
 
 

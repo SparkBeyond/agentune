@@ -14,7 +14,9 @@ from frozendict import frozendict
 
 import agentune.analyze.core.setup
 from agentune.analyze.core.schema import Schema
+from agentune.analyze.core.types import Dtype
 from agentune.analyze.util.attrutil import frozendict_converter
+from agentune.analyze.util.duckdbutil import transaction_scope
 
 
 @frozen
@@ -76,6 +78,28 @@ class DuckdbTable:
             index.create(conn, self.name, if_not_exists)
 
         return conn.table(str(self.name))
+
+    def alter_column_types(self, dtypes: Mapping[str, Dtype], conn: DuckDBPyConnection,
+                           set_invalid_to_null: bool = False) -> DuckdbTable:
+        """Permanently alter the types of columns in the table.
+
+        Implemented using SQL casts; see https://duckdb.org/docs/stable/sql/data_types/typecasting.html.
+        If you need custom conversion logic, run SQL statements directly.
+        """
+        if not dtypes:
+            return self
+
+        for name in dtypes:
+            if name not in self.schema.names:
+                raise ValueError(f'Column {name} not found in table {self.name.name}')
+
+        with conn.cursor() as cursor, transaction_scope(cursor):
+            for name, dtype in dtypes.items():
+                using_clause = f'USING TRY_CAST("{name}" AS {dtype.duckdb_type})' if set_invalid_to_null else ''
+                cursor.execute(f'ALTER TABLE {self.name} ALTER COLUMN "{name}" TYPE {dtype.duckdb_type} {using_clause}')
+
+        return DuckdbTable.from_duckdb(self.name, conn)
+
 
     @staticmethod
     def from_duckdb(name: DuckdbName | str, conn: DuckDBPyConnection) -> DuckdbTable:
