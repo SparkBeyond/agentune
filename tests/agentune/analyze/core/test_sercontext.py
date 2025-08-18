@@ -1,7 +1,6 @@
 import logging
 
 import httpx
-import pytest
 from attrs import frozen
 from llama_index.llms.openai import OpenAIResponses
 
@@ -10,7 +9,6 @@ from agentune.analyze.core.sercontext import LLMWithSpec, SerializationContext
 
 _logger = logging.getLogger(__name__)
 
-@pytest.mark.asyncio
 async def test_llm_serialization() -> None:
     async with httpx.AsyncClient() as httpx_async_client:
         llm_context = LLMContext(httpx_async_client)

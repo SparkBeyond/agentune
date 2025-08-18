@@ -173,7 +173,6 @@ async def choose_assert(duckdb_conn: DuckDBPyConnection,
 
     return result
 
-@pytest.mark.asyncio
 async def test_single_variant(duckdb_conn: DuckDBPyConnection,
                               regression_data: pl.DataFrame,
                               default_params: EfficientEvaluatorParams) -> None:
@@ -181,7 +180,6 @@ async def test_single_variant(duckdb_conn: DuckDBPyConnection,
     expected_choice = variants[0]
     await choose_assert(duckdb_conn, regression_data, variants, expected_choice, default_params)
 
-@pytest.mark.asyncio
 async def test_same_signal_different_cost(duckdb_conn: DuckDBPyConnection,
                               regression_data: pl.DataFrame,
                               default_params: EfficientEvaluatorParams) -> None:
@@ -189,7 +187,6 @@ async def test_same_signal_different_cost(duckdb_conn: DuckDBPyConnection,
     expected_choice = variants[1] # Cheaper is better
     await choose_assert(duckdb_conn, regression_data, variants, expected_choice, default_params)
 
-@pytest.mark.asyncio
 async def test_not_enough_budget_for_signal(duckdb_conn: DuckDBPyConnection,
                               regression_data: pl.DataFrame,
                               default_params: EfficientEvaluatorParams) -> None:
@@ -198,7 +195,6 @@ async def test_not_enough_budget_for_signal(duckdb_conn: DuckDBPyConnection,
     expected_choice = None
     await choose_assert(duckdb_conn, regression_data, variants, expected_choice, low_eval_cost_params)
 
-@pytest.mark.asyncio
 
 async def test_same_cost_different_signal(duckdb_conn: DuckDBPyConnection,
                               regression_data: pl.DataFrame,
@@ -216,7 +212,6 @@ async def test_same_cost_different_signal(duckdb_conn: DuckDBPyConnection,
     expected_variant = noisy_variants[4]
     await choose_assert(duckdb_conn, regression_data, noisy_variants, expected_variant, params)
 
-@pytest.mark.asyncio
 async def test_all_variants_low_signal(duckdb_conn: DuckDBPyConnection,
                               regression_data: pl.DataFrame,
                               default_params: EfficientEvaluatorParams) -> None:
@@ -226,7 +221,6 @@ async def test_all_variants_low_signal(duckdb_conn: DuckDBPyConnection,
     params = attrs.evolve(default_params, min_metric=0.5)
     await choose_assert(duckdb_conn, regression_data, variants, expected_variant, params)
 
-@pytest.mark.asyncio
 async def test_time_cost_conversion(duckdb_conn: DuckDBPyConnection,
                               regression_data: pl.DataFrame,
                               default_params: EfficientEvaluatorParams) -> None:
@@ -243,7 +237,6 @@ async def test_time_cost_conversion(duckdb_conn: DuckDBPyConnection,
     assert callback.final_states[variant_both].effective_cost_per_row == variant_both.cost_per_row
     assert callback.final_states[variant_time].effective_cost_per_row == cast(datetime.timedelta, variant_time.time_per_row).total_seconds() * default_params.cost_per_second
 
-@pytest.mark.asyncio
 async def test_time_measurement(duckdb_conn: DuckDBPyConnection,
                               regression_data: pl.DataFrame,
                               default_params: EfficientEvaluatorParams) -> None:

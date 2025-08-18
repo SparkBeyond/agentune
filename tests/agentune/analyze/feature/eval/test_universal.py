@@ -61,7 +61,6 @@ def test_universal_sync_evaluator(conn: DuckDBPyConnection, sample_dataset: Data
     assert result.schema.names == ['sum']
     assert result.data['sum'].to_list() == [5.0, 7.0, 9.0]  # [1+4, 2+5, 3+6]
 
-@pytest.mark.asyncio
 async def test_universal_async_evaluator(conn: DuckDBPyConnection, sample_dataset: Dataset,
                                          async_feature: ToyAsyncFeature, contexts: TablesWithContextDefinitions) -> None:
     evaluator = UniversalAsyncFeatureEvaluator.for_features([async_feature])

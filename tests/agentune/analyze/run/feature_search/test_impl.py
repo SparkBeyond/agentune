@@ -60,9 +60,7 @@ def input_data(input_data_csv_path: Path, ddb_manager: DuckdbManager) -> Feature
         input_data = FeatureSearchInputData.from_split_table(split, 'target', TablesWithContextDefinitions.from_list([]), conn)
         return input_data
 
-@pytest.mark.asyncio
-async def test_feature_search_regression(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
-    run_context = RunContext.create_default_context(ddb_manager)
+async def test_feature_search_regression(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
     # Limit the batch size to make sure multiple batches are tested
     feature_search_runner: FeatureSearchRunner[Regression] = FeatureSearchRunnerImpl(max_features_enrich_batch_size=5)
 
@@ -77,9 +75,7 @@ async def test_feature_search_regression(input_data: FeatureSearchInputData, ddb
         results = await feature_search_runner.run(run_context, input_data, params)
         _logger.info(results)
 
-@pytest.mark.asyncio
-async def test_feature_search_classification(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
-    run_context = RunContext.create_default_context(ddb_manager)
+async def test_feature_search_classification(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
     feature_search_runner: FeatureSearchRunner[Classification] = FeatureSearchRunnerImpl(max_features_enrich_batch_size=5)
 
     selectors: list[FeatureSelector | EnrichedFeatureSelector] = [ToySyncFeatureSelector(), ToyAsyncFeatureSelector(),
@@ -93,9 +89,8 @@ async def test_feature_search_classification(input_data: FeatureSearchInputData,
         results = await feature_search_runner.run(run_context, input_data, params)
         _logger.info(results)
 
-async def _test_feature_name_collision(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager,
+async def _test_feature_name_collision(input_data: FeatureSearchInputData, run_context: RunContext,
                                        features: tuple[Feature, ...]) -> None:
-    run_context = RunContext.create_default_context(ddb_manager)
     feature_search_runner: FeatureSearchRunner[Regression] = FeatureSearchRunnerImpl()
 
     generator = ToyPrebuiltFeaturesGenerator(features)
@@ -109,23 +104,20 @@ async def _test_feature_name_collision(input_data: FeatureSearchInputData, ddb_m
     expected_features = deduplicate_feature_names(features, [input_data.target_column])
     assert result.features == tuple(expected_features)
 
-@pytest.mark.asyncio
-async def test_feature_has_same_name_as_input_column(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
-    await _test_feature_name_collision(input_data, ddb_manager, (
+async def test_feature_has_same_name_as_input_column(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
+    await _test_feature_name_collision(input_data, run_context, (
         ToySyncFeature('x', 'y', 'x', '', ''),
         ToySyncFeature('x', 'y', 'y', '', '')
     ))
 
-@pytest.mark.asyncio
-async def test_feature_has_same_name_as_target_column(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
-    await _test_feature_name_collision(input_data, ddb_manager, (
+async def test_feature_has_same_name_as_target_column(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
+    await _test_feature_name_collision(input_data, run_context, (
         ToySyncFeature('x', 'y', 'x+y', '', ''),
         ToySyncFeature('x', 'y', input_data.target_column, '', '')
     ))
 
-@pytest.mark.asyncio
-async def test_two_features_have_the_same_name(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
-    await _test_feature_name_collision(input_data, ddb_manager, (
+async def test_two_features_have_the_same_name(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
+    await _test_feature_name_collision(input_data, run_context, (
         ToySyncFeature('x', 'y', 'x+y', '', ''),
         ToySyncFeature('x', 'y', 'x+y', '', '')
     ))

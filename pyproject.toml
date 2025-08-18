@@ -44,3 +44,4 @@ addopts = [
 testpaths = [ "tests" ]
 pythonpath = ["."]
 tmp_path_retention_policy = "none"
+asyncio_mode = "auto"

@@ -11,7 +11,6 @@ from agentune.analyze.core.llm import LLMContext, LLMSpec
 
 _logger = logging.getLogger(__name__)
 
-@pytest.mark.asyncio
 async def test_llm_context() -> None:
     async with httpx.AsyncClient() as httpx_async_client:
         llm_context = LLMContext(httpx_async_client)
@@ -42,7 +41,6 @@ async def test_llm_context() -> None:
         with pytest.raises(ValueError, match='No provider found for spec'):
             llm_context.from_spec(LLMSpec('closedai', 'gpt-4o'))
 
-@pytest.mark.asyncio
 async def test_llm_cache() -> None:
     async with httpx.AsyncClient() as httpx_async_client:
         llm_context = LLMContext(httpx_async_client)

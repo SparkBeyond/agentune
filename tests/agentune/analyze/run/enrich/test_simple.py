@@ -60,7 +60,6 @@ def async_features() -> list[ToyAsyncFeature]:
     ]
 
 
-@pytest.mark.asyncio
 async def test_run(conn: DuckDBPyConnection, sample_dataset: Dataset,
                    sync_features: Sequence[ToySyncFeature], async_features: Sequence[ToyAsyncFeature]) -> None:
     contexts = TablesWithContextDefinitions({})
@@ -104,7 +103,6 @@ async def test_run(conn: DuckDBPyConnection, sample_dataset: Dataset,
         await runner.run([*async_features, *sync_features], sample_dataset, contexts, [UniversalSyncFeatureEvaluator], conn)
 
 
-@pytest.mark.asyncio
 async def test_run_with_duplicate_names(conn: DuckDBPyConnection,
                                         sample_dataset: Dataset) -> None:
     """Test run() method with duplicate feature names and deduplication enabled."""
@@ -129,7 +127,6 @@ async def test_run_with_duplicate_names(conn: DuckDBPyConnection,
         await runner.run(features, sample_dataset, contexts, evaluators, conn, deduplicate_names=False)
 
 
-@pytest.mark.asyncio
 async def test_run_with_no_evaluator_for_feature(conn: DuckDBPyConnection,
                                                  sample_dataset: Dataset,
                                                  sync_features: list[ToySyncFeature]) -> None:
@@ -142,7 +139,6 @@ async def test_run_with_no_evaluator_for_feature(conn: DuckDBPyConnection,
     with pytest.raises(ValueError, match='No evaluator found for features'):
         await runner.run(sync_features, sample_dataset, contexts, evaluators, conn)
 
-@pytest.mark.asyncio
 async def test_run_stream(conn: DuckDBPyConnection, sample_dataset: Dataset,
                           sync_features: list[ToySyncFeature], async_features: list[ToyAsyncFeature]) -> None:
     contexts = TablesWithContextDefinitions({})
@@ -165,7 +161,6 @@ async def test_run_stream(conn: DuckDBPyConnection, sample_dataset: Dataset,
     assert result_dataset == functools.reduce(Dataset.vstack, [enriched_dataset] * 5)
 
 
-@pytest.mark.asyncio
 async def test_empty_features_list(conn: DuckDBPyConnection,
                                    sample_dataset: Dataset) -> None:
     """Test run() method with empty features list."""
@@ -179,7 +174,6 @@ async def test_empty_features_list(conn: DuckDBPyConnection,
     assert result.data.height == 0
     assert result.data.width == 0
 
-@pytest.mark.asyncio
 async def test_larger_data_streaming(conn: DuckDBPyConnection) -> None:
     conn.execute('CREATE TABLE input(a int, b int)')
     conn.execute('INSERT INTO input SELECT x, y FROM unnest(range(100)) AS t1(x) CROSS JOIN unnest(range(100)) AS t2(y)')
@@ -203,7 +197,6 @@ async def test_larger_data_streaming(conn: DuckDBPyConnection) -> None:
     assert sink_dataset.data['a+b'].sort().equals(expected_sums)
     assert sink_dataset.data['a+b_'].sort().equals(expected_sums)
 
-@pytest.mark.asyncio
 async def test_keep_input_cols(conn: DuckDBPyConnection) -> None:
     conn.execute('CREATE TABLE input(a int, b int)')
     conn.execute('INSERT INTO input SELECT x, y FROM unnest(range(100)) AS t1(x) CROSS JOIN unnest(range(100)) AS t2(y)')
