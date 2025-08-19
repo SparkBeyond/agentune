@@ -1,6 +1,7 @@
 import contextlib
 from collections.abc import AsyncIterator, Iterator
 
+import httpx
 import pytest
 from duckdb import DuckDBPyConnection
 
@@ -21,8 +22,16 @@ def conn(ddb_manager: DuckdbManager) -> Iterator[DuckDBPyConnection]:
     with ddb_manager.cursor() as conn:
         yield conn
 
+
 @pytest.fixture
 async def run_context(ddb_manager: DuckdbManager) -> AsyncIterator[RunContext]:
     """Create a default RunContext backed by an in-memory DuckDBManager."""
     async with contextlib.aclosing(RunContext.create_default_context(ddb_manager)) as run_context:
         yield run_context
+
+
+@pytest.fixture
+async def httpx_client() -> AsyncIterator[httpx.AsyncClient]:
+    """Create an httpx client """
+    async with httpx.AsyncClient() as client:
+        yield client

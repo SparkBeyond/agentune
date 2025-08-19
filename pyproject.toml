@@ -40,8 +40,12 @@ llama-index-llms-openai = "^0.4.7"
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",
+    "-m not integration"
 ]
 testpaths = [ "tests" ]
 pythonpath = ["."]
 tmp_path_retention_policy = "none"
 asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (deselected by default)"
+]
