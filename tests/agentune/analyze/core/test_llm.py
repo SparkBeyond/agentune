@@ -11,54 +11,52 @@ from agentune.analyze.core.llm import LLMContext, LLMSpec
 
 _logger = logging.getLogger(__name__)
 
-async def test_llm_context() -> None:
-    async with httpx.AsyncClient() as httpx_async_client:
-        llm_context = LLMContext(httpx_async_client)
+async def test_llm_context(httpx_async_client: httpx.AsyncClient) -> None:
+    llm_context = LLMContext(httpx_async_client)
 
-        llm_spec = LLMSpec('openai', 'gpt-4o')
-        assert llm_spec.llm_type_str == 'LLM'
-        assert llm_spec.llm_type_matches(LLM)
-        assert llm_spec.llm_type_matches(OpenAI)
-        assert llm_spec.llm_type_matches(OpenAIResponses)
+    llm_spec = LLMSpec('openai', 'gpt-4o')
+    assert llm_spec.llm_type_str == 'LLM'
+    assert llm_spec.llm_type_matches(LLM)
+    assert llm_spec.llm_type_matches(OpenAI)
+    assert llm_spec.llm_type_matches(OpenAIResponses)
 
-        llm = llm_context.from_spec(llm_spec)
-        assert isinstance(llm, OpenAIResponses)
-        assert llm.model == 'gpt-4o'
-        
-        llm_spec2 = llm_context.to_spec(llm)
-        assert llm_spec2 == LLMSpec('openai', 'gpt-4o', 'OpenAIResponses')
+    llm = llm_context.from_spec(llm_spec)
+    assert isinstance(llm, OpenAIResponses)
+    assert llm.model == 'gpt-4o'
 
-        llm_spec3 = LLMSpec('openai', 'gpt-4o', 'OpenAI')
-        llm3 = llm_context.from_spec(llm_spec3)
-        assert isinstance(llm3, OpenAI)
-        assert llm3.model == 'gpt-4o'
-        assert llm_context.to_spec(llm3) == llm_spec3
+    llm_spec2 = llm_context.to_spec(llm)
+    assert llm_spec2 == LLMSpec('openai', 'gpt-4o', 'OpenAIResponses')
 
-        llm4 = llm_context.from_spec(LLMSpec('openai', 'nonesuch'))
-        assert isinstance(llm4, OpenAIResponses)
-        assert llm4.model == 'nonesuch', 'Willing to instantiate unfamiliar models'
+    llm_spec3 = LLMSpec('openai', 'gpt-4o', 'OpenAI')
+    llm3 = llm_context.from_spec(llm_spec3)
+    assert isinstance(llm3, OpenAI)
+    assert llm3.model == 'gpt-4o'
+    assert llm_context.to_spec(llm3) == llm_spec3
 
-        with pytest.raises(ValueError, match='No provider found for spec'):
-            llm_context.from_spec(LLMSpec('closedai', 'gpt-4o'))
+    llm4 = llm_context.from_spec(LLMSpec('openai', 'nonesuch'))
+    assert isinstance(llm4, OpenAIResponses)
+    assert llm4.model == 'nonesuch', 'Willing to instantiate unfamiliar models'
 
-async def test_llm_cache() -> None:
-    async with httpx.AsyncClient() as httpx_async_client:
-        llm_context = LLMContext(httpx_async_client)
+    with pytest.raises(ValueError, match='No provider found for spec'):
+        llm_context.from_spec(LLMSpec('closedai', 'gpt-4o'))
 
-        llm_spec = LLMSpec('openai', 'gpt-4o')
-        llm = llm_context.from_spec(llm_spec)
-        llm_spec2 = attrs.evolve(llm_spec)
-        llm2 = llm_context.from_spec(llm_spec)
-        assert llm_spec is not llm_spec2
-        assert llm is llm2, 'Cached instance is returned'
+async def test_llm_cache(httpx_async_client: httpx.AsyncClient) -> None:
+    llm_context = LLMContext(httpx_async_client)
 
-        llm_instance_id = id(llm)
-        
-        del llm
-        del llm2
-        gc.collect()
+    llm_spec = LLMSpec('openai', 'gpt-4o')
+    llm = llm_context.from_spec(llm_spec)
+    llm_spec2 = attrs.evolve(llm_spec)
+    llm2 = llm_context.from_spec(llm_spec)
+    assert llm_spec is not llm_spec2
+    assert llm is llm2, 'Cached instance is returned'
 
-        llm3 = llm_context.from_spec(llm_spec)
-        assert id(llm3) != llm_instance_id, 'New instance is created'
+    llm_instance_id = id(llm)
+
+    del llm
+    del llm2
+    gc.collect()
+
+    llm3 = llm_context.from_spec(llm_spec)
+    assert id(llm3) != llm_instance_id, 'New instance is created'
 
 

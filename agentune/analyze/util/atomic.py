@@ -7,8 +7,7 @@ class AtomicInt:
         self.__lock = Lock()
 
     # Get and put are already atomic under GIL semantics, supposedly: https://docs.python.org/3/faq/library.html#what-kinds-of-global-value-mutation-are-thread-safe
-    # At least, if your native int is really int sized!
-    # But using GIL to ensure threadsafety scares me.
+    # But using GIL to ensure threadsafety (concurrently with locking operations) scares me, so I take the lock anyway.
 
     def get(self) -> int: 
         with self.__lock:
@@ -18,8 +17,8 @@ class AtomicInt:
         with self.__lock:
             self.__value = value
 
-    def inc_and_get(self) -> int:
+    def inc_and_get(self, diff: int = 1) -> int:
         with self.__lock:
-            self.__value += 1
+            self.__value += diff
             return self.__value
     

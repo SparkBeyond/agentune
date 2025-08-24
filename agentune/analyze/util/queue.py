@@ -29,11 +29,20 @@ class Queue[T](Iterable[T], AsyncIterable[T]):
         """
         self._queue.shutdown(immediate=immediate)
 
-    def put(self, item: T) -> None:
-        self._queue.sync_q.put(item)
+    def put(self, item: T, timeout: float | None = None) -> None:
+        if timeout == 0.0:
+            self._queue.sync_q.put_nowait(item) # More efficient codepath
+        else:
+            self._queue.sync_q.put(item, timeout=timeout)
 
-    def get(self) -> T:
-        ret = self._queue.sync_q.get()
+    def put_nowait(self, item: T) -> None:
+        self._queue.sync_q.put_nowait(item)
+
+    def get(self, timeout: float | None = None) -> T:
+        if timeout == 0.0:
+            ret = self._queue.sync_q.get_nowait() # More efficient codepath
+        else:
+            ret = self._queue.sync_q.get(timeout=timeout)
         self._queue.sync_q.task_done()
         return ret
     

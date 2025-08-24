@@ -26,7 +26,7 @@ select = [
     "PT",                               # flake8-pytest-style
     "Q",                                # flake8-quotes
     "RSE",                              # flake8-raise
-    "SIM101", "SIM102", "SIM105", "SIM107", "SIM113", "SIM115", "SIM117", "SIM118", "SIM220", "SIM221", "SIM222", "SIM223", "SIM401", "SIM905", "SIM910", "SIM911", 
+    "SIM101", "SIM102", "SIM105", "SIM107", "SIM113", "SIM115", "SIM118", "SIM220", "SIM221", "SIM222", "SIM223", "SIM401", "SIM905", "SIM910", "SIM911",
     "SLOT",                             # flake8-slots
     "TID",                              # flake8-tidy-imports
     "ARG",                              # flake8-unused-arguments
@@ -51,6 +51,7 @@ select = [
 
 ignore = [
     "E203", "E266", "E501",             # Relax whitespace & long-line rules
+    "E701",                             # Two statements on one line, e.g. `case foo: return bar`
     "W293",                             # Blank line contains whitespace
     "W291",                             # Trailing whitespace
     "TC001", "TC002", "TC003",          # Move imports used only for type hints into type-checking block
@@ -80,6 +81,8 @@ ignore = [
     "RUF002",                           # "Ambiguous" Unicode characters (like the scary lowercase sigma, σ)
     "B008",                             # No function calls in the definition of a function's default argument
     "UP037",                            # Don't use string type annotations - they can be necessary when avoiding a circular import
+    "PT018",                            # assert x and y
+    "PT012",                            # pytest.assert block should contain a single simple statement (oh noes! we have two!)
 
     # Rules we may want to enforce in the future but are ignored for now
     "S101",                             # Use of assert

@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
-from typing import override
+from typing import cast, override
 
 import cattrs
 import duckdb
@@ -106,6 +106,14 @@ class DuckdbTable:
         if isinstance(name, str):
             name = DuckdbName.qualify(name, conn)
         return DuckdbTable(name, Schema.from_duckdb(conn.table(str(name))), ArtIndex.from_duckdb(name, conn))
+
+    @staticmethod
+    def exists(name: DuckdbName | str, conn: DuckDBPyConnection) -> bool:
+        if isinstance(name, str):
+            name = DuckdbName.qualify(name, conn)
+        conn.execute('SELECT EXISTS(SELECT * FROM duckdb_tables() WHERE database_name = ? AND schema_name = ? AND table_name = ?)',
+                    [name.database, name.schema, name.name])
+        return cast(tuple[bool], conn.fetchone())[0]
 
 
 class DuckdbIndex(ABC): 

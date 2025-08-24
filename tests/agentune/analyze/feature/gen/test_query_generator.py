@@ -93,9 +93,9 @@ def test_dataset_with_context(test_data_paths: dict[str, Path], conn: DuckDBPyCo
     return main_dataset, 'outcome', contexts
 
 @pytest.fixture
-async def real_llm_with_spec(httpx_client: httpx.AsyncClient) -> LLMWithSpec:
+async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSpec:
     """Create a real LLM for end-to-end testing."""
-    llm_context = LLMContext(httpx_client)
+    llm_context = LLMContext(httpx_async_client)
     llm_spec = LLMSpec('openai', 'gpt-4o-mini')  # Use a smaller, faster model for testing
     llm_with_spec = LLMWithSpec(
         llm=llm_context.from_spec(llm_spec),
