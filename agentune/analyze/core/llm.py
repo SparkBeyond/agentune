@@ -9,7 +9,12 @@ from typing import override
 import attrs
 import httpx
 from attrs import field, frozen
+from llama_index.core.base.llms.types import ChatResponse, CompletionResponse
 from llama_index.core.llms import LLM
+
+from agentune.analyze.llmcache.base import LLMCacheBackend, LLMCacheKey
+from agentune.analyze.llmcache.openai_cache import CachingOpenAI, CachingOpenAIResponses
+from agentune.analyze.util.lrucache import LRUCache
 
 _logger = logging.getLogger(__name__)
 
@@ -36,7 +41,13 @@ class LLMProvider(ABC):
     """
 
     @abstractmethod
-    def from_spec(self, spec: LLMSpec, context: LLMContext) -> LLM | None: ...
+    def from_spec(self, spec: LLMSpec, context: LLMContext) -> LLM | None:
+        """Provide an LLM instance matching a spec.
+
+        If a cache_backend is provided, try to use it; if fail_if_cannot_cache is True,
+        raise a TypeError if the model can be supported but not with caching.
+        """
+        ...
 
     @abstractmethod
     def to_spec(self, model: LLM) -> LLMSpec | None: ...
@@ -73,10 +84,17 @@ class DefaultLLMProvider(LLMProvider):
                 try:
                     from llama_index.llms.openai import OpenAI, OpenAIResponses
                     # Prefer OpenAIResponses if a nonspecific type is requested
+                    llm: LLM
                     if spec.llm_type_matches(OpenAIResponses):
-                        return OpenAIResponses(model=spec.model_name, http_client=context.httpx_client, async_http_client=context.httpx_async_client)
+                        llm = OpenAIResponses(model=spec.model_name, http_client=context.httpx_client, async_http_client=context.httpx_async_client)
+                        if context.cache_backend is not None:
+                            return CachingOpenAIResponses.adapt(llm, context.cache_backend)
+                        return llm
                     if spec.llm_type_matches(OpenAI):
-                        return OpenAI(model=spec.model_name, http_client=context.httpx_client, async_http_client=context.httpx_async_client)
+                        llm = OpenAI(model=spec.model_name, http_client=context.httpx_client, async_http_client=context.httpx_async_client)
+                        if context.cache_backend is not None:
+                            return CachingOpenAI.adapt(llm, context.cache_backend)
+                        return llm
                     raise ValueError(f'Spec for "openai" model has unsatisfiable llm type {spec.llm_type_str}')
                 except ImportError as e:
                     e.add_note('Install the llama-index-llms-openai package to use this model.')
@@ -88,8 +106,10 @@ class DefaultLLMProvider(LLMProvider):
     def to_spec(self, model: LLM) -> LLMSpec | None:
         try:
             from llama_index.llms.openai import OpenAI, OpenAIResponses
-            if isinstance(model, OpenAI | OpenAIResponses):
-                return LLMSpec(origin='openai', model_name=model.model, llm_type_str=type(model).__name__)
+            if isinstance(model, OpenAI):
+                return LLMSpec(origin='openai', model_name=model.model, llm_type_str=OpenAI.__name__)
+            elif isinstance(model, OpenAIResponses):
+                return LLMSpec(origin='openai', model_name=model.model, llm_type_str=OpenAIResponses.__name__)
         except ImportError:
             pass
 
@@ -101,6 +121,10 @@ class LLMContext:
     
     This is configurable via registering providers that know how to create models
     and registering hooks that further configure model instances after they are created.
+
+    Args:
+        fail_if_cannot_cache: if a cache_backend is provided, but caching is not supported or implement for the model
+                              being requested, fail if this is True, and proceed without caching if this is False.
     """
 
     # These are needed to create (most) model instances.
@@ -110,6 +134,9 @@ class LLMContext:
     #  or probably not, but also probably not the *httpx* defaults, I should check what they are.
 
     httpx_client: httpx.Client = fake_httpx_client # Disallow synchronous HTTP requests by default
+
+    cache_backend: LLMCacheBackend | None = field(factory=lambda: LRUCache[LLMCacheKey, CompletionResponse | ChatResponse](1000))
+    fail_if_cannot_cache: bool = True
 
     hooks: tuple[LLMSetupHook, ...] = ()
     providers: tuple[LLMProvider, ...] = field(factory=lambda: (DefaultLLMProvider(),))
