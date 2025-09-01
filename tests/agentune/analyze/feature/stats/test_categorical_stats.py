@@ -35,6 +35,9 @@ class SimpleCategoricalFeature(CategoricalFeature):
     description: str = 'Test categorical feature'
     code: str = 'def evaluate(df): return df[self.name]'
 
+    # Redeclare attributes with defaults
+    default_for_missing: str = CategoricalFeature.other_category
+
     @property
     def params(self) -> Schema:
         # Schema constructor expects Field objects

@@ -75,7 +75,7 @@ ignore = [
     "TRY300",                           # No return inside try
     "A002",                             # `input` is shadowing a Python builtin
     "DTZ005",                           # `datetime.datetime.now()` called without a `tz` argument - it's fine to use naive dates and assume UTC
-    "C901", "PLR0904", "PLR0912", "PLR0913", "PLR0914", "PLR0915",                 # Too complex, too many branches, etc
+    "C901", "PLR0904", "PLR0911", "PLR0912", "PLR0913", "PLR0914", "PLR0915",                 # Too complex, too many branches, etc
     "PIE808",                           # Unnecessary `start` argument in `range`
     "S311",                             # Use of `random` module
     "RUF002",                           # "Ambiguous" Unicode characters (like the scary lowercase sigma, σ)

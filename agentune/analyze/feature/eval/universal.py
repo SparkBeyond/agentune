@@ -38,7 +38,7 @@ class UniversalSyncFeatureEvaluator(SyncFeatureEvaluator[SyncFeature]):
     @override
     def evaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
                  conn: DuckDBPyConnection) -> Dataset:
-        new_series = [feature.evaluate_batch(dataset, contexts, conn) for feature in self.features]
+        new_series = [feature.evaluate_batch_safe(dataset, contexts, conn) for feature in self.features]
         new_cols = tuple(Field(feature.name, feature.dtype) for feature in self.features)
         return Dataset(Schema(new_cols), pl.DataFrame({col.name: series for col, series in zip(new_cols, new_series, strict=True)}))
 
@@ -62,6 +62,6 @@ class UniversalAsyncFeatureEvaluator(FeatureEvaluator[Feature]):
     @override
     async def aevaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
                         conn: DuckDBPyConnection) -> Dataset:
-        new_series = await asyncio.gather(*[feature.aevaluate_batch(dataset, contexts, conn) for feature in self.features])
+        new_series = await asyncio.gather(*[feature.aevaluate_batch_safe(dataset, contexts, conn) for feature in self.features])
         new_cols = tuple(Field(feature.name, feature.dtype) for feature in self.features)
         return Dataset(Schema(new_cols), pl.DataFrame({col.name: series for col, series in zip(new_cols, new_series, strict=True)}))

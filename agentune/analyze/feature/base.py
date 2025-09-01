@@ -1,9 +1,12 @@
 import asyncio
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, Literal, override
+from typing import Any, ClassVar, Literal, final, override
 
+import attrs
 import polars as pl
+import polars._typing
 from attrs import define
 from duckdb import DuckDBPyConnection
 from llama_index.core.llms import ChatMessage, ChatResponse
@@ -25,6 +28,16 @@ type Regression = Literal['regression']
 class Feature[T](ABC):
     """A feature calculates a value that can be used to predict the target in a dataset.
 
+    Handling errors, missing values, and non-finite float values in feature outputs:
+        The methods (a)evaluate, (a)evaluate_batch can raise an error, return a missing value (None for `evaluate`),
+        return a NaN or +/- infinity value for float features, and return an unexpected string for categorical features.
+
+        The _safe variants return None instead of raising an error.
+        For categorical features, they also return the special value `CategoricalFeature.other_category`
+        if `evaluate` returns an unexpected value (one not in the feature's categories list).
+
+        The _with_defaults variants substitute the default_for_xxx attributes in these five cases.
+
     Implementation note:
         This base class is annotated with @attrs.define, and all implementations must be attrs classes.
         We rely on attrs.evolve() being able to change e.g. feature names and descriptions.
@@ -35,7 +48,9 @@ class Feature[T](ABC):
         description: Human-readable description of the feature.
         code: Python code that computes this feature. The code should define a function `evaluate` with the needed params. 
               SQL features will expose code that executes the SQL query.
-              
+        default_for_missing: a value substituted by evaluate_with_defaults if the underlying `evaluate` outputs
+                             a missing value.
+
     Type parameters:
         T: The type of the feature's output values, when they appear as scalars.
            This is not a free type parameter; only the values defined by the subclasses below, such as IntFeature, are allowed.
@@ -46,6 +61,8 @@ class Feature[T](ABC):
 
     name: str
     description: str
+
+    default_for_missing: T
 
     @property
     @abstractmethod
@@ -91,7 +108,7 @@ class Feature[T](ABC):
     # A feature must override at least one of evaluate or evaluate_batch.
 
     async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
-                        conn: DuckDBPyConnection) -> T: 
+                        conn: DuckDBPyConnection) -> T | None:
         """Evaluate a single row.
 
         The arguments `args` are in the order given by `self.params`.
@@ -108,12 +125,61 @@ class Feature[T](ABC):
         )
         return (await self.aevaluate_batch(Dataset(self.params, df), contexts, conn))[0]
 
+    async def aevaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+                             conn: DuckDBPyConnection) -> T | None:
+        """As `aevaluate`, but returns None (a missing value) instead of raising an error.
+
+        For categorical features, also returns the Other category if `evaluate` returned an unexpected value.
+        """
+        try:
+            return await self.aevaluate(args, contexts, conn)
+        except Exception: # noqa: BLE001
+            return None
+
+    async def aevaluate_with_defaults(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+                                      conn: DuckDBPyConnection) -> T:
+        """As `aevaluate`, but substitutes the self.default_for_xxx values in case of missing values or errors."""
+        value = await self.aevaluate_safe(args, contexts, conn)
+        return self.substitute_defaults(value)
+
+    def substitute_defaults(self, value: T | None) -> T:
+        """Apply the same logic as aevaluate_with_defaults.
+
+        This method should NOT be overridden by feature implementations.
+        """
+        if value is None:
+            return self.default_for_missing
+        return value
+
+    def subsistute_defaults_batch(self, values: pl.Series) -> pl.Series:
+        """Apply the same logic as aevaluate_batch_with_defaults.
+
+        This method should NOT be overridden by feature implementations.
+        """
+        return values.fill_null(self.default_for_missing)
+
     async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
                               conn: DuckDBPyConnection) -> pl.Series: 
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
-        results = asyncio.gather(*[self.aevaluate(row, contexts, conn) for row in strict_df.iter_rows()])
+        results = await asyncio.gather(*[self.aevaluate(row, contexts, conn) for row in strict_df.iter_rows()])
         return pl.Series(name=self.name, dtype=self.dtype.polars_type, values=results)
 
+    async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                                   conn: DuckDBPyConnection) -> pl.Series:
+        try:
+            return await self.aevaluate_batch(input, contexts, conn)
+        except Exception: # noqa: BLE001
+            return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
+
+    async def aevaluate_batch_with_defaults(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                                            conn: DuckDBPyConnection) -> pl.Series:
+        """As `aevaluate_batch`, but substitutes the self.default_for_xxx values for missing values.
+
+        An error causes the whole batch's output to be returned as the default for errors.
+
+        This method should NOT be overridden by feature implementations.
+        """
+        return self.subsistute_defaults_batch(await self.aevaluate_batch_safe(input, contexts, conn))
 
 # Every feature must implement exactly one of the feature value type interfaces (IntFeature, etc) - 
 # it is not enough to directly implement e.g. Feature[int].
@@ -125,72 +191,227 @@ class Feature[T](ABC):
 # We might prefer a simpler world where feature outputs can't be missing, but that would not allow us
 # to use input columns as features.
 
-class NumericFeature[T](Feature[T]): 
+class NumericFeature[T](Feature[T]):
+    @final
     @override
     def is_numeric(self) -> bool: return True
 
 # Other int sizes or unsigned ints can be added as needed.
-class IntFeature(NumericFeature[int | None]): 
+@define
+class IntFeature(NumericFeature[int]):
+    @final
     @property
     @override
     def dtype(self) -> Dtype: return agentune.analyze.core.types.int32
 
-class FloatFeature(NumericFeature[float | None]):
+@define
+class FloatFeature(NumericFeature[float]):
+    default_for_nan: float
+    default_for_infinity: float
+    default_for_neg_infinity: float
+
+    @final
     @property
     @override
     def dtype(self) -> Dtype: return agentune.analyze.core.types.float64
 
-class BoolFeature(Feature[bool | None]): 
+    @final
+    @override
+    def substitute_defaults(self, result: float | None) -> float:
+        if result is None: return self.default_for_missing
+        elif result == math.inf: return self.default_for_infinity
+        elif result == (- math.inf): return self.default_for_neg_infinity
+        elif math.isnan(result): return self.default_for_nan
+        else: return result
+
+    @final
+    @override
+    def subsistute_defaults_batch(self, series: pl.Series) -> pl.Series:
+        return series.replace([None, math.nan, math.inf, -math.inf],
+                              [self.default_for_missing, self.default_for_nan, self.default_for_infinity, self.default_for_neg_infinity])
+
+
+@define
+class BoolFeature(Feature[bool]):
+    @final
     @override
     def is_numeric(self) -> bool: return False
 
+    @final
     @property
     @override
     def dtype(self) -> Dtype: return agentune.analyze.core.types.boolean
 
-class CategoricalFeature(Feature[str | None]): 
+@define
+class CategoricalFeature(Feature[str]):
+
+    # Special category name that every categorical feature is allowed to return if it encounters an unexpected value.
+    other_category: ClassVar[str] = '_other_'
+
+    # Possible categories of this feature, not including the special other_category.
+    categories: tuple[str, ...] = attrs.field()
+
+    @categories.validator
+    def _categories_validator(self, _attribute: attrs.Attribute, value: tuple[str, ...]) -> None:
+        if len(value) == 0:
+            raise ValueError('CategoricalFeature must have at least one category')
+        if self.other_category in value:
+            raise ValueError(f'CategoricalFeature cannot contain the special Other category {CategoricalFeature.other_category}')
+        if '' in value:
+            raise ValueError('The empty string is not a valid category')
+        if len(set(value)) != len(value):
+            raise ValueError('CategoricalFeature cannot contain duplicate categories')
+
+    @final
     @property
-    @abstractmethod
-    def categories(self) -> Sequence[str]: ...
+    def categories_with_other(self) -> Sequence[str]:
+        return (*self.categories, CategoricalFeature.other_category)
     
+    @final
     @override
     def is_numeric(self) -> bool: return False
 
+    @final
     @property
     @override
     def dtype(self) -> Dtype: return agentune.analyze.core.types.string
 
-# -------- Other feature types
+    @final
+    @override
+    async def aevaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+                             conn: DuckDBPyConnection) -> str | None:
+        result = await super().aevaluate_safe(args, contexts, conn)
+        if result == '':
+            return None
+        elif result is not None and result != CategoricalFeature.other_category and result not in self.categories:
+            return CategoricalFeature.other_category
+        else:
+            return result
+
+    def _series_result_with_other_category(self, series: pl.Series) -> pl.Series:
+        enum_dtype = pl.datatypes.Enum(self.categories)
+        df = pl.DataFrame({'raw': series})
+        return df.select(
+            pl.when(pl.col('raw') == '').then(pl.lit(None)) \
+                .when(pl.col('raw').cast(enum_dtype, strict=False).is_null() & pl.col('raw').is_not_null()) \
+                .then(pl.lit(CategoricalFeature.other_category)) \
+                .otherwise(pl.col('raw')) \
+                .alias(self.name)
+        )[self.name]
+
+    @override
+    async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                                   conn: DuckDBPyConnection) -> pl.Series:
+        result = await super().aevaluate_batch_safe(input, contexts, conn)
+        return self._series_result_with_other_category(result)
+
+# -------- Synchronous features
+# A synchronous feature must extend one of the subclasses specific to the feature type, like SyncIntFeature.
 
 class SyncFeature[T](Feature[T]):
     # A feature must override at least one of evaluate or evaluate_batch.
     
     def evaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
-                 conn: DuckDBPyConnection) -> T: 
+                 conn: DuckDBPyConnection) -> T | None:
         df = pl.DataFrame(
             {col.name: [value] for col, value in zip(self.params.cols, args, strict=True)},
             schema=self.params.to_polars()
         )
         return self.evaluate_batch(Dataset(self.params, df), contexts, conn)[0]
 
+    def evaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+                      conn: DuckDBPyConnection) -> T | None:
+        try:
+            return self.evaluate(args, contexts, conn)
+        except Exception: # noqa: BLE001
+            return None
+
+    @final
+    def evaluate_with_defaults(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+                               conn: DuckDBPyConnection) -> T:
+        value = self.evaluate_safe(args, contexts, conn)
+        return self.substitute_defaults(value)
+
     def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
                        conn: DuckDBPyConnection) -> pl.Series: 
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
         return pl.Series(name=self.name, dtype=self.dtype.polars_type, 
-                         values=[self.evaluate(row, contexts, conn) for row in strict_df.iter_rows()])   
+                         values=[self.evaluate(row, contexts, conn) for row in strict_df.iter_rows()])
+
+    def evaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                            conn: DuckDBPyConnection) -> pl.Series:
+        try:
+            return self.evaluate_batch(input, contexts, conn)
+        except Exception: # noqa: BLE001
+            return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
+
+    @final
+    def evaluate_batch_with_defaults(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                                     conn: DuckDBPyConnection) -> pl.Series:
+        return self.subsistute_defaults_batch(self.evaluate_batch_safe(input, contexts, conn))
 
     @override 
     async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
-                       conn: DuckDBPyConnection) -> T:
+                       conn: DuckDBPyConnection) -> T | None:
         with conn.cursor() as cursor:
             return await asyncio.to_thread(self.evaluate, args, contexts, cursor)
+
+    @override
+    async def aevaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+                             conn: DuckDBPyConnection) -> T | None:
+        with conn.cursor() as cursor:
+            return await asyncio.to_thread(self.evaluate_safe, args, contexts, cursor)
+
+    @override
+    async def aevaluate_with_defaults(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+                                      conn: DuckDBPyConnection) -> T:
+        with conn.cursor() as cursor:
+            return await asyncio.to_thread(self.evaluate_with_defaults, args, contexts, cursor)
 
     @override
     async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
                               conn: DuckDBPyConnection) -> pl.Series:
         with conn.cursor() as cursor:
             return await asyncio.to_thread(self.evaluate_batch, input, contexts, cursor)
-    
+
+    @override
+    async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                                   conn: DuckDBPyConnection) -> pl.Series:
+        with conn.cursor() as cursor:
+            return await asyncio.to_thread(self.evaluate_batch_safe, input, contexts, cursor)
+
+
+    @override
+    async def aevaluate_batch_with_defaults(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                                            conn: DuckDBPyConnection) -> pl.Series:
+        with conn.cursor() as cursor:
+            return await asyncio.to_thread(self.evaluate_batch_with_defaults, input, contexts, cursor)
+
+class SyncIntFeature(IntFeature, SyncFeature[int]): pass
+
+class SyncFloatFeature(FloatFeature, SyncFeature[float]): pass
+
+class SyncBoolFeature(BoolFeature, SyncFeature[bool]): pass
+
+class SyncCategoricalFeature(CategoricalFeature, SyncFeature[str]):
+    @override
+    def evaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+                      conn: DuckDBPyConnection) -> str | None:
+        result = super().evaluate_safe(args, contexts, conn)
+        if result == '':
+            return None
+        elif result is not None and result != CategoricalFeature.other_category and result not in self.categories:
+            return CategoricalFeature.other_category
+        else:
+            return result
+
+    @override
+    def evaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                                   conn: DuckDBPyConnection) -> pl.Series:
+        result = super().evaluate_batch_safe(input, contexts, conn)
+        return self._series_result_with_other_category(result)
+
+# -------- Other feature types
 
 class SqlQueryFeature(Feature):
     """A feature that can be represented to the user as an SQL query.
@@ -227,9 +448,9 @@ class SinglePromptLlmFeature[T](LlmFeature[T]):
                    conn: DuckDBPyConnection) -> Sequence[ChatMessage]: ...
 
     @abstractmethod
-    def parse_result(self, result: ChatResponse) -> T: ...
+    def parse_result(self, result: ChatResponse) -> T | None: ...
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
-                        conn: DuckDBPyConnection) -> T: 
+                        conn: DuckDBPyConnection) -> T | None:
         return self.parse_result(await self.model.llm.achat(self.row_prompt(args, contexts, conn)))

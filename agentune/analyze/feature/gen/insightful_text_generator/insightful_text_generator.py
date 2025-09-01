@@ -10,7 +10,7 @@ from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.base import Feature
-from agentune.analyze.feature.gen.base import FeatureGenerator
+from agentune.analyze.feature.gen.base import FeatureGenerator, GeneratedFeature
 from agentune.analyze.feature.gen.insightful_text_generator.dedup.base import (
     QueryDeduplicator,
     SimpleDeduplicator,
@@ -97,7 +97,7 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
         return []  # Implement logic to create Features from the enriched queries
 
     async def agenerate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions,
-                        conn: DuckDBPyConnection) -> AsyncIterator[F]:
+                        conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]:
         target_field = feature_search.schema[target_column]
         conversation_contexts = self.find_conversation_contexts(contexts)
 
@@ -128,5 +128,5 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
 
             # Yield features one by one
             for feature in features:
-                yield feature
+                yield GeneratedFeature(feature, False)
 

@@ -38,8 +38,13 @@ _logger = logging.getLogger(__name__)
 class DelayingAsyncFeature(ToyAsyncFeature):
     delay_per_row: datetime.timedelta
     add_random_noise: float = 0.0
-
     _rnd: random.Random = field(init=False, eq=False, hash=False, factory=lambda: random.Random(42))
+
+    # Redeclare attributes with defaults
+    default_for_missing: float = 0.0
+    default_for_nan: float = 0.0
+    default_for_infinity: float = 0.0
+    default_for_neg_infinity: float = 0.0
 
     @override 
     async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
@@ -224,7 +229,9 @@ async def test_all_variants_low_signal(duckdb_conn: DuckDBPyConnection,
 async def test_time_cost_conversion(duckdb_conn: DuckDBPyConnection,
                               regression_data: pl.DataFrame,
                               default_params: EfficientEvaluatorParams) -> None:
-    feature = DelayingAsyncFeature('a', 'b', 'a+b', '', '', datetime.timedelta(0))
+    feature = DelayingAsyncFeature('a', 'b', 'a+b', '', '', datetime.timedelta(0),
+                                   default_for_nan=0.0, default_for_missing=0.0,
+                                   default_for_infinity=0.0, default_for_neg_infinity=0.0)
     variant_cost = NamedVariant(feature, cost_per_row=1.0, name='cost=1.0')
     variant_time = NamedVariant(feature, time_per_row=datetime.timedelta(seconds=2.0), name='time=2.0')
     variant_both = NamedVariant(feature, cost_per_row=5.0, time_per_row=datetime.timedelta(seconds=7.0), name='cost=5.0, time=7.0')

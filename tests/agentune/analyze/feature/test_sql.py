@@ -28,6 +28,9 @@ class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
     code: str = ''
     context_definitions: Sequence[ContextDefinition] = ()
 
+    # Redeclare attributes with defaults
+    default_for_missing: int = 0
+
 def test_sql_feature() -> None:
     with duckdb.connect(':memory:TestSqlFeature') as conn:
         conn.execute('CREATE TABLE context_table (key int, value int)')

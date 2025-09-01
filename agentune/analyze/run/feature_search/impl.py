@@ -1,8 +1,9 @@
 import asyncio
 import itertools
 import logging
+import math
 from collections.abc import Sequence
-from typing import override
+from typing import cast, override
 
 import attrs
 import polars as pl
@@ -13,9 +14,21 @@ from tests.agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.database import DuckdbInMemoryDatabase, DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource
-from agentune.analyze.feature.base import Feature, TargetKind
-from agentune.analyze.feature.dedup_names import deduplicate_feature_names
-from agentune.analyze.feature.gen.base import FeatureGenerator, SyncFeatureGenerator
+from agentune.analyze.core.schema import restore_df_types
+from agentune.analyze.feature.base import (
+    BoolFeature,
+    CategoricalFeature,
+    Feature,
+    FloatFeature,
+    IntFeature,
+    TargetKind,
+)
+from agentune.analyze.feature.dedup_names import deduplicate_feature_names, deduplicate_strings
+from agentune.analyze.feature.gen.base import (
+    FeatureGenerator,
+    GeneratedFeature,
+    SyncFeatureGenerator,
+)
 from agentune.analyze.feature.select.base import (
     FeatureSelector,
     SyncEnrichedFeatureSelector,
@@ -80,7 +93,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
 
         # Later we will go back to the original list to recover the original name of each selected feature,
         # since after selection not all deduplication will be needed
-        deduplicated_candidate_features = deduplicate_feature_names(candidate_features, existing_names=[data.target_column])
+        deduplicated_candidate_features = self._deduplicate_generated_feature_names(candidate_features, existing_names=[data.target_column])
 
         # Evaluate candidate features on the feature_search dataset, storing the results in a temporary database.
         # We use a temp database not only because we discard it later, but because we're going to create
@@ -90,12 +103,12 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         run_context.ddb_manager.attach(DuckdbInMemoryDatabase(), temp_db_name)
         try:
             with run_context.ddb_manager.cursor() as conn:
-                enriched_feature_search_group_tables = await self._enrich_in_batches(
+                (enriched_feature_search_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
                     deduplicated_candidate_features, data.feature_search,
                     data.contexts, conn, params, DuckdbName('enriched_feature_search', temp_db_name),
                     data.target_column
                 )
-                selected_features = await self._select_features(deduplicated_candidate_features,
+                selected_features = await self._select_features(features_with_updated_defaults,
                                                                 data.feature_search, data.target_column,
                                                                 enriched_feature_search_group_tables,
                                                                 params, conn)
@@ -103,11 +116,15 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
             run_context.ddb_manager.detach(temp_db_name)
 
         # Get the original version of the selected features, and re-deduplicate their names
-        def orig_feature(selected_feature: Feature) -> Feature:
-            return candidate_features[deduplicated_candidate_features.index(selected_feature)]
+        # Some of the original deduplications may no longer be necessary.
+        # Note that we need to use the selected feature and not the original feature at that index,
+        # because it has updated defaults.
+        def original_name(feature: Feature) -> str:
+            index = next(idx for idx, gen in enumerate(deduplicated_candidate_features) if gen.feature.name == feature.name)
+            return candidate_features[index].feature.name
 
-        original_selected_features = [orig_feature(feature) for feature in selected_features]
-        deduplicated_selected_features = deduplicate_feature_names(original_selected_features, existing_names=[data.target_column])
+        selected_features_with_original_names = [attrs.evolve(feature, name=original_name(feature)) for feature in selected_features]
+        deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[data.target_column])
 
         with run_context.ddb_manager.cursor() as conn:
             enriched_eval_sink = DatasetSink.into_unqualified_duckdb_table('enriched_eval', conn) # TODO nonce name or parameter specifying storage target
@@ -130,9 +147,16 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
 
             return FeatureSearchResults(tuple(features_with_eval_stats), tuple(features_with_test_stats))
 
+    def _deduplicate_generated_feature_names(self, features: Sequence[GeneratedFeature],
+                                             existing_names: Sequence[str] = ()) -> list[GeneratedFeature]:
+        return [GeneratedFeature(attrs.evolve(gen.feature, name=new_name), gen.has_good_defaults)
+                if new_name != gen.feature.name else gen
+                for gen, new_name in zip(features, deduplicate_strings([gen.feature.name for gen in features],
+                                                                       existing=existing_names), strict=False)]
+
     async def _generate_features(self, conn: DuckDBPyConnection, data: FeatureSearchInputData,
-                                 generators: Sequence[FeatureGenerator]) -> list[Feature]:
-        async with ScopedQueue[Feature](maxsize=0) as queue: # maxsize=0 means unlimited
+                                 generators: Sequence[FeatureGenerator]) -> list[GeneratedFeature]:
+        async with ScopedQueue[GeneratedFeature](maxsize=0) as queue: # maxsize=0 means unlimited
             sync_generators = [generator for generator in generators if isinstance(generator, SyncFeatureGenerator)]
             async_generators = [generator for generator in generators if not isinstance(generator, SyncFeatureGenerator)]
 
@@ -148,7 +172,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
             queue.close() # so that iteration will terminate when producing the list()
             return list(queue)
 
-    async def _generate_sync(self, conn: DuckDBPyConnection, output_queue: Queue[Feature], data: FeatureSearchInputData,
+    async def _generate_sync(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: FeatureSearchInputData,
                              generators: list[SyncFeatureGenerator]) -> None:
         if not generators:
             return
@@ -162,7 +186,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                     _logger.info(f'Done generating features with {generator=}')
             await asyncio.to_thread(sync_generate)
 
-    async def _generate_async(self, conn: DuckDBPyConnection, output_queue: Queue[Feature], data: FeatureSearchInputData,
+    async def _generate_async(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: FeatureSearchInputData,
                               generators: list[FeatureGenerator]) -> None:
         async def agenerate(generator: FeatureGenerator) -> None:
             _logger.info(f'Generating features with {generator=}')
@@ -176,10 +200,10 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
             for generator in generators:
                 await agenerate(generator)
 
-    async def _enrich_in_batches(self, features: list[Feature], dataset: Dataset,
-                                 contexts: TablesWithContextDefinitions, conn: DuckDBPyConnection,
-                                 params: FeatureSearchParams, target_table_base_name: DuckdbName,
-                                 target_column: str) -> list[DuckdbTable]:
+    async def _enrich_in_batches_and_update_defaults(self, features: list[GeneratedFeature], dataset: Dataset,
+                                                     contexts: TablesWithContextDefinitions, conn: DuckDBPyConnection,
+                                                     params: FeatureSearchParams, target_table_base_name: DuckdbName,
+                                                     target_column: str) -> tuple[list[DuckdbTable], list[Feature]]:
         """Enrich these features in batches of size up to self.max_features_enrich_batch_size,
         and return a table per batch.
 
@@ -187,18 +211,30 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         """
         feature_groups = list(itertools.batched(features, self.max_features_enrich_batch_size))
         tables = []
+        features_with_updated_defaults = []
         for index, feature_group in enumerate(feature_groups):
             keep_input_columns = (target_column,) if index == 0 else ()
-            enriched_group = await params.enrich_runner.run(feature_group, dataset, contexts, params.evaluators,
+            enriched_group = await params.enrich_runner.run([gen.feature for gen in feature_group],
+                                                            dataset, contexts, params.evaluators,
                                                             conn, keep_input_columns=keep_input_columns,
                                                             deduplicate_names=False)
             group_table_name = attrs.evolve(target_table_base_name, name=f'{target_table_base_name.name}_{index}')
             DatasetSink.into_duckdb_table(group_table_name).write(
                 DatasetSource.from_dataset(enriched_group), conn)
-            tables.append(DuckdbTable.from_duckdb(group_table_name, conn))
+            table = DuckdbTable.from_duckdb(group_table_name, conn)
+            tables.append(table)
+
+            for gen in feature_group:
+                if gen.has_good_defaults:
+                    features_with_updated_defaults.append(gen.feature)
+                else:
+                    rel = conn.table(str(table.name)).select(f'"{gen.feature.name}"')
+                    df = restore_df_types(rel.pl(), table.schema.select(gen.feature.name))
+                    series = df[gen.feature.name]
+                    features_with_updated_defaults.append(self._update_feature_defaults(gen.feature, series))
 
         _logger.info(f'Enriched {len(features)} features in {len(feature_groups)} batches')
-        return tables
+        return (tables, features_with_updated_defaults)
 
     def _join_tables(self, tables: list[DuckdbTable], conn: DuckDBPyConnection) -> DatasetSource:
         """Join several tables on their 'default' order (i.e. the rowid).
@@ -257,6 +293,26 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
 
             else:
                 return list(await selector.aselect_features(candidate_features, enriched_source, target_col, conn))
+
+    def _update_feature_defaults[F: Feature](self, feature: F, enriched: pl.Series) -> F:
+        match feature:
+            case IntFeature():
+                return cast(F, attrs.evolve(feature, default_for_missing=int(cast(float, enriched.median()))))
+            case BoolFeature():
+                return cast(F, attrs.evolve(feature, default_for_missing=False))
+            case CategoricalFeature():
+                return cast(F, attrs.evolve(feature, default_for_missing=CategoricalFeature.other_category))
+            case FloatFeature():
+                finite_values = enriched.replace([math.inf, -math.inf], [None, None])
+                max_val = cast(float, finite_values.max()) + 1
+                min_val = cast(float, finite_values.min()) - 1
+                substituted = enriched.replace([math.inf, -math.inf], [max_val, min_val])
+                median = cast(float, substituted.median())
+                return cast(F, attrs.evolve(feature, default_for_missing=median, default_for_nan=median,
+                                            default_for_infinity=max_val, default_for_neg_infinity=min_val))
+            case _:
+                raise TypeError(f'Unexpected feature type {type(feature)}')
+
 
     async def _calculate_feature_stats(self, features_with_data: list[tuple[Feature, DatasetSource]],
                                        target_series: pl.Series,

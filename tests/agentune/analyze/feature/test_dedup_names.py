@@ -5,7 +5,7 @@ from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.feature.base import Feature, IntFeature
-from agentune.analyze.feature.dedup_names import _deduplicate, deduplicate_feature_names
+from agentune.analyze.feature.dedup_names import deduplicate_feature_names, deduplicate_strings
 
 
 @frozen
@@ -17,10 +17,13 @@ class FeatureForTesting(IntFeature):
     context_tables: tuple[DuckdbTable, ...] = ()
     context_definitions: tuple[ContextDefinition, ...] = ()
 
+    # Redeclare attributes with defaults
+    default_for_missing: int = 0
+
 def test_dedup_names() -> None:
-    assert _deduplicate([]) == []
-    assert _deduplicate(['a', 'b', 'c']) == ['a', 'b', 'c']
-    assert _deduplicate(['a', 'b', 'c', 'a', 'b', 'a_']) == ['a', 'b', 'c', 'a_', 'b_', 'a__']
+    assert deduplicate_strings([]) == []
+    assert deduplicate_strings(['a', 'b', 'c']) == ['a', 'b', 'c']
+    assert deduplicate_strings(['a', 'b', 'c', 'a', 'b', 'a_']) == ['a', 'b', 'c', 'a_', 'b_', 'a__']
 
     def features_with_names(names: list[str]) -> list[Feature]:
         return [FeatureForTesting(name) for name in names]

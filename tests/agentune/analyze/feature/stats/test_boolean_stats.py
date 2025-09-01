@@ -34,6 +34,9 @@ class SimpleBoolFeature(BoolFeature):
     description: str = 'Test bool feature'
     code: str = 'def evaluate(df): return df[self.name]'
 
+    # Redeclare attributes with defaults
+    default_for_missing: bool = False
+
     @property
     def params(self) -> Schema:
         # Schema constructor expects Field objects

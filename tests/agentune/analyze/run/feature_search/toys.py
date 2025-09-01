@@ -23,12 +23,13 @@ from agentune.analyze.feature.base import (
     FloatFeature,
     NumericFeature,
     Regression,
-    SyncFeature,
+    SyncFloatFeature,
 )
 from agentune.analyze.feature.describe.base import FeatureDescriber, SyncFeatureDescriber
 from agentune.analyze.feature.gen.base import (
     FeatureGenerator,
     FeatureTransformer,
+    GeneratedFeature,
     SyncFeatureGenerator,
     SyncFeatureTransformer,
 )
@@ -49,7 +50,7 @@ _logger = logging.getLogger(__name__)
 
 
 @frozen
-class ToySyncFeature(SyncFeature, FloatFeature):
+class ToySyncFeature(SyncFloatFeature):
     """Adds two float columns together."""
 
     col1: str
@@ -57,7 +58,13 @@ class ToySyncFeature(SyncFeature, FloatFeature):
     name: str
     description: str
     code: str
-    
+
+    # Redeclare attributes with defaults
+    default_for_missing: float = 0.0
+    default_for_nan: float = 0.0
+    default_for_infinity: float = 0.0
+    default_for_neg_infinity: float = 0.0
+
     @property
     @override
     def params(self) -> Schema: 
@@ -93,6 +100,12 @@ class ToyAsyncFeature(FloatFeature):
     description: str
     code: str
 
+    # Redeclare attributes with defaults
+    default_for_missing: float = 0.0
+    default_for_nan: float = 0.0
+    default_for_infinity: float = 0.0
+    default_for_neg_infinity: float = 0.0
+
     @property
     @override
     def params(self) -> Schema: 
@@ -121,25 +134,27 @@ class ToyAsyncFeature(FloatFeature):
 class ToySyncFeatureGenerator(SyncFeatureGenerator[ToySyncFeature]):
     @override
     def generate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
-                 conn: DuckDBPyConnection) -> Iterator[ToySyncFeature]: 
+                 conn: DuckDBPyConnection) -> Iterator[GeneratedFeature[ToySyncFeature]]:
         for col1 in feature_search.schema.cols:
             for col2 in feature_search.schema.cols:
                 if target_column not in (col1.name, col2.name) and \
                         col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
-                    yield ToySyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}', 
-                                         f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
+                    feature = ToySyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}',
+                                             f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
+                    yield GeneratedFeature(feature, False)
 
 class ToyAsyncFeatureGenerator(FeatureGenerator[ToyAsyncFeature]):
     @override
     async def agenerate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
-                        conn: DuckDBPyConnection) -> AsyncIterator[ToyAsyncFeature]:
+                        conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[ToyAsyncFeature]]:
         for col1 in feature_search.schema.cols:
             for col2 in feature_search.schema.cols:
                 if target_column not in (col1.name, col2.name) and \
                         col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
                     await asyncio.sleep(0)
-                    yield ToyAsyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}', 
-                                          f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
+                    feature = ToyAsyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}',
+                                              f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
+                    yield GeneratedFeature(feature, False)
 
 @frozen
 class ToyPrebuiltFeaturesGenerator(SyncFeatureGenerator[Feature]):
@@ -147,8 +162,9 @@ class ToyPrebuiltFeaturesGenerator(SyncFeatureGenerator[Feature]):
 
     @override
     def generate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions,
-                 conn: DuckDBPyConnection) -> Iterator[Feature]:
-        yield from self.features
+                 conn: DuckDBPyConnection) -> Iterator[GeneratedFeature]:
+        for feature in self.features:
+            yield GeneratedFeature(feature, True)
 
 class ToySyncFeatureTransformer(SyncFeatureTransformer[Feature, Feature]):
     @override

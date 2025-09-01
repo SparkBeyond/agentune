@@ -34,6 +34,12 @@ class SimpleNumericFeature(FloatFeature):
     description: str = 'Test numeric feature'
     code: str = 'def evaluate(df): return df[self.name]'
 
+    # Redeclare attributes with defaults
+    default_for_missing: float = 0.0
+    default_for_nan: float = 0.0
+    default_for_infinity: float = 0.0
+    default_for_neg_infinity: float = 0.0
+
     @property
     def params(self) -> Schema:
         # Schema constructor expects Field objects
