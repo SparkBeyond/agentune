@@ -89,6 +89,9 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                   params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]:
 
         with run_context.ddb_manager.cursor() as conn:
+            self._validate_input(data, conn)
+
+        with run_context.ddb_manager.cursor() as conn:
             candidate_features = await self._generate_features(conn, data, params.generators)
 
         # Later we will go back to the original list to recover the original name of each selected feature,
@@ -146,6 +149,30 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                                                                                            params, conn)
 
             return FeatureSearchResults(tuple(features_with_eval_stats), tuple(features_with_test_stats))
+
+    def _validate_input(self, data: FeatureSearchInputData, conn: DuckDBPyConnection) -> None:
+        """Fail if the target column in any input dataset has missing values,
+           or non-finite values if it is a float column.
+
+        This requires reading the input datasets an extra time, which can be expensive
+        if they are not stored in duckdb. In particular, without this, we could guarantee
+        only reading the test dataset once (streaming it), and probably the full train dataset too.
+
+        A future improvement can move the check to be done while streaming the dataset,
+        but for now the decision was to check ahead of time.
+        """
+        target_df = pl.DataFrame({'target': data.feature_search.data[data.target_column] })
+        if target_df.filter(~pl.col('target').is_finite() | pl.col('target').is_null()).height > 0:
+            raise ValueError('Target column may not contain missing values or non-finite float values (feature search dataset)')
+
+        for name, source in [('feature evaluation', data.feature_eval), ('train', data.train), ('test', data.test)]:
+            source_rel = source.to_duckdb(conn)
+            expr = source_rel.filter(f'''"{data.target_column}" is null or "{data.target_column}" in ('nan'::float, 'inf'::float, '-inf'::float)''').aggregate('count(*)')
+            count = expr.fetchone()
+            match count:
+                case (int(c),) if c > 0: raise ValueError(f'Target column may not contain missing values or non-finite float values ({name} dataset)')
+                case _: pass
+
 
     def _deduplicate_generated_feature_names(self, features: Sequence[GeneratedFeature],
                                              existing_names: Sequence[str] = ()) -> list[GeneratedFeature]:

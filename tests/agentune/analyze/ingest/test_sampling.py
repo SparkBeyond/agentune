@@ -3,6 +3,7 @@ import logging
 import pytest
 from duckdb.duckdb import BinderException, DuckDBPyConnection
 
+from agentune.analyze.core.schema import Schema
 from agentune.analyze.run.ingest import sampling
 
 _logger = logging.getLogger(__name__)
@@ -12,6 +13,7 @@ def test_split_duckdb_table(conn: DuckDBPyConnection) -> None:
 
     conn.execute('CREATE TABLE tab(i int)')
     conn.execute(f'INSERT INTO tab SELECT t.i FROM unnest(range({total_count})) AS t(i)')
+    orig_schema = Schema.from_duckdb(conn.table('tab'))
 
     split_table = sampling.split_duckdb_table(conn, 'tab')
 
@@ -27,16 +29,25 @@ def test_split_duckdb_table(conn: DuckDBPyConnection) -> None:
     expected_num_feature_eval = 100000
     assert num_feature_eval == expected_num_feature_eval, 'Exactly 100000 rows marked as feature_eval'
 
-    # Test stability - do we select the same rows every time?
-
     train_df = split_table.train().to_dataset(conn)
     test_df = split_table.test().to_dataset(conn)
     feature_search_df = split_table.feature_search().to_dataset(conn)
     feature_eval_df = split_table.feature_eval().to_dataset(conn)
 
+    assert train_df.schema == orig_schema
+    assert train_df.data.columns == ['i'] # Regression test for silly bug where we returned too many columns
+    assert test_df.schema == orig_schema
+    assert test_df.data.columns == ['i']
+    assert feature_search_df.schema == orig_schema
+    assert feature_search_df.data.columns == ['i']
+    assert feature_eval_df.schema == orig_schema
+    assert feature_eval_df.data.columns == ['i']
+
     split_table.drop_split_columns(conn)
     with pytest.raises(BinderException):
         conn.table('tab').filter('_is_train')
+
+    # Test stability - do we select the same rows every time?
 
     split_table = sampling.split_duckdb_table(conn, 'tab')
 

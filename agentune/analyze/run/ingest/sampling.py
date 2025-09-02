@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from functools import cached_property
 
 import attrs
 from attrs import field, frozen
@@ -46,21 +47,25 @@ class SplitDuckdbTable:
     def schema_without_split_columns(self) -> Schema:
         return self.table.schema.drop(self.is_train_col_name, self.is_feature_search_col_name, self.is_feature_eval_col_name)
 
+    @cached_property
+    def _select_orig_col_names(self) -> str:
+        return ', '.join(f'"{name}"' for name in self.schema_without_split_columns.names)
+
     def train(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT * FROM {self.table.name} WHERE "{self.is_train_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_train_col_name}"'))
 
     def test(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT * FROM {self.table.name} WHERE NOT "{self.is_train_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE NOT "{self.is_train_col_name}"'))
 
     def feature_search(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT * FROM {self.table.name} WHERE "{self.is_feature_search_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_feature_search_col_name}"'))
 
     def feature_eval(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT * FROM {self.table.name} WHERE "{self.is_feature_eval_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_feature_eval_col_name}"'))
 
     def drop_split_columns(self, conn: DuckDBPyConnection) -> None:
         with transaction_scope(conn):

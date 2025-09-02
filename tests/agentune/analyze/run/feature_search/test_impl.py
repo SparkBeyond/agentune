@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, override
 
+import attrs
 import polars as pl
 import pytest
 from attrs import frozen
@@ -265,3 +266,82 @@ async def test_correct_features_have_defaults_updated(input_data: FeatureSearchI
     assert results.features == tuple(expected_features)
 
 
+def input_data_from_df(run_context: RunContext, df: pl.DataFrame) -> FeatureSearchInputData:
+    with run_context.ddb_manager.cursor() as conn:
+        conn.register('df', df)
+        conn.execute('create or replace table input as from df')
+        table = DuckdbTable.from_duckdb('input', conn)
+        split = sampling.split_duckdb_table(conn, table.name)
+        return FeatureSearchInputData.from_split_table(split, 'target', TablesWithContextDefinitions.from_list([]), conn)
+
+def test_fail_on_invalid_int_target_values(run_context: RunContext) -> None:
+    with run_context.ddb_manager.cursor() as conn:
+        runner: FeatureSearchRunnerImpl = FeatureSearchRunnerImpl()
+
+        input_data = input_data_from_df(run_context, pl.DataFrame({
+            'x': [float(x % 10) for x in range(1, 1000)],
+            'target': [int(t % 3) for t in range(1, 1000)],
+        }))
+        # Passes without missing values
+        runner._validate_input(input_data, conn)
+
+        input_data_missing_search = attrs.evolve(input_data,
+                                                 feature_search=attrs.evolve(input_data.feature_search,
+                                                                             data=input_data.feature_search.data.vstack(pl.DataFrame({
+                                                                                 'x': [1.0],
+                                                                                 'target': [None]
+                                                                             }))))
+        with pytest.raises(ValueError, match=r'missing values.*feature search dataset'):
+            runner._validate_input(input_data_missing_search, conn)
+
+        conn.execute('insert into input(x, target, _is_train, _is_feature_search, _is_feature_eval) values (1.0, null, true, false, true)')
+        with pytest.raises(ValueError, match=r'missing values.*feature evaluation dataset'):
+            runner._validate_input(input_data, conn)
+
+        conn.execute('update input set _is_feature_eval=false where target is null')
+        with pytest.raises(ValueError, match=r'missing values.*train dataset'):
+            runner._validate_input(input_data, conn)
+
+        conn.execute('update input set _is_train=false where target is null')
+        with pytest.raises(ValueError, match=r'missing values.*test dataset'):
+            runner._validate_input(input_data, conn)
+
+
+def test_fail_on_invalid_float_target_values(run_context: RunContext) -> None:
+    with run_context.ddb_manager.cursor() as conn:
+        runner: FeatureSearchRunnerImpl = FeatureSearchRunnerImpl()
+
+        input_data = input_data_from_df(run_context, pl.DataFrame({
+            'x': [float(x % 10) for x in range(1, 1000)],
+            'target': [float(t % 3) for t in range(1, 1000)],
+        }))
+        # Passes without missing values
+        runner._validate_input(input_data, conn)
+
+        input_data_missing_search = attrs.evolve(input_data,
+                                                 feature_search=attrs.evolve(input_data.feature_search,
+                                                                             data=input_data.feature_search.data.vstack(pl.DataFrame({
+                                                                                 'x': [1.0],
+                                                                                 'target': [None]
+                                                                             }))))
+        with pytest.raises(ValueError, match=r'missing values.*feature search dataset'):
+            runner._validate_input(input_data_missing_search, conn)
+
+        for invalid_value in ['null', "'nan'::float", "'inf'::float", "'-inf'::float"]:
+            conn.execute(f'insert into input(x, target, _is_train, _is_feature_search, _is_feature_eval) values (1.0, {invalid_value}, true, false, true)')
+            with pytest.raises(ValueError, match=r'missing values.*feature evaluation dataset'):
+                runner._validate_input(input_data, conn)
+
+            operator = 'is' if invalid_value == 'null' else '=='
+
+            conn.execute(f'update input set _is_feature_eval=false where target {operator} {invalid_value}')
+            with pytest.raises(ValueError, match=r'missing values.*train dataset'):
+                runner._validate_input(input_data, conn)
+
+            conn.execute(f'update input set _is_train=false where target {operator} {invalid_value}')
+            with pytest.raises(ValueError, match=r'missing values.*test dataset'):
+                runner._validate_input(input_data, conn)
+
+            # Clean for next cycle
+            conn.execute(f'delete from input where target {operator} {invalid_value}')
+            assert conn.fetchone() == (1,)
