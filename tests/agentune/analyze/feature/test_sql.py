@@ -25,7 +25,7 @@ class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
 
     name: str = 'test_sql_feature'
     description: str = ''
-    code: str = ''
+    technical_description: str = ''
     context_definitions: Sequence[ContextDefinition] = ()
 
     # Redeclare attributes with defaults

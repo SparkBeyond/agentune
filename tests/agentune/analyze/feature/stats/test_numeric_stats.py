@@ -32,7 +32,7 @@ class SimpleNumericFeature(FloatFeature):
 
     name: str
     description: str = 'Test numeric feature'
-    code: str = 'def evaluate(df): return df[self.name]'
+    technical_description: str = 'def evaluate(df): return df[self.name]'
 
     # Redeclare attributes with defaults
     default_for_missing: float = 0.0

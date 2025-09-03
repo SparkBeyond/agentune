@@ -33,7 +33,7 @@ class SimpleCategoricalFeature(CategoricalFeature):
     name: str
     categories: tuple[str, ...]
     description: str = 'Test categorical feature'
-    code: str = 'def evaluate(df): return df[self.name]'
+    technical_description: str = 'def evaluate(df): return df[self.name]'
 
     # Redeclare attributes with defaults
     default_for_missing: str = CategoricalFeature.other_category

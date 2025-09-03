@@ -32,7 +32,7 @@ class SimpleBoolFeature(BoolFeature):
 
     name: str
     description: str = 'Test bool feature'
-    code: str = 'def evaluate(df): return df[self.name]'
+    technical_description: str = 'def evaluate(df): return df[self.name]'
 
     # Redeclare attributes with defaults
     default_for_missing: bool = False

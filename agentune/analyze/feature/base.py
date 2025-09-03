@@ -46,8 +46,7 @@ class Feature[T](ABC):
     Args:
         name: Used as the column/series name in outputs. Not guaranteed to be unique among Feature instances.
         description: Human-readable description of the feature.
-        code: Python code that computes this feature. The code should define a function `evaluate` with the needed params. 
-              SQL features will expose code that executes the SQL query.
+        technical_description: Human-readable description of feature's implementation details.
         default_for_missing: a value substituted by evaluate_with_defaults if the underlying `evaluate` outputs
                              a missing value.
 
@@ -61,18 +60,13 @@ class Feature[T](ABC):
 
     name: str
     description: str
+    technical_description: str
 
     default_for_missing: T
 
     @property
     @abstractmethod
     def dtype(self) -> Dtype: ...
-
-    # TODO precise definition -
-    #  We have not yet decided whether the code needs to be strictly correct and/or guaranteed to evaluate and work.
-    @property
-    @abstractmethod
-    def code(self) -> str: ...
 
     @property
     @abstractmethod

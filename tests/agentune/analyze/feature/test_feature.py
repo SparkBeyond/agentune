@@ -30,8 +30,8 @@ from agentune.analyze.feature.base import (
 class IntTestFeature(IntFeature):
     # Redeclare everything with defaults
     name: str = 'IntFeature'
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
 
     default_for_missing: int = 2
 
@@ -53,8 +53,8 @@ class IntTestFeature(IntFeature):
 class SyncIntTestFeature(SyncIntFeature):
     # Redeclare everything with defaults
     name: str = 'IntFeature'
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
 
     default_for_missing: int = 2
 
@@ -76,8 +76,8 @@ class SyncIntTestFeature(SyncIntFeature):
 class BoolTestFeature(BoolFeature):
     # Redeclare everything with defaults
     name: str = 'BoolFeature'
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
 
     default_for_missing: bool = True
 
@@ -99,8 +99,8 @@ class BoolTestFeature(BoolFeature):
 class SyncBoolTestFeature(SyncBoolFeature):
     # Redeclare everything with defaults
     name: str = 'BoolFeature'
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
 
     default_for_missing: bool = True
 
@@ -123,8 +123,8 @@ class SyncBoolTestFeature(SyncBoolFeature):
 class FloatTestFeature(FloatFeature):
     # Redeclare everything with defaults
     name: str = 'FloatFeature'
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
 
     default_for_missing: float = 10.0
     default_for_nan: float = 11.0
@@ -153,8 +153,8 @@ class FloatTestFeature(FloatFeature):
 class SyncFloatTestFeature(SyncFloatFeature):
     # Redeclare everything with defaults
     name: str = 'FloatFeature'
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
 
     default_for_missing: float = 10.0
     default_for_nan: float = 11.0
@@ -182,8 +182,8 @@ class SyncFloatTestFeature(SyncFloatFeature):
 class CategoricalTestFeature(CategoricalFeature):
     # Redeclare everything with defaults
     name: str = 'CategoricalFeature'
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
 
     categories: tuple[str, ...] = ('a', 'b', 'c')
 
@@ -211,8 +211,8 @@ class CategoricalTestFeature(CategoricalFeature):
 class SyncCategoricalTestFeature(SyncCategoricalFeature):
     # Redeclare everything with defaults
     name: str = 'CategoricalFeature'
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
 
     categories: tuple[str, ...] = ('a', 'b', 'c')
 

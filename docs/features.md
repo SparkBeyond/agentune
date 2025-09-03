@@ -68,9 +68,14 @@ All strings are currently valid, although of course feature generators are encou
 If several features being enriched in the same dataset have the same name, the outupt names will be deduplicated
 by adding one or more underscores as a suffix; see `dedup_names.py`.
 
-### Feature.description and Feature.code
+### Feature.description and Feature.technical_description
 
-Being designed; see #62.
+Both of these are meant for humans to read. The first describes what the feature tries to do, ideally in simple language,
+which can be imprecise; the second describes how it does it in more detail, possibly with code or pseudocode.
+
+For example, a feature's description might say "is male" and the technical description "name contains 'mr.'". 
+
+The design discussion is ongoing in #62.
 
 ### Feature schema metadata
 

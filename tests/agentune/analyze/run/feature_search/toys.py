@@ -57,9 +57,9 @@ class ToySyncFeature(SyncFloatFeature):
     col2: str
     name: str
     description: str
-    code: str
+    technical_description: str
 
-    # Redeclare attributes with defaults
+# Redeclare attributes with defaults
     default_for_missing: float = 0.0
     default_for_nan: float = 0.0
     default_for_infinity: float = 0.0
@@ -98,7 +98,7 @@ class ToyAsyncFeature(FloatFeature):
     col2: str
     name: str
     description: str
-    code: str
+    technical_description: str
 
     # Redeclare attributes with defaults
     default_for_missing: float = 0.0

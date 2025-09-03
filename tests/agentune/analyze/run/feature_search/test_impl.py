@@ -57,7 +57,7 @@ _logger = logging.getLogger(__name__)
 class SimpleFloatFeature(FloatFeature):
     name: str
     description: str = ''
-    code: str = ''
+    technical_description: str = ''
     default_for_missing: float = 0.0
     default_for_nan: float = 0.0
     default_for_infinity: float = 0.0
@@ -76,7 +76,7 @@ class SimpleFloatFeature(FloatFeature):
 class SimpleIntFeature(IntFeature):
     name: str
     description: str = ''
-    code: str = ''
+    technical_description: str = ''
     default_for_missing: int = 0
 
     params: Schema = Schema(())
@@ -93,7 +93,7 @@ class SimpleIntFeature(IntFeature):
 class SimpleBoolFeature(BoolFeature):
     name: str
     description: str = ''
-    code: str = ''
+    technical_description: str = ''
     default_for_missing: bool = True
 
     params: Schema = Schema(())
@@ -109,7 +109,7 @@ class SimpleBoolFeature(BoolFeature):
 class SimpleCategoricalFeature(CategoricalFeature):
     name: str
     description: str = ''
-    code: str = ''
+    technical_description: str = ''
     default_for_missing: str = CategoricalFeature.other_category
 
     categories: tuple[str, ...] = ('a', 'b', 'c')

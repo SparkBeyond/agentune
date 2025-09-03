@@ -11,8 +11,8 @@ from agentune.analyze.feature.dedup_names import deduplicate_feature_names, dedu
 @frozen
 class FeatureForTesting(IntFeature):
     name: str
-    code: str = ''
     description: str = ''
+    technical_description: str = ''
     params: Schema = Schema(())
     context_tables: tuple[DuckdbTable, ...] = ()
     context_definitions: tuple[ContextDefinition, ...] = ()
