@@ -163,6 +163,10 @@ async def test_feature_search_regression(input_data: FeatureSearchInputData, run
 
     selectors: list[FeatureSelector | EnrichedFeatureSelector] = [ToySyncFeatureSelector(), ToyAsyncFeatureSelector(),
                                                                   ToySyncEnrichedFeatureSelector(), ToyAsyncEnrichedFeatureSelector()]
+
+    with run_context.ddb_manager.cursor() as conn:
+        orig_table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
+
     for selector in selectors:
         _logger.info(f'Running with selector {selector}')
         params = RegressionFeatureSearchParams(
@@ -171,6 +175,11 @@ async def test_feature_search_regression(input_data: FeatureSearchInputData, run
         )
         results = await feature_search_runner.run(run_context, input_data, params)
         _logger.info(results)
+
+        with run_context.ddb_manager.cursor() as conn:
+            table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
+            assert set(orig_table_names) == set(table_names), 'No new tables left in DB (temporary or otherwise)'
+
 
 async def test_feature_search_classification(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
     feature_search_runner: FeatureSearchRunner[Classification] = FeatureSearchRunnerImpl(max_features_enrich_batch_size=5)

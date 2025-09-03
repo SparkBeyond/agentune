@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
+import random
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast, override
+from typing import ClassVar, cast, override
 
 import cattrs
 import duckdb
@@ -17,6 +19,8 @@ from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.util.attrutil import frozendict_converter
 from agentune.analyze.util.duckdbutil import transaction_scope
+
+_logger = logging.getLogger(__name__)
 
 
 @frozen
@@ -206,6 +210,10 @@ class DuckdbDatabase(ABC):
         """
         ...
 
+    @property
+    @abstractmethod
+    def read_only(self) -> bool: ...
+
 @frozen
 class DuckdbInMemoryDatabase(DuckdbDatabase):
     """An in-memory database. 
@@ -219,6 +227,11 @@ class DuckdbInMemoryDatabase(DuckdbDatabase):
     @override
     def default_name(self) -> str:
         return 'memory'
+
+    @property
+    @override
+    def read_only(self) -> bool:
+        return False
 
 @frozen
 class DuckdbFilesystemDatabase(DuckdbDatabase):
@@ -291,12 +304,35 @@ class DuckdbManager:
     This is the file basename for on-disk databases, and 'memory' for in-memory databases.
     This is a duckdb limitation. Databases attached later can use arbitrary names.
 
+    The following database names are reserved and may NOT be used for either the primary database or later attached ones:
+
+    - 'system', 'temp': reserved by duckdb
+    - 'memory': this is (unchangeable) name used by the primary database, if it's in-memory. To avoid confusion,
+                it cannot be used for on-disk databases, or for secondary databases attached later (even if they're in-memory).
+
+    The following schema names are reserved:
+
+    - 'main': the default schema created with every database; code should not try to delete it or (re)create it
+    - 'information_schema', 'pg_catalog': reserved by duckdb
+    - 'agentune_temp': used by this library for temporary tables and views. This schema is created (empty) when this class
+                       connects to a primary database (unless in read-only mode). It is dropped on exit. It is also dropped
+                       with all its contents if we discover it exists on start-up (left over from a previous run).
+                       This schema is not created in databases attached later.
+
+                       Code should use `DuckdbManager.temp_schema_name`, not the literal name.
+
     See also docs/duckdb.md for more information.
     """
 
     _conn: DuckDBPyConnection
     _main_database: DuckdbDatabase
     _databases: dict[str, DuckdbDatabase] # By database name
+
+    _nonce_name_rnd: ClassVar[random.Random] = random.Random()
+    # Deliberately no fixed seed to make sure we don't rely on it.
+    # This is threadsafe, if a bit slow under concurrent access.
+
+    temp_schema_name: ClassVar[str] = 'agentune_temp'
 
     def __init__(self, main_database: DuckdbDatabase, config: DuckdbConfig = DuckdbConfig()):
         agentune.analyze.core.setup.setup()
@@ -309,6 +345,41 @@ class DuckdbManager:
         self._databases = {main_database.default_name: main_database}
         self._main_database = main_database
         # self._conn.load_extension('spatial')
+
+        self._init_temp_schema()
+
+
+    def temp_random_name(self, basename: str) -> DuckdbName:
+        """Return a new, unused name in the temp schema, using the given basename with a random suffix."""
+        name =  self.random_name(basename)
+        return DuckdbName(name, self._main_database.default_name, DuckdbManager.temp_schema_name)
+
+    @classmethod
+    def random_name(cls, basename: str) -> str:
+        """Return the basename with a random suffix. Useful for creating temporary schema objects without name conflicts."""
+        return f'{basename}_{cls._nonce_name_rnd.randint(1, 10000000000)}'
+
+    def _init_temp_schema(self) -> None:
+        with self.cursor() as conn:
+            match conn.execute(f"""select count(*) from duckdb_schemas() 
+                                   where database_name = '{self._main_database.default_name}'
+                                         and schema_name = '{DuckdbManager.temp_schema_name}'""").fetchone():
+                case (int(count), ): temp_schema_exists = count > 0
+                case other: raise ValueError(f'Unexpected query result {other}')
+
+            if temp_schema_exists:
+                if self._main_database.read_only:
+                    _logger.warning(f'Temp schema found in database {self._main_database.default_name}, probably left from a previous run. '
+                                    f'Cannot drop it in read-only mode. It will be dropped the next time you connect to this database in read-write mode. '
+                                    f'Meanwhile, it will keep using up disk space.')
+                else:
+                    _logger.warning(f'''Temp schema found in database {self._main_database.default_name}. It was probably left from a previous run'''
+                                    f'''that didn't exit cleanly. Dropping it.''')
+                    conn.execute(f'drop schema "{DuckdbManager.temp_schema_name}" cascade')
+
+            if not self._main_database.read_only:
+                conn.execute(f'create schema "{DuckdbManager.temp_schema_name}"')
+
 
     def databases(self) -> Mapping[str, DuckdbDatabase]:
         """Return all databases attached to this manager, by database name."""
@@ -354,6 +425,11 @@ class DuckdbManager:
         return self._conn.cursor()
 
     def close(self) -> None:
+        try:
+            self._conn.execute(f'drop schema "{DuckdbManager.temp_schema_name}" cascade')
+        except duckdb.ConnectionException as e:
+            if 'Connection already closed' not in str(e):
+                raise
         self._conn.close()
 
     # Convenience methods

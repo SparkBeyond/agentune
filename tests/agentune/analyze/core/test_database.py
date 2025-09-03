@@ -196,5 +196,50 @@ def test_casts(conn: DuckDBPyConnection) -> None:
     assert dataset4.data['a'].to_list() == [1, None, 1]
     assert dataset4.data['c'].to_list() == ['a', None, 'c']
 
+def test_idempotent_close(ddb_manager: DuckdbManager) -> None:
+    ddb_manager.close()
+    ddb_manager.close()
 
+
+def test_temp_schema(tmp_path: Path) -> None:
+    db_file = tmp_path / 'db.db'
+    with contextlib.closing(DuckdbManager.on_disk(db_file)) as ddb_manager, ddb_manager.cursor() as conn:
+        temp_schema_name = DuckdbManager.temp_schema_name
+
+        name1 = ddb_manager.temp_random_name('foo bar')
+        name2 = ddb_manager.temp_random_name('foo bar')
+        assert name1 != name2
+        assert name1.schema == temp_schema_name
+        assert name1.database == ddb_manager._main_database.default_name
+        assert name1.name.startswith('foo bar')
+        assert len(name1.name) > len('foo bar')
+
+        conn.execute(f'create table {name1}(i int)')
+        conn.execute(f'create table "{name1.name}"(i int)') # Same name in the main schema
+
+        tables = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
+        assert set(tables) == {
+            ('db', 'main', name1.name),
+            ('db', temp_schema_name, name1.name),
+        }
+
+        ddb_manager.attach(DuckdbInMemoryDatabase(), name='newdb')
+        schemas = conn.execute("select schema_name from duckdb_schemas() where database_name='newdb'").fetchall()
+        assert schemas == [('main',)], 'Temp schema not created in secondary database'
+
+
+    with duckdb.connect(db_file) as conn:
+        schemas = conn.execute("select schema_name from duckdb_schemas() where database_name='db'").fetchall()
+        assert schemas == [('main', )], f'{temp_schema_name} schema was deleted when closing the database'
+
+        conn.execute(f'create schema {temp_schema_name}')
+        conn.execute(f'create table db.{temp_schema_name}.tab(i int)')
+        tables = conn.execute(f"select table_name from duckdb_tables() where schema_name='{temp_schema_name}'").fetchall()
+        assert tables == [('tab',)]
+
+    with contextlib.closing(DuckdbManager.on_disk(db_file)) as ddb_manager, ddb_manager.cursor() as conn:
+        schemas = conn.execute("select schema_name from duckdb_schemas() where database_name='db'").fetchall()
+        assert set(schemas) == { ('main', ), (temp_schema_name, ) }, f'{temp_schema_name} schema still exists'
+        tables = conn.execute(f"select table_name from duckdb_tables() where schema_name='{temp_schema_name}'").fetchall()
+        assert tables == [], 'Tables in the temp schema were dropped on startup'
 

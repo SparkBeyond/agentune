@@ -139,16 +139,18 @@ class DuckdbTableSink(DatasetSink):
 
     @override
     def write(self, dataset_source: DatasetSource, conn: DuckDBPyConnection) -> None:
-        # Note that this shadows any existing table named input_relation, so we need to
-        # make sure self.table_name isn't named that TODO nonce names
-        # dataset_source.to_duckdb() is presumed safe to use in the sense that it should preserve all the column types
+        # conn.register() shadows any existing table named input_relation, so we need to
+        # make sure self.table_name isn't named that.
+        # dataset_source.to_duckdb() is presumed safe to use in the sense that it should preserve all the column types.
         with conn.cursor() as cursor, transaction_scope(cursor):
             input_relation = dataset_source.to_duckdb(cursor)
-            cursor.register('input_relation', input_relation)
+            input_relation_name = self.table_name.name + '_input'
+
+            cursor.register(input_relation_name, input_relation)
 
             if self.create_table:
                 replace = 'OR REPLACE' if self.or_replace else ''
-                cursor.execute(f'CREATE {replace} TABLE {self.table_name} AS SELECT * FROM input_relation')
+                cursor.execute(f'CREATE {replace} TABLE {self.table_name} AS SELECT * FROM "{input_relation_name}"')
             else:
                 existing_table = DuckdbTable.from_duckdb(self.table_name, cursor)
                 if existing_table.schema != dataset_source.schema:
@@ -156,7 +158,7 @@ class DuckdbTableSink(DatasetSink):
                                      f'which has the schema {existing_table.schema}')
                 if self.delete_contents:
                     cursor.execute(f'DELETE FROM {self.table_name}')
-                cursor.execute(f'INSERT INTO {self.table_name} SELECT * FROM input_relation')
+                cursor.execute(f'INSERT INTO {self.table_name} SELECT * FROM "{input_relation_name}"')
 
     def as_table(self, conn: DuckDBPyConnection) -> DuckdbTable:
         return DuckdbTable.from_duckdb(self.table_name, conn)

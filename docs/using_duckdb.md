@@ -71,6 +71,24 @@ The scope of "code" (that uses a connection, etc) depends on the good sense of t
 
 What matters is code locality and complexity. Required effects (like closing a connection or consuming a result set) shouldn't rely on distant code (distant code is that which might be changed without considering the local code where you are), or on complex code (where it's not obvious what codepath will be taken, or the code itself is a parameter, like an abstract class or callback).
 
+## The temporary database
+
+It is often useful to create temporary catalog objects (tables, views, functions, etc) which are guaranteed to be dropped 
+at the end of a scope or the end of a program run. 
+Unfortunately, duckdb's native temporary tables are scoped to a Connection instance, which makes them almost useless in our architecture.
+
+We create a dedicated schema in the main database DuckdbManager connects to, and drop it when the manager closes.
+We also drop it if it already exists on startup. The schema's name is given by `DuckdbManager.temp_schema_name`;
+random object names in that schema should be generated using `DuckdbManager.temp_random_name`.
+
+You MUST drop the temporary objects in a `finally` once you're done with them. DuckdbManager provides a backstop
+but dropping them early frees memory and disk space.
+
+In the future, we might prefer to create some or all temporary objects in an in-memory database (with spillover to the duckdb temp 
+directory if it runs out of memory). This design is intended to make such a change transparent to any code that uses
+`DuckdbManager.temp_random_name`; code that uses `DuckdbManager.temp_schema_name` directly will need to be updated 
+to also use a new database name. 
+
 ## Other notes
 
 ### `sql` vs `execute`
@@ -82,6 +100,8 @@ It's possible to use `connection.sql()` with non-query statements; they are exec
 ### Replacement scans
 
 When using a replacement scan, you MUST explicitly call `connection.register`. Do not use the replacement scan automatic feature of looking up python variables to resolve unfamiliar names.
+
+Make sure the name you use to register the object doesn't shadow any other name you use in queries on that connection. You can use `DuckdbManager.random_name` to generate a nonce name.
 
 ## TODO (missing docs)
 

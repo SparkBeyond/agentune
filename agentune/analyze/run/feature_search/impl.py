@@ -12,7 +12,10 @@ from duckdb.duckdb import DuckDBPyConnection, DuckDBPyRelation
 from tests.agentune.analyze.core import default_duckdb_batch_size
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
-from agentune.analyze.core.database import DuckdbInMemoryDatabase, DuckdbName, DuckdbTable
+from agentune.analyze.core.database import (
+    DuckdbManager,
+    DuckdbTable,
+)
 from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource
 from agentune.analyze.core.schema import restore_df_types
 from agentune.analyze.feature.base import (
@@ -98,25 +101,22 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         # since after selection not all deduplication will be needed
         deduplicated_candidate_features = self._deduplicate_generated_feature_names(candidate_features, existing_names=[data.target_column])
 
-        # Evaluate candidate features on the feature_search dataset, storing the results in a temporary database.
-        # We use a temp database not only because we discard it later, but because we're going to create
-        # a dynamic number of tables in it.
-
-        temp_db_name = 'feature_search_temp_db' # TODO nonce name
-        run_context.ddb_manager.attach(DuckdbInMemoryDatabase(), temp_db_name)
+        # Evaluate candidate features on the feature_search dataset, storing the results in the temp schema.
+        (enriched_feature_search_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
+            deduplicated_candidate_features, data.feature_search,
+            data.contexts, run_context.ddb_manager, params, 'enriched_feature_search',
+            data.target_column
+        )
         try:
             with run_context.ddb_manager.cursor() as conn:
-                (enriched_feature_search_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
-                    deduplicated_candidate_features, data.feature_search,
-                    data.contexts, conn, params, DuckdbName('enriched_feature_search', temp_db_name),
-                    data.target_column
-                )
                 selected_features = await self._select_features(features_with_updated_defaults,
                                                                 data.feature_search, data.target_column,
                                                                 enriched_feature_search_group_tables,
                                                                 params, conn)
         finally:
-            run_context.ddb_manager.detach(temp_db_name)
+            with run_context.ddb_manager.cursor() as conn:
+                for table in enriched_feature_search_group_tables:
+                    conn.execute(f'drop table {table.name}')
 
         # Get the original version of the selected features, and re-deduplicate their names
         # Some of the original deduplications may no longer be necessary.
@@ -129,26 +129,36 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         selected_features_with_original_names = [attrs.evolve(feature, name=original_name(feature)) for feature in selected_features]
         deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[data.target_column])
 
-        with run_context.ddb_manager.cursor() as conn:
-            enriched_eval_sink = DatasetSink.into_unqualified_duckdb_table('enriched_eval', conn) # TODO nonce name or parameter specifying storage target
-            await params.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval, data.contexts,
-                                                  enriched_eval_sink, params.evaluators, conn,
-                                                  keep_input_columns=(data.target_column,),
-                                                  deduplicate_names=False)
-            features_with_eval_stats: list[FeatureWithFullStats[Feature, TK]] = await self._calculate_feature_stats_single_data(deduplicated_selected_features,
-                                                                                           enriched_eval_sink.as_source(conn), data.target_column,
-                                                                                           params, conn)
+        enriched_eval_name = run_context.ddb_manager.temp_random_name('enriched_eval')
+        enriched_test_name = run_context.ddb_manager.temp_random_name('enriched_test')
 
-            enriched_test_sink = DatasetSink.into_unqualified_duckdb_table('enriched_test', conn)
-            await params.enrich_runner.run_stream(deduplicated_selected_features, data.test, data.contexts,
-                                                  enriched_test_sink, params.evaluators, conn,
-                                                  keep_input_columns=(data.target_column,),
-                                                  deduplicate_names=False)
-            features_with_test_stats: list[FeatureWithFullStats[Feature, TK]] = await self._calculate_feature_stats_single_data(deduplicated_selected_features,
-                                                                                           enriched_test_sink.as_source(conn), data.target_column,
-                                                                                           params, conn)
+        try:
+            with run_context.ddb_manager.cursor() as conn:
+                enriched_eval_sink = DatasetSink.into_duckdb_table(enriched_eval_name)
+                await params.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval, data.contexts,
+                                                      enriched_eval_sink, params.evaluators, conn,
+                                                      keep_input_columns=(data.target_column,),
+                                                      deduplicate_names=False)
+                features_with_eval_stats: list[FeatureWithFullStats[Feature, TK]] = await self._calculate_feature_stats_single_data(deduplicated_selected_features,
+                                                                                               enriched_eval_sink.as_source(conn), data.target_column,
+                                                                                               params, conn)
+                conn.execute(f'drop table {enriched_eval_name}')
 
-            return FeatureSearchResults(tuple(features_with_eval_stats), tuple(features_with_test_stats))
+                enriched_test_sink = DatasetSink.into_duckdb_table(enriched_test_name)
+                await params.enrich_runner.run_stream(deduplicated_selected_features, data.test, data.contexts,
+                                                      enriched_test_sink, params.evaluators, conn,
+                                                      keep_input_columns=(data.target_column,),
+                                                      deduplicate_names=False)
+                features_with_test_stats: list[FeatureWithFullStats[Feature, TK]] = await self._calculate_feature_stats_single_data(deduplicated_selected_features,
+                                                                                               enriched_test_sink.as_source(conn), data.target_column,
+                                                                                               params, conn)
+                conn.execute(f'drop table {enriched_test_name}')
+
+                return FeatureSearchResults(tuple(features_with_eval_stats), tuple(features_with_test_stats))
+        finally:
+            with run_context.ddb_manager.cursor() as conn:
+                conn.execute(f'drop table if exists {enriched_eval_name}')
+                conn.execute(f'drop table if exists {enriched_test_name}')
 
     def _validate_input(self, data: FeatureSearchInputData, conn: DuckDBPyConnection) -> None:
         """Fail if the target column in any input dataset has missing values,
@@ -230,40 +240,49 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 await agenerate(generator)
 
     async def _enrich_in_batches_and_update_defaults(self, features: list[GeneratedFeature], dataset: Dataset,
-                                                     contexts: TablesWithContextDefinitions, conn: DuckDBPyConnection,
-                                                     params: FeatureSearchParams, target_table_base_name: DuckdbName,
+                                                     contexts: TablesWithContextDefinitions, ddb_manager: DuckdbManager,
+                                                     params: FeatureSearchParams, target_table_base_name: str,
                                                      target_column: str) -> tuple[list[DuckdbTable], list[Feature]]:
         """Enrich these features in batches of size up to self.max_features_enrich_batch_size,
-        and return a table per batch.
+        and return a table per batch. The first table also has the target column; the rest don't.
 
-        The first table also has the target column; the rest don't.
+        Also, update the default values of features with has_good_defaults=False. Return a list of all input features
+        with the final default values.
         """
         feature_groups = list(itertools.batched(features, self.max_features_enrich_batch_size))
         tables = []
         features_with_updated_defaults = []
-        for index, feature_group in enumerate(feature_groups):
-            keep_input_columns = (target_column,) if index == 0 else ()
-            enriched_group = await params.enrich_runner.run([gen.feature for gen in feature_group],
-                                                            dataset, contexts, params.evaluators,
-                                                            conn, keep_input_columns=keep_input_columns,
-                                                            deduplicate_names=False)
-            group_table_name = attrs.evolve(target_table_base_name, name=f'{target_table_base_name.name}_{index}')
-            DatasetSink.into_duckdb_table(group_table_name).write(
-                DatasetSource.from_dataset(enriched_group), conn)
-            table = DuckdbTable.from_duckdb(group_table_name, conn)
-            tables.append(table)
+        try:
+            with ddb_manager.cursor() as conn:
+                for index, feature_group in enumerate(feature_groups):
+                    keep_input_columns = (target_column,) if index == 0 else ()
+                    enriched_group = await params.enrich_runner.run([gen.feature for gen in feature_group],
+                                                                    dataset, contexts, params.evaluators,
+                                                                    conn, keep_input_columns=keep_input_columns,
+                                                                    deduplicate_names=False)
+                    group_table_name = ddb_manager.temp_random_name(target_table_base_name)
+                    DatasetSink.into_duckdb_table(group_table_name).write(
+                        DatasetSource.from_dataset(enriched_group), conn)
+                    table = DuckdbTable.from_duckdb(group_table_name, conn)
+                    tables.append(table)
 
-            for gen in feature_group:
-                if gen.has_good_defaults:
-                    features_with_updated_defaults.append(gen.feature)
-                else:
-                    rel = conn.table(str(table.name)).select(f'"{gen.feature.name}"')
-                    df = restore_df_types(rel.pl(), table.schema.select(gen.feature.name))
-                    series = df[gen.feature.name]
-                    features_with_updated_defaults.append(self._update_feature_defaults(gen.feature, series))
+                    for gen in feature_group:
+                        if gen.has_good_defaults:
+                            features_with_updated_defaults.append(gen.feature)
+                        else:
+                            rel = conn.table(str(table.name)).select(f'"{gen.feature.name}"')
+                            df = restore_df_types(rel.pl(), table.schema.select(gen.feature.name))
+                            series = df[gen.feature.name]
+                            features_with_updated_defaults.append(self._update_feature_defaults(gen.feature, series))
 
-        _logger.info(f'Enriched {len(features)} features in {len(feature_groups)} batches')
-        return (tables, features_with_updated_defaults)
+                _logger.info(f'Enriched {len(features)} features in {len(feature_groups)} batches')
+                return (tables, features_with_updated_defaults)
+        except:
+            # On error, delete tables created so far before returning
+            with ddb_manager.cursor() as conn:
+                for table in tables:
+                    conn.execute(f'drop table {table.name}')
+            raise
 
     def _join_tables(self, tables: list[DuckdbTable], conn: DuckDBPyConnection) -> DatasetSource:
         """Join several tables on their 'default' order (i.e. the rowid).
