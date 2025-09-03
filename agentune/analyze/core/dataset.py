@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 import httpx
 import polars as pl
 import pyarrow as pa
-from attrs import frozen
+from attrs import define, frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from tests.agentune.analyze.core import default_duckdb_batch_size
 
@@ -151,6 +151,13 @@ class DatasetSource(CopyToThread):
         def opener(conn: DuckDBPyConnection) -> DuckDBPyRelation:
             return self.to_duckdb(conn).select(*[f'"{col}"' for col in cols])
         return DatasetSource.from_duckdb_parser(opener, new_schema, batch_size)
+
+    def map(self, new_schema: Schema, mapper: Callable[[Dataset], Dataset]) -> DatasetSourceFromFunction:
+        """Apply a function to each Dataset returned by open().
+
+        The provided new_schema must be correct. This is a low-level method.
+        """
+        return DatasetSourceFromFunction(new_schema, lambda conn: (mapper(dataset) for dataset in self.open(conn)))
 
     @staticmethod
     def from_dataset(dataset: Dataset) -> DatasetSourceFromDataset:
@@ -316,31 +323,35 @@ class DatasetSource(CopyToThread):
         return sniff_schema(lambda conn: make_json_reader(conn, path),
                             conn, batch_size=batch_size)
 
+@define
+class OpaqueDatasetSource(DatasetSource):
+    """Intermediate implementation class"""
+    @override
+    def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
+        return restore_relation_types(conn.from_arrow(self.to_arrow_reader(conn)), self.schema)
+
+    @override
+    def to_dataset(self, conn: DuckDBPyConnection) -> Dataset:
+        iterator = self.open(conn)
+        df = next(iterator).data
+        for more in iterator:
+            df = df.vstack(more.data, in_place=True)
+        return Dataset(self.schema, df)
+
+    @override
+    def copy_to_thread(self) -> OpaqueDatasetSource:
+        return self.map(self.schema, lambda dataset: dataset.copy_to_thread())
+
 
 @frozen
-class DatasetSourceFromIterable(DatasetSource):
+class DatasetSourceFromIterable(OpaqueDatasetSource):
     schema: Schema
     iterable: Iterable[Dataset]
 
     @override
     def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:
         return iter(self.iterable)
-    
-    @override 
-    def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
-        return restore_relation_types(conn.from_arrow(self.to_arrow_reader(conn)), self.schema)
 
-    @override
-    def to_dataset(self, conn: DuckDBPyConnection) -> Dataset:
-        iterator = iter(self.iterable)
-        df = next(iterator).data
-        for more in iterator:
-            df = df.vstack(more.data, in_place=True)
-        return Dataset(self.schema, df)
-
-    @override 
-    def copy_to_thread(self) -> DatasetSourceFromIterable:
-        return DatasetSourceFromIterable(self.schema, (dataset.copy_to_thread() for dataset in self.iterable))
 
 @frozen
 class DatasetSourceFromDataset(DatasetSource):
@@ -366,6 +377,17 @@ class DatasetSourceFromDataset(DatasetSource):
     @override 
     def copy_to_thread(self) -> DatasetSourceFromDataset:
         return DatasetSourceFromDataset(self.dataset.copy_to_thread())
+
+
+@frozen
+class DatasetSourceFromFunction(OpaqueDatasetSource):
+    schema: Schema
+    function: Callable[[DuckDBPyConnection], Iterator[Dataset]]
+
+    @override
+    def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:
+        return self.function(conn)
+
 
     
 class DatasetSink(ABC):

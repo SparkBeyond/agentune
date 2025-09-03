@@ -24,6 +24,8 @@ def deduplicate_strings(names: Sequence[str], existing: Sequence[str] = ()) -> l
 def deduplicate_feature_names(features: Sequence[Feature], existing_names: Sequence[str] = ()) -> list[Feature]:
     """Change feature names by appending one or more underscores so that all features in the returned list have distinct names.
 
+    This is idempotent; if the features' names are already distinct, the original features are returned.
+
     Args:
         existing_names: names that are taken (e.g. by other columns) and that features are not allowed to have.
     """

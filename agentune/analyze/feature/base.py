@@ -151,7 +151,7 @@ class Feature[T](ABC):
             return self.default_for_missing
         return value
 
-    def subsistute_defaults_batch(self, values: pl.Series) -> pl.Series:
+    def substitute_defaults_batch(self, values: pl.Series) -> pl.Series:
         """Apply the same logic as aevaluate_batch_with_defaults.
 
         This method should NOT be overridden by feature implementations.
@@ -179,7 +179,7 @@ class Feature[T](ABC):
 
         This method should NOT be overridden by feature implementations.
         """
-        return self.subsistute_defaults_batch(await self.aevaluate_batch_safe(input, contexts, conn))
+        return self.substitute_defaults_batch(await self.aevaluate_batch_safe(input, contexts, conn))
 
 # Every feature must implement exactly one of the feature value type interfaces (IntFeature, etc) - 
 # it is not enough to directly implement e.g. Feature[int].
@@ -226,7 +226,7 @@ class FloatFeature(NumericFeature[float]):
 
     @final
     @override
-    def subsistute_defaults_batch(self, series: pl.Series) -> pl.Series:
+    def substitute_defaults_batch(self, series: pl.Series) -> pl.Series:
         return series.replace([None, math.nan, math.inf, -math.inf],
                               [self.default_for_missing, self.default_for_nan, self.default_for_infinity, self.default_for_neg_infinity])
 
@@ -348,7 +348,7 @@ class SyncFeature[T](Feature[T]):
     @final
     def evaluate_batch_with_defaults(self, input: Dataset, contexts: TablesWithContextDefinitions,
                                      conn: DuckDBPyConnection) -> pl.Series:
-        return self.subsistute_defaults_batch(self.evaluate_batch_safe(input, contexts, conn))
+        return self.substitute_defaults_batch(self.evaluate_batch_safe(input, contexts, conn))
 
     @override 
     async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
