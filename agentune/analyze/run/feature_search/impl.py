@@ -89,7 +89,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                   params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]:
 
         with run_context.ddb_manager.cursor() as conn:
-            self._validate_input(data, conn)
+            await asyncio.to_thread(self._validate_input, data.copy_to_thread(), conn)
 
         with run_context.ddb_manager.cursor() as conn:
             candidate_features = await self._generate_features(conn, data, params.generators)
@@ -160,6 +160,8 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
 
         A future improvement can move the check to be done while streaming the dataset,
         but for now the decision was to check ahead of time.
+
+        Because this can take unbounded time, it is run on the threadpool when this class calls it.
         """
         target_df = pl.DataFrame({'target': data.feature_search.data[data.target_column] })
         if target_df.filter(~pl.col('target').is_finite() | pl.col('target').is_null()).height > 0:

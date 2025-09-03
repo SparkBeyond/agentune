@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Self, final
 
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset, DatasetSource
+from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.feature.base import Classification, Feature, Regression, TargetKind
 from agentune.analyze.feature.eval.base import FeatureEvaluator
 from agentune.analyze.feature.eval.universal import (
@@ -29,8 +31,9 @@ from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
 from agentune.analyze.run.ingest.sampling import SplitDuckdbTable
 
 
+@final
 @frozen
-class FeatureSearchInputData:
+class FeatureSearchInputData(CopyToThread):
     feature_search: Dataset # Small dataset for feature generators, held in memory
     feature_eval: DatasetSource 
     train: DatasetSource # Includes the feature_search and feature_eval datasets
@@ -61,6 +64,16 @@ class FeatureSearchInputData:
             target_column=target_column,
             contexts=contexts
         )
+
+    def copy_to_thread(self) -> Self:
+        return FeatureSearchInputData(
+            self.feature_search.copy_to_thread(),
+            self.feature_eval.copy_to_thread(),
+            self.train.copy_to_thread(),
+            self.test.copy_to_thread(),
+            self.target_column, self.contexts
+        )
+
 
 # TODO add user-specified params describing project, problem, etc. in freeform for LLM
 
