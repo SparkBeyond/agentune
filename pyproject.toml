@@ -26,6 +26,7 @@ httpx = {extras = ["http2"], version = "^0.28.1"}
 frozendict = "^2.4.6"
 more-itertools = "^10.7.0"
 llama-index-core = "^0.13.2"
+lightgbm = "^4.6.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.15.0"

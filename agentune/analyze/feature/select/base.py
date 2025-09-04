@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import override
 
-from duckdb.duckdb import DuckDBPyConnection
+from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.dataset import DatasetSource
 from agentune.analyze.feature.base import Feature, TargetKind
