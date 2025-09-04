@@ -161,9 +161,15 @@ class Feature[T](ABC):
         return values.fill_null(self.default_for_missing)
 
     async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
-                              conn: DuckDBPyConnection) -> pl.Series: 
+                              conn: DuckDBPyConnection) -> pl.Series:
+        """The default implementation delegates to aevaluate (non-batch version).
+
+        If that raises an error for some rows, those rows get missing values in the output series.
+        However, a 'real' batch implementation overriding this method is allowed to fail the entire batch
+        by propagating the error, even if it might have succeeded for a subset of the rows.
+        """
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
-        results = await asyncio.gather(*[self.aevaluate(row, contexts, conn) for row in strict_df.iter_rows()])
+        results = await asyncio.gather(*[self.aevaluate_safe(row, contexts, conn) for row in strict_df.iter_rows()])
         return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type, values=results)
 
     async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
@@ -246,7 +252,7 @@ class BoolFeature(Feature[bool]):
 
 @define(slots=False)
 class CategoricalFeature(Feature[str]):
-    """Categorical features output scalar strings, but the column type (in batch_evaluate) is the enum dtype
+    """Categorical features output scalar strings, but the column type (in evaluate_batch_safe) is the enum dtype
     corresponding to the feature's list of categories, with other_category at the end.
     """
 
@@ -288,6 +294,27 @@ class CategoricalFeature(Feature[str]):
     def raw_dtype(self) -> Dtype:
         return agentune.analyze.core.types.string
 
+    @override
+    async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                              conn: DuckDBPyConnection) -> pl.Series:
+        """The default implementation delegates to aevaluate (non-batch version).
+
+        If that raises an error for some rows, those rows get missing values in the output series.
+        However, a 'real' batch implementation overriding this method is allowed to fail the entire batch
+        by propagating the error, even if it might have succeeded for a subset of the rows.
+        """
+        # Unlike the super default, we want to preserve strings that are not in the categories list
+        # and not yet replace them with other_category; we only replace errors with missing values,
+        # to be as similar as possible to a feature that overrides this method.
+        async def aevaluate_error_to_none(row: tuple[Any, ...]) -> str | None:
+            try:
+                return await self.aevaluate(row, contexts, conn)
+            except Exception: # noqa: BLE001
+                return None
+        strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
+        results = await asyncio.gather(*[aevaluate_error_to_none(row) for row in strict_df.iter_rows()])
+        return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type, values=results)
+
     @final
     @override
     async def aevaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
@@ -302,7 +329,7 @@ class CategoricalFeature(Feature[str]):
 
     def _series_result_with_other_category(self, series: pl.Series) -> pl.Series:
         if series.dtype == pl.datatypes.String:
-            series = series.replace('', CategoricalFeature.other_category)
+            series = series.replace('', None)
         df = pl.DataFrame({'raw': series})
         return df.select(
             pl.when(pl.col('raw').cast(self.dtype.polars_type, strict=False).is_null() & pl.col('raw').is_not_null()) \
@@ -315,7 +342,13 @@ class CategoricalFeature(Feature[str]):
     @override
     async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
                                    conn: DuckDBPyConnection) -> pl.Series:
-        result = await super().aevaluate_batch_safe(input, contexts, conn)
+        # Don't call super().aevaluate_batch_safe; we want to transform unexpected values into other_category
+        # before casting the result to the enum type (which would transform them to missing values),
+        # which means we use self.raw_dtype where super().aevaluate_batch_safe uses self.dtype
+        try:
+            result = (await self.aevaluate_batch(input, contexts, conn)).cast(self.raw_dtype.polars_type, strict=False).rename(self.name)
+        except Exception: # noqa: BLE001
+            return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
         return self._series_result_with_other_category(result)
 
 # -------- Synchronous features
@@ -346,10 +379,16 @@ class SyncFeature[T](Feature[T]):
         return self.substitute_defaults(value)
 
     def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
-                       conn: DuckDBPyConnection) -> pl.Series: 
+                       conn: DuckDBPyConnection) -> pl.Series:
+        """The default implementation delegates to evaluate (non-batch version).
+
+        If that raises an error for some rows, those rows get missing values in the output series.
+        However, a 'real' batch implementation overriding this method is allowed to fail the entire batch
+        by propagating the error, even if it might have succeeded for a subset of the rows.
+        """
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
         return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type,
-                         values=[self.evaluate(row, contexts, conn) for row in strict_df.iter_rows()])
+                         values=[self.evaluate_safe(row, contexts, conn) for row in strict_df.iter_rows()])
 
     def evaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
                             conn: DuckDBPyConnection) -> pl.Series:
@@ -418,10 +457,38 @@ class SyncCategoricalFeature(CategoricalFeature, SyncFeature[str]):
         else:
             return result
 
+
+    @override
+    def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                       conn: DuckDBPyConnection) -> pl.Series:
+        """The default implementation delegates to evaluate (non-batch version).
+
+        If that raises an error for some rows, those rows get missing values in the output series.
+        However, a 'real' batch implementation overriding this method is allowed to fail the entire batch
+        by propagating the error, even if it might have succeeded for a subset of the rows.
+        """
+        # Unlike the super default, we want to preserve strings that are not in the categories list
+        # and not yet replace them with other_category; we only replace errors with missing values,
+        # to be as similar as possible to a feature that overrides this method.
+        def evaluate_error_to_none(row: tuple[Any, ...]) -> str | None:
+            try:
+                return self.evaluate(row, contexts, conn)
+            except Exception: # noqa: BLE001
+                return None
+        strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
+        return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type,
+                         values=[evaluate_error_to_none(row) for row in strict_df.iter_rows()])
+
     @override
     def evaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
                                    conn: DuckDBPyConnection) -> pl.Series:
-        result = super().evaluate_batch_safe(input, contexts, conn)
+        # Don't call super().aevaluate_batch_safe; we want to transform unexpected values into other_category
+        # before casting the result to the enum type (which would transform them to missing values),
+        # which means we use self.raw_dtype where super().aevaluate_batch_safe uses self.dtype
+        try:
+            result = self.evaluate_batch(input, contexts, conn).cast(self.raw_dtype.polars_type, strict=False).rename(self.name)
+        except Exception: # noqa: BLE001
+            return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
         return self._series_result_with_other_category(result)
 
 # -------- Other feature types used as public APIs

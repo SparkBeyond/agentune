@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import math
 from collections.abc import Sequence
 from typing import Any, override
@@ -24,6 +26,31 @@ from agentune.analyze.feature.base import (
     SyncFloatFeature,
     SyncIntFeature,
 )
+
+_logger = logging.getLogger(__name__)
+
+
+class BatchingTestFeature[T](Feature[T]):
+    """Simulating a feature that overrides aevaluate_batch and fails the whole batch if any row fails."""
+
+    @override
+    async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                              conn: DuckDBPyConnection) -> pl.Series:
+        # As in the base version, but calling self.aevaluate not self.aevalute_safe
+        strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
+        results = await asyncio.gather(*[self.aevaluate(row, contexts, conn) for row in strict_df.iter_rows()])
+        return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type, values=results)
+
+class BatchingSyncTestFeature[T](SyncFeature[T]):
+    """Simulating a feature that overrides aevaluate_batch and fails the whole batch if any row fails."""
+
+    @override
+    def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                       conn: DuckDBPyConnection) -> pl.Series:
+        # As in the base version, but calling self.evaluate not self.evalute_safe
+        strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
+        return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type,
+                         values=[self.evaluate(row, contexts, conn) for row in strict_df.iter_rows()])
 
 
 @frozen
@@ -237,11 +264,51 @@ class SyncCategoricalTestFeature(SyncCategoricalFeature):
             case _: raise ValueError('other')
 
 
+@frozen
+class BatchIntTestFeature(IntTestFeature, BatchingTestFeature[int]): pass
+
+@frozen
+class BatchSyncIntTestFeature(SyncIntTestFeature, BatchingSyncTestFeature[int]): pass
+
+@frozen
+class BatchFloatTestFeature(FloatTestFeature, BatchingTestFeature[float]): pass
+
+@frozen
+class BatchSyncFloatTestFeature(SyncFloatTestFeature, BatchingSyncTestFeature[float]): pass
+
+@frozen
+class BatchBoolTestFeature(BoolTestFeature, BatchingTestFeature[bool]): pass
+
+@frozen
+class BatchSyncBoolTestFeature(SyncBoolTestFeature, BatchingSyncTestFeature[bool]): pass
+
+@frozen
+class BatchCategoricalTestFeature(CategoricalTestFeature):
+    @override
+    async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                              conn: DuckDBPyConnection) -> pl.Series:
+        # As the base version, but fail the whole batch if any row fails
+        strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
+        results = await asyncio.gather(*[self.aevaluate(row, contexts, conn) for row in strict_df.iter_rows()])
+        return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type, values=results)
+
+@frozen
+class BatchSyncCategoricalTestFeature(SyncCategoricalTestFeature):
+
+    @override
+    def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+                       conn: DuckDBPyConnection) -> pl.Series:
+        # As the base version, but fail the whole batch if any row fails
+        strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
+        return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type,
+                         values=[self.evaluate(row, contexts, conn) for row in strict_df.iter_rows()])
+
+
 async def do_test_feature[T](feature: Feature[T], sync_feature: SyncFeature[T], conn: DuckDBPyConnection,
                              expected_evaluate: dict[int | None, T | None | type[Exception]],
                              safe_substitutions: dict[T | None, T | None],
-                             defaults_substitutions: list[tuple[T | None, T]] # Not a dict because it can contain nan key
-                             ) -> None:
+                             defaults_substitutions: list[tuple[T | None, T]], # Not a dict because it can contain nan key
+                             single_error_fails_whole_batch: bool = False) -> None:
     context = TablesWithContextDefinitions({})
 
     def inputs(ints: list[int | None]) -> Dataset:
@@ -269,15 +336,11 @@ async def do_test_feature[T](feature: Feature[T], sync_feature: SyncFeature[T], 
                 raise ValueError(f'Missing expected default for key={k} with value={v}')
             expected_with_defaults[k] = v
 
-    def is_error_value(value: T | None | type[Exception]) -> bool:
-        if value is ValueError:
-            return True
-        elif isinstance(feature, CategoricalFeature) and value not in feature.categories_with_other and value != '':
-            return True
-        return False
-
-    non_error_pairs = [(k, v) for k, v in expected_evaluate.items() if not is_error_value(v)]
+    non_error_pairs = [(k, v) for k, v in expected_evaluate.items() if v is not ValueError]
     assert len(non_error_pairs) < len(expected_evaluate), 'At least one input should raise an error'
+    pairs_with_missing_errors = [(k, None if v is ValueError else v) for k, v in expected_evaluate.items()]
+    pairs_with_safe_substitutes = [(k, expected_safe[k]) for k, _v in pairs_with_missing_errors]
+    pairs_with_defaults = [(k, expected_with_defaults[k]) for k, _v in pairs_with_missing_errors]
 
     substitution_for_none = next(v for k, v in defaults_substitutions if k is None)
 
@@ -302,28 +365,58 @@ async def do_test_feature[T](feature: Feature[T], sync_feature: SyncFeature[T], 
             f'evaluate_with_defaults for {arg} expected {expected_defaults_result}'
 
     assert (await feature.aevaluate_batch(inputs([k for k, _v in non_error_pairs]), context, conn)).equals(
-        pl.Series(name=feature.name, values=[v for _k, v in non_error_pairs], dtype=feature.raw_dtype.polars_type),
+        pl.Series(name=feature.name,
+                  values=[v for _k, v in non_error_pairs],
+                  dtype=feature.raw_dtype.polars_type),
         check_names=True, check_dtypes=True), 'evaluate_batch (non error outputs)'
 
-    with pytest.raises(ValueError, match='1'):
-        # A single error fails the whole batch in evaluate_batch
-        await feature.aevaluate_batch(inputs(list(expected_evaluate.keys())), context, conn)
+    if single_error_fails_whole_batch:
+        with pytest.raises(ValueError, match='1'):
+            await feature.aevaluate_batch(inputs(list(expected_evaluate.keys())), context, conn)
+    else:
+        assert (await feature.aevaluate_batch(inputs(list(expected_evaluate.keys())), context, conn)).equals(
+            pl.Series(name=feature.name,
+                      values=[v for _k, v in pairs_with_missing_errors],
+                      dtype=feature.raw_dtype.polars_type),
+            check_names=True, check_dtypes=True), 'evaluate_batch (substituting None for error outputs)'
 
     assert (await feature.aevaluate_batch_safe(inputs([k for k, _v in non_error_pairs]), context, conn)).equals(
-        pl.Series(name=feature.name, values=[expected_safe[k] for k, _v in non_error_pairs], dtype=feature.dtype.polars_type),
+        pl.Series(name=feature.name,
+                  values=[expected_safe[k] for k, _v in non_error_pairs],
+                  dtype=feature.dtype.polars_type),
         check_names=True, check_dtypes=True), 'evaluate_batch_safe (non error outputs)'
 
-    assert (await feature.aevaluate_batch_safe(inputs(list(expected_evaluate.keys())), context, conn)).equals(
-        pl.Series(name=feature.name, values=[None] * len(expected_evaluate), dtype=feature.dtype.polars_type),
-        check_names=True, check_dtypes=True), 'A single error fails the whole batch in evaluate_batch_safe'
+    if single_error_fails_whole_batch:
+        assert (await feature.aevaluate_batch_safe(inputs(list(expected_evaluate.keys())), context, conn)).equals(
+            pl.Series(name=feature.name,
+                      values=[None] * len(expected_evaluate),
+                      dtype=feature.dtype.polars_type),
+            check_names=True, check_dtypes=True), 'A single error fails the whole batch in evaluate_batch_safe'
+    else:
+        assert (await feature.aevaluate_batch_safe(inputs(list(expected_evaluate.keys())), context, conn)).equals(
+            pl.Series(name=feature.name,
+                      values=[v for _k, v in pairs_with_safe_substitutes],
+                      dtype=feature.dtype.polars_type),
+            check_names=True, check_dtypes=True), 'Errors cause single-row missing values in evaluate_batch_safe'
 
     assert (await feature.aevaluate_batch_with_defaults(inputs([k for k, _v in non_error_pairs]), context, conn)).equals(
-        pl.Series(name=feature.name, values=[expected_with_defaults[k] for k, _v in non_error_pairs], dtype=feature.dtype.polars_type),
+        pl.Series(name=feature.name,
+                  values=[expected_with_defaults[k] for k, _v in non_error_pairs],
+                  dtype=feature.dtype.polars_type),
         check_names=True, check_dtypes=True), 'evaluate_batch_with_defaults (non error outputs)'
 
-    assert (await feature.aevaluate_batch_with_defaults(inputs(list(expected_evaluate.keys())), context, conn)).equals(
-        pl.Series(name=feature.name, values=[substitution_for_none] * len(expected_evaluate), dtype=feature.dtype.polars_type),
-        check_names=True, check_dtypes=True), 'A single error fails the whole batch in evaluate_batch_with_defaults (and substitutes the default value)'
+    if single_error_fails_whole_batch:
+        assert (await feature.aevaluate_batch_with_defaults(inputs(list(expected_evaluate.keys())), context, conn)).equals(
+            pl.Series(name=feature.name,
+                      values=[substitution_for_none] * len(expected_evaluate),
+                      dtype=feature.dtype.polars_type),
+            check_names=True, check_dtypes=True), 'A single error fails the whole batch in evaluate_batch_with_defaults (and substitutes the default value)'
+    else:
+        assert (await feature.aevaluate_batch_with_defaults(inputs(list(expected_evaluate.keys())), context, conn)).equals(
+            pl.Series(name=feature.name,
+                      values=[substitution_for_none if v is None else v for _k, v in pairs_with_defaults],
+                      dtype=feature.dtype.polars_type),
+            check_names=True, check_dtypes=True), 'Errors cause single-row missing values in evaluate_batch (and the default value is substituted)'
 
     # Sync tests - keep in sync with above
 
@@ -346,28 +439,57 @@ async def do_test_feature[T](feature: Feature[T], sync_feature: SyncFeature[T], 
             f'evaluate_with_defaults for {arg} expected {expected_defaults_result}'
 
     assert (sync_feature.evaluate_batch(inputs([k for k, _v in non_error_pairs]), context, conn)).equals(
-        pl.Series(name=sync_feature.name, values=[v for _k, v in non_error_pairs], dtype=sync_feature.raw_dtype.polars_type),
+        pl.Series(name=sync_feature.name, values=[v for _k, v in non_error_pairs],
+                  dtype=sync_feature.raw_dtype.polars_type),
         check_names=True, check_dtypes=True), 'evaluate_batch (non error outputs)'
 
-    with pytest.raises(ValueError, match='1'):
-        # A single error fails the whole batch in evaluate_batch
-        sync_feature.evaluate_batch(inputs(list(expected_evaluate.keys())), context, conn)
+    if single_error_fails_whole_batch:
+        with pytest.raises(ValueError, match='1'):
+            sync_feature.evaluate_batch(inputs(list(expected_evaluate.keys())), context, conn)
+    else:
+        assert sync_feature.evaluate_batch(inputs(list(expected_evaluate.keys())), context, conn).equals(
+            pl.Series(name=feature.name,
+                      values=[v for _k, v in pairs_with_missing_errors],
+                      dtype=feature.raw_dtype.polars_type),
+            check_names=True, check_dtypes=True), 'evaluate_batch (substituting None for error outputs)'
 
     assert (sync_feature.evaluate_batch_safe(inputs([k for k, _v in non_error_pairs]), context, conn)).equals(
-        pl.Series(name=sync_feature.name, values=[expected_safe[k] for k, _v in non_error_pairs], dtype=sync_feature.dtype.polars_type),
+        pl.Series(name=sync_feature.name,
+                  values=[expected_safe[k] for k, _v in non_error_pairs],
+                  dtype=sync_feature.dtype.polars_type),
         check_names=True, check_dtypes=True), 'evaluate_batch_safe (non error outputs)'
 
-    assert (sync_feature.evaluate_batch_safe(inputs(list(expected_evaluate.keys())), context, conn)).equals(
-        pl.Series(name=sync_feature.name, values=[None] * len(expected_evaluate), dtype=sync_feature.dtype.polars_type),
-        check_names=True, check_dtypes=True), 'A single error fails the whole batch in evaluate_batch_safe'
+    if single_error_fails_whole_batch:
+        assert sync_feature.evaluate_batch_safe(inputs(list(expected_evaluate.keys())), context, conn).equals(
+            pl.Series(name=sync_feature.name,
+                      values=[None] * len(expected_evaluate),
+                      dtype=feature.dtype.polars_type),
+            check_names=True, check_dtypes=True), 'A single error fails the whole batch in evaluate_batch_safe'
+    else:
+        assert sync_feature.evaluate_batch_safe(inputs(list(expected_evaluate.keys())), context, conn).equals(
+            pl.Series(name=sync_feature.name,
+                      values=[v for _k, v in pairs_with_safe_substitutes],
+                      dtype=sync_feature.dtype.polars_type),
+            check_names=True, check_dtypes=True), 'Errors cause single-row missing values in evaluate_batch_safe'
 
     assert (sync_feature.evaluate_batch_with_defaults(inputs([k for k, _v in non_error_pairs]), context, conn)).equals(
-        pl.Series(name=sync_feature.name, values=[expected_with_defaults[k] for k, _v in non_error_pairs], dtype=sync_feature.dtype.polars_type),
+        pl.Series(name=sync_feature.name,
+                  values=[expected_with_defaults[k] for k, _v in non_error_pairs],
+                  dtype=sync_feature.dtype.polars_type),
         check_names=True, check_dtypes=True), 'evaluate_batch_with_defaults (non error outputs)'
 
-    assert (sync_feature.evaluate_batch_with_defaults(inputs(list(expected_evaluate.keys())), context, conn)).equals(
-        pl.Series(name=sync_feature.name, values=[substitution_for_none] * len(expected_evaluate), dtype=feature.dtype.polars_type),
-        check_names=True, check_dtypes=True), 'A single error fails the whole batch in evaluate_batch_with_defaults (and substitutes the default value)'
+    if single_error_fails_whole_batch:
+        assert sync_feature.evaluate_batch_with_defaults(inputs(list(expected_evaluate.keys())), context, conn).equals(
+            pl.Series(name=sync_feature.name,
+                      values=[substitution_for_none] * len(expected_evaluate),
+                      dtype=sync_feature.dtype.polars_type),
+            check_names=True, check_dtypes=True), 'A single error fails the whole batch in evaluate_batch_with_defaults (and substitutes the default value)'
+    else:
+        assert sync_feature.evaluate_batch_with_defaults(inputs(list(expected_evaluate.keys())), context, conn).equals(
+            pl.Series(name=sync_feature.name,
+                      values=[substitution_for_none if v is None else v for _k, v in pairs_with_defaults],
+                      dtype=sync_feature.dtype.polars_type),
+            check_names=True, check_dtypes=True), 'Errors cause single-row missing values in evaluate_batch (and the default value is substituted)'
 
 
 
@@ -385,6 +507,13 @@ async def test_int_feature(conn: DuckDBPyConnection) -> None:
                           defaults_substitutions=defaults_substitutions
                           )
 
+    await do_test_feature(BatchIntTestFeature(), BatchSyncIntTestFeature(), conn,
+                          expected_evaluate=expected_evaluate,
+                          safe_substitutions=safe_substitutions,
+                          defaults_substitutions=defaults_substitutions,
+                          single_error_fails_whole_batch=True
+                          )
+
 
 async def test_bool_feature(conn: DuckDBPyConnection) -> None:
     feature = BoolTestFeature()
@@ -399,6 +528,13 @@ async def test_bool_feature(conn: DuckDBPyConnection) -> None:
                       safe_substitutions=safe_substitutions,
                       defaults_substitutions=defaults_substitutions
                       )
+
+    await do_test_feature(BatchBoolTestFeature(), BatchSyncBoolTestFeature(), conn,
+                          expected_evaluate=expected_evaluate,
+                          safe_substitutions=safe_substitutions,
+                          defaults_substitutions=defaults_substitutions,
+                          single_error_fails_whole_batch=True
+                          )
 
 async def test_float_feature(conn: DuckDBPyConnection) -> None:
     feature = FloatTestFeature()
@@ -415,6 +551,13 @@ async def test_float_feature(conn: DuckDBPyConnection) -> None:
                           defaults_substitutions=defaults_substitutions
                           )
 
+    await do_test_feature(BatchFloatTestFeature(), BatchSyncFloatTestFeature(), conn,
+                          expected_evaluate=expected_evaluate,
+                          safe_substitutions=safe_substitutions,
+                          defaults_substitutions=defaults_substitutions,
+                          single_error_fails_whole_batch=True
+                          )
+
 async def test_categorical_feature(conn: DuckDBPyConnection) -> None:
     feature = CategoricalTestFeature()
     sync_feature = SyncCategoricalTestFeature()
@@ -428,4 +571,11 @@ async def test_categorical_feature(conn: DuckDBPyConnection) -> None:
                           expected_evaluate=expected_evaluate,
                           safe_substitutions=safe_substitutions,
                           defaults_substitutions=defaults_substitutions
+                          )
+
+    await do_test_feature(BatchCategoricalTestFeature(), BatchSyncCategoricalTestFeature(), conn,
+                          expected_evaluate=expected_evaluate,
+                          safe_substitutions=safe_substitutions,
+                          defaults_substitutions=defaults_substitutions,
+                          single_error_fails_whole_batch=True
                           )
