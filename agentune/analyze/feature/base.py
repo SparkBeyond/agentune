@@ -6,7 +6,6 @@ from typing import Any, ClassVar, Literal, final, override
 
 import attrs
 import polars as pl
-import polars._typing
 from attrs import define
 from duckdb import DuckDBPyConnection
 from llama_index.core.llms import ChatMessage, ChatResponse
@@ -24,7 +23,7 @@ type Classification = Literal['classification']
 type Regression = Literal['regression']
 
 
-@define
+@define(slots=False)
 class Feature[T](ABC):
     """A feature calculates a value that can be used to predict the target in a dataset.
 
@@ -191,14 +190,14 @@ class NumericFeature[T](Feature[T]):
     def is_numeric(self) -> bool: return True
 
 # Other int sizes or unsigned ints can be added as needed.
-@define
+@define(slots=False)
 class IntFeature(NumericFeature[int]):
     @final
     @property
     @override
     def dtype(self) -> Dtype: return agentune.analyze.core.types.int32
 
-@define
+@define(slots=False)
 class FloatFeature(NumericFeature[float]):
     default_for_nan: float
     default_for_infinity: float
@@ -225,7 +224,7 @@ class FloatFeature(NumericFeature[float]):
                               [self.default_for_missing, self.default_for_nan, self.default_for_infinity, self.default_for_neg_infinity])
 
 
-@define
+@define(slots=False)
 class BoolFeature(Feature[bool]):
     @final
     @override
@@ -236,7 +235,7 @@ class BoolFeature(Feature[bool]):
     @override
     def dtype(self) -> Dtype: return agentune.analyze.core.types.boolean
 
-@define
+@define(slots=False)
 class CategoricalFeature(Feature[str]):
 
     # Special category name that every categorical feature is allowed to return if it encounters an unexpected value.

@@ -11,7 +11,7 @@ from agentune.analyze.core.schema import Field
 from agentune.analyze.feature.base import SqlQueryFeature, SyncFeature
 
 
-@attrs.define # for declaring index_column_name
+@attrs.define(slots=False) # for declaring index_column_name
 class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
     """A feature implemented as a single SQL query.
 
