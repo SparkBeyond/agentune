@@ -65,7 +65,17 @@ class Feature[T](ABC):
 
     @property
     @abstractmethod
-    def dtype(self) -> Dtype: ...
+    def dtype(self) -> Dtype:
+        """The dtype of series returned by aevaluate_batch_safe. See also raw_dtype."""
+        ...
+
+    @property
+    def raw_dtype(self) -> Dtype:
+        """The dtype of series returned by aevaluate_batch (the non-safe version).
+
+        Can be more general than `self.dtype`, with the _safe evaluation coercing raw values to the right dtype.
+        """
+        return self.dtype
 
     @property
     @abstractmethod
@@ -155,12 +165,12 @@ class Feature[T](ABC):
                               conn: DuckDBPyConnection) -> pl.Series: 
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
         results = await asyncio.gather(*[self.aevaluate(row, contexts, conn) for row in strict_df.iter_rows()])
-        return pl.Series(name=self.name, dtype=self.dtype.polars_type, values=results)
+        return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type, values=results)
 
     async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
                                    conn: DuckDBPyConnection) -> pl.Series:
         try:
-            return await self.aevaluate_batch(input, contexts, conn)
+            return (await self.aevaluate_batch(input, contexts, conn)).cast(self.dtype.polars_type, strict=False).rename(self.name)
         except Exception: # noqa: BLE001
             return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
 
@@ -237,6 +247,9 @@ class BoolFeature(Feature[bool]):
 
 @define(slots=False)
 class CategoricalFeature(Feature[str]):
+    """Categorical features output scalar strings, but the column type (in batch_evaluate) is the enum dtype
+    corresponding to the feature's list of categories, with other_category at the end.
+    """
 
     # Special category name that every categorical feature is allowed to return if it encounters an unexpected value.
     other_category: ClassVar[str] = '_other_'
@@ -267,7 +280,14 @@ class CategoricalFeature(Feature[str]):
     @final
     @property
     @override
-    def dtype(self) -> Dtype: return agentune.analyze.core.types.string
+    def dtype(self) -> Dtype:
+        return agentune.analyze.core.types.EnumDtype(*self.categories, CategoricalFeature.other_category)
+
+    @final
+    @property
+    @override
+    def raw_dtype(self) -> Dtype:
+        return agentune.analyze.core.types.string
 
     @final
     @override
@@ -282,14 +302,15 @@ class CategoricalFeature(Feature[str]):
             return result
 
     def _series_result_with_other_category(self, series: pl.Series) -> pl.Series:
-        enum_dtype = pl.datatypes.Enum(self.categories)
+        if series.dtype == pl.datatypes.String:
+            series = series.replace('', CategoricalFeature.other_category)
         df = pl.DataFrame({'raw': series})
         return df.select(
-            pl.when(pl.col('raw') == '').then(pl.lit(None)) \
-                .when(pl.col('raw').cast(enum_dtype, strict=False).is_null() & pl.col('raw').is_not_null()) \
-                .then(pl.lit(CategoricalFeature.other_category)) \
-                .otherwise(pl.col('raw')) \
-                .alias(self.name)
+            pl.when(pl.col('raw').cast(self.dtype.polars_type, strict=False).is_null() & pl.col('raw').is_not_null()) \
+              .then(pl.lit(CategoricalFeature.other_category)) \
+              .otherwise(pl.col('raw')) \
+              .cast(self.dtype.polars_type)
+              .alias(self.name)
         )[self.name]
 
     @override
@@ -328,13 +349,13 @@ class SyncFeature[T](Feature[T]):
     def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
                        conn: DuckDBPyConnection) -> pl.Series: 
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
-        return pl.Series(name=self.name, dtype=self.dtype.polars_type, 
+        return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type,
                          values=[self.evaluate(row, contexts, conn) for row in strict_df.iter_rows()])
 
     def evaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
                             conn: DuckDBPyConnection) -> pl.Series:
         try:
-            return self.evaluate_batch(input, contexts, conn)
+            return self.evaluate_batch(input, contexts, conn).cast(self.dtype.polars_type, strict=False).rename(self.name)
         except Exception: # noqa: BLE001
             return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
 

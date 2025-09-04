@@ -269,7 +269,14 @@ async def do_test_feature[T](feature: Feature[T], sync_feature: SyncFeature[T], 
                 raise ValueError(f'Missing expected default for key={k} with value={v}')
             expected_with_defaults[k] = v
 
-    non_error_pairs = [(k, v) for k, v in expected_evaluate.items() if v is not ValueError]
+    def is_error_value(value: T | None | type[Exception]) -> bool:
+        if value is ValueError:
+            return True
+        elif isinstance(feature, CategoricalFeature) and value not in feature.categories_with_other and value != '':
+            return True
+        return False
+
+    non_error_pairs = [(k, v) for k, v in expected_evaluate.items() if not is_error_value(v)]
     assert len(non_error_pairs) < len(expected_evaluate), 'At least one input should raise an error'
 
     substitution_for_none = next(v for k, v in defaults_substitutions if k is None)
@@ -295,7 +302,7 @@ async def do_test_feature[T](feature: Feature[T], sync_feature: SyncFeature[T], 
             f'evaluate_with_defaults for {arg} expected {expected_defaults_result}'
 
     assert (await feature.aevaluate_batch(inputs([k for k, _v in non_error_pairs]), context, conn)).equals(
-        pl.Series(name=feature.name, values=[v for _k, v in non_error_pairs], dtype=feature.dtype.polars_type),
+        pl.Series(name=feature.name, values=[v for _k, v in non_error_pairs], dtype=feature.raw_dtype.polars_type),
         check_names=True, check_dtypes=True), 'evaluate_batch (non error outputs)'
 
     with pytest.raises(ValueError, match='1'):
@@ -339,7 +346,7 @@ async def do_test_feature[T](feature: Feature[T], sync_feature: SyncFeature[T], 
             f'evaluate_with_defaults for {arg} expected {expected_defaults_result}'
 
     assert (sync_feature.evaluate_batch(inputs([k for k, _v in non_error_pairs]), context, conn)).equals(
-        pl.Series(name=sync_feature.name, values=[v for _k, v in non_error_pairs], dtype=sync_feature.dtype.polars_type),
+        pl.Series(name=sync_feature.name, values=[v for _k, v in non_error_pairs], dtype=sync_feature.raw_dtype.polars_type),
         check_names=True, check_dtypes=True), 'evaluate_batch (non error outputs)'
 
     with pytest.raises(ValueError, match='1'):
