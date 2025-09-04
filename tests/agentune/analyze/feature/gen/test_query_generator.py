@@ -14,6 +14,9 @@ from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.llm import LLMContext, LLMSpec
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.sercontext import LLMWithSpec
+from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
+    ConversationFormatter,
+)
 from agentune.analyze.feature.gen.insightful_text_generator.insightful_text_generator import (
     ConversationQueryFeatureGenerator,
 )
@@ -92,6 +95,7 @@ def test_dataset_with_context(test_data_paths: dict[str, Path], conn: DuckDBPyCo
 
     return main_dataset, 'outcome', contexts
 
+
 @pytest.fixture
 async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSpec:
     """Create a real LLM for end-to-end testing."""
@@ -102,7 +106,6 @@ async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSp
         spec=llm_spec
     )
     return llm_with_spec
-
 
 
 @pytest.mark.integration
@@ -155,3 +158,56 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_context: tupl
 
             # log the generated queries for verification
             logger.info(f'Generated queries: {query.name} - {query.query_text}')
+
+        # 3. Test enrichment part
+        sampler = feature_generator._get_sampler(target_field)
+        sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
+        enrichment_formatter = ConversationFormatter(
+            name=f'enrichment_formatter_{conversation_context.table.name}',
+            conversation_context=conversation_context,
+            params=Schema(cols=())
+        )
+        enriched_output = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
+        
+        # Validate enriched output
+        assert isinstance(enriched_output, pl.DataFrame)
+        assert enriched_output.height > 0
+        assert enriched_output.height == feature_generator.num_samples_for_enrichment
+        
+        # Check that all query names are in the enriched output
+        for query in queries:
+            assert query.name in enriched_output.columns, f'Query "{query.name}" not found in enriched output columns'
+        
+        # Check that enriched data contains values for each query
+        for query in queries:
+            query_data = enriched_output.select(pl.col(query.name)).drop_nulls()
+            assert query_data.height > 0, f'Query "{query.name}" has no non-null values in enriched output'
+            
+            # Check that enriched data does not contain empty strings
+            non_empty_data = query_data.filter(pl.col(query.name) != '')
+            assert non_empty_data.height > 0, f'Query "{query.name}" has only empty string values in enriched output'
+
+        logger.info(f'Enrichment successful: {enriched_output.height} rows with {len(enriched_output.columns)} columns')
+
+        # 4. Test determine_dtype part
+        updated_queries = await feature_generator.determine_dtypes(queries, enriched_output)
+        
+        # Validate updated queries
+        assert isinstance(updated_queries, list)
+        assert len(updated_queries) <= len(queries)  # Some queries might be filtered out
+        assert all(isinstance(q, Query) for q in updated_queries)
+        
+        # Validate that all updated queries have valid dtypes
+        valid_dtypes = [dtypes.boolean, dtypes.int32, dtypes.float64]
+        for query in updated_queries:
+            assert query.return_type is not None
+            is_valid_simple_dtype = query.return_type in valid_dtypes
+            is_valid_enum_dtype = isinstance(query.return_type, dtypes.EnumDtype)
+            is_valid_dtype = is_valid_simple_dtype or is_valid_enum_dtype
+            assert is_valid_dtype, f'Query "{query.name}" has invalid return_type: {query.return_type}'
+            
+            # Log the dtype determination results
+            logger.info(f'Query "{query.name}" dtype determined as: {query.return_type}')
+        
+        logger.info(f'Dtype determination successful: {len(updated_queries)} queries with valid types')
+        

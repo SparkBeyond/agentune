@@ -4,12 +4,12 @@ This module defines the core abstractions for the Query Generation Pipeline,
 following the Insightful Text Features architecture.
 """
 
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 
 from attrs import define
 from duckdb import DuckDBPyConnection
-from llama_index.core.llms import ChatMessage
 
 from agentune.analyze.core import types
 from agentune.analyze.core.dataset import Dataset
@@ -28,7 +28,10 @@ from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import
     DataSampler,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
-from agentune.analyze.feature.gen.insightful_text_generator.util import extract_json_from_response
+from agentune.analyze.feature.gen.insightful_text_generator.util import (
+    achat_raw,
+    extract_json_from_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +52,6 @@ class QueryGenerator(ABC):
     async def generate_prompts(self, sampled_data: Dataset, conn: DuckDBPyConnection) -> list[str]:
         """Convert sampled data into prompts for the LLM."""
         ...
-
-    async def run_llm(self, prompts: list[str]) -> list[str]:
-        """Run the LLM with the provided prompts and return raw query text."""
-        # TODO: implement parallel LLM calls
-        chats = [[ChatMessage(role='user', content=prompt)] for prompt in prompts]
-        responses = []
-        for messages in chats:
-            response = await self.model.llm.achat(messages)
-            if response.message.content:
-                responses.append(response.message.content)
-        return responses
 
     async def parse_and_validate_queries(self, raw_queries: list[str]) -> list[Query]:
         """Parse raw query text into structured Query objects and validate them."""
@@ -111,7 +103,7 @@ class QueryGenerator(ABC):
         prompts = await self.generate_prompts(sampled_data, conn)
 
         # 3. Call the LLM with the prompts to generate raw query text
-        raw_response = await self.run_llm(prompts)
+        raw_response = await asyncio.gather(*[achat_raw(self.model, prompt) for prompt in prompts])
 
         # 4. Parse and validate the generated queries
         queries = await self.parse_and_validate_queries(raw_response)
