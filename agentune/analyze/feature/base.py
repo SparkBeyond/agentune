@@ -8,7 +8,6 @@ import attrs
 import polars as pl
 from attrs import define
 from duckdb import DuckDBPyConnection
-from llama_index.core.llms import ChatMessage, ChatResponse
 
 import agentune.analyze.core.types
 from agentune.analyze.context.base import ContextDefinition, TablesWithContextDefinitions
@@ -425,14 +424,14 @@ class SyncCategoricalFeature(CategoricalFeature, SyncFeature[str]):
         result = super().evaluate_batch_safe(input, contexts, conn)
         return self._series_result_with_other_category(result)
 
-# -------- Other feature types
+# -------- Other feature types used as public APIs
 
 class SqlQueryFeature(Feature):
     """A feature that can be represented to the user as an SQL query.
-    
+
     Extending this class doesn't necessarily mean that a feature is implemented as an SQL query.
     """
-    
+
     @property
     @abstractmethod
     def sql_query(self) -> str: ...
@@ -453,18 +452,3 @@ class LlmFeature[T](Feature[T]):
     @property
     @abstractmethod
     def model(self) -> LLMWithSpec: ...
-
-class SinglePromptLlmFeature[T](LlmFeature[T]):
-    """A feature that is evaluated by an LLM with a single prompt per input row."""
-
-    @abstractmethod 
-    def row_prompt(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
-                   conn: DuckDBPyConnection) -> Sequence[ChatMessage]: ...
-
-    @abstractmethod
-    def parse_result(self, result: ChatResponse) -> T | None: ...
-
-    @override
-    async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
-                        conn: DuckDBPyConnection) -> T | None:
-        return self.parse_result(await self.model.llm.achat(self.row_prompt(args, contexts, conn)))
