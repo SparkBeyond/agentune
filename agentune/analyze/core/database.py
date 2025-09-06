@@ -5,7 +5,7 @@ import random
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
-from typing import ClassVar, cast, override
+from typing import TYPE_CHECKING, ClassVar, cast, override
 
 import cattrs
 import duckdb
@@ -13,12 +13,17 @@ from attr import define
 from attrs import field, frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from frozendict import frozendict
+from tests.agentune.analyze.core import default_duckdb_batch_size
 
 import agentune.analyze.core.setup
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.util.attrutil import frozendict_converter
 from agentune.analyze.util.duckdbutil import transaction_scope
+
+if TYPE_CHECKING:
+    from agentune.analyze.core.dataset import DatasetSource
+
 
 _logger = logging.getLogger(__name__)
 
@@ -104,6 +109,10 @@ class DuckdbTable:
 
         return DuckdbTable.from_duckdb(self.name, conn)
 
+    def as_source(self, batch_size: int = default_duckdb_batch_size) -> DatasetSource:
+        # Local import to avoid cycle
+        from agentune.analyze.core.dataset import DatasetSource
+        return DatasetSource.from_table(self, batch_size)
 
     @staticmethod
     def from_duckdb(name: DuckdbName | str, conn: DuckDBPyConnection) -> DuckdbTable:

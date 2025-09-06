@@ -7,6 +7,7 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
+from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.feature.base import Classification, Feature, Regression, TargetKind
@@ -79,6 +80,17 @@ class FeatureSearchInputData(CopyToThread):
 
 @frozen
 class FeatureSearchParams[TK: TargetKind]:
+    """Non-data arguments to feature search.
+
+    Args:
+        store_enriched_train: if not None, the final features computed on the train dataset will be stored in the named table.
+                              and remain available after the feature search completes. If this table already exists,
+                              it will be replaced.
+                              This is the data that FeatureSearchResults.features_with_train_stats is computed on.
+                              If None, the data will be stored in a temporary table and deleted before feature search
+                              completes.
+        store_enriched_test:  as above, for the test dataset.
+    """
     generators: tuple[FeatureGenerator, ...]
     selector: FeatureSelector[Feature, TK] | EnrichedFeatureSelector
     relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[TK]
@@ -88,6 +100,8 @@ class FeatureSearchParams[TK: TargetKind]:
     evaluators: tuple[type[FeatureEvaluator], ...] = (UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator)
     feature_stats_calculator: CombinedSyncFeatureStatsCalculator = stats_calculators.default_feature_stats_calculator
     enrich_runner: EnrichRunner = EnrichRunnerImpl()
+    store_enriched_train: DuckdbName | None = None
+    store_enriched_test: DuckdbName | None = None
 
 @frozen 
 class RegressionFeatureSearchParams(FeatureSearchParams[Regression]):
@@ -101,8 +115,18 @@ class ClassificationFeatureSearchParams(FeatureSearchParams[Classification]):
 
 @frozen
 class FeatureSearchResults[TK: TargetKind]:
+    """Args:
+    enriched_train: if FeatureSearchParams.store_enriched_train was given, this is the table where the data was stored.
+                    This is the data that features_with_train_stats was computed on.
+                    This table includes the target column and the enriched feature columns, but not the other
+                    columns of the original input.
+    enriched_test:  as above, for the test dataset.
+    """
+
     features_with_train_stats: tuple[FeatureWithFullStats[Feature, TK], ...]
     features_with_test_stats: tuple[FeatureWithFullStats[Feature, TK], ...]
+    enriched_train: DuckdbTable | None = None
+    enriched_test: DuckdbTable | None = None
 
     def __attrs_post_init__(self) -> None:
         if tuple(f.feature for f in self.features_with_train_stats) != tuple(f.feature for f in self.features_with_test_stats):

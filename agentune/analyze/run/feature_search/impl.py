@@ -113,6 +113,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                                                                 data.feature_search, data.target_column,
                                                                 enriched_feature_search_group_tables,
                                                                 params, conn)
+                _logger.info(f'Selected {len(selected_features)} features out of {len(features_with_updated_defaults)}')
         finally:
             with run_context.ddb_manager.cursor() as conn:
                 for table in enriched_feature_search_group_tables:
@@ -129,8 +130,8 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         selected_features_with_original_names = [attrs.evolve(feature, name=original_name(feature)) for feature in selected_features]
         deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[data.target_column])
 
-        enriched_eval_name = run_context.ddb_manager.temp_random_name('enriched_eval')
-        enriched_test_name = run_context.ddb_manager.temp_random_name('enriched_test')
+        enriched_eval_name = params.store_enriched_train or run_context.ddb_manager.temp_random_name('enriched_eval')
+        enriched_test_name = params.store_enriched_test or run_context.ddb_manager.temp_random_name('enriched_test')
 
         try:
             with run_context.ddb_manager.cursor() as conn:
@@ -142,7 +143,8 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 features_with_eval_stats: list[FeatureWithFullStats[Feature, TK]] = await self._calculate_feature_stats_single_data(deduplicated_selected_features,
                                                                                                enriched_eval_sink.as_source(conn), data.target_column,
                                                                                                params, conn)
-                conn.execute(f'drop table {enriched_eval_name}')
+                if not params.store_enriched_train:
+                    conn.execute(f'drop table {enriched_eval_name}')
 
                 enriched_test_sink = DatasetSink.into_duckdb_table(enriched_test_name)
                 await params.enrich_runner.run_stream(deduplicated_selected_features, data.test, data.contexts,
@@ -152,13 +154,18 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 features_with_test_stats: list[FeatureWithFullStats[Feature, TK]] = await self._calculate_feature_stats_single_data(deduplicated_selected_features,
                                                                                                enriched_test_sink.as_source(conn), data.target_column,
                                                                                                params, conn)
-                conn.execute(f'drop table {enriched_test_name}')
+                if not params.store_enriched_test:
+                    conn.execute(f'drop table {enriched_test_name}')
 
-                return FeatureSearchResults(tuple(features_with_eval_stats), tuple(features_with_test_stats))
+                return FeatureSearchResults(tuple(features_with_eval_stats), tuple(features_with_test_stats),
+                                            DuckdbTable.from_duckdb(enriched_eval_name, conn) if params.store_enriched_train else None,
+                                            DuckdbTable.from_duckdb(enriched_test_name, conn) if params.store_enriched_test else None)
         finally:
             with run_context.ddb_manager.cursor() as conn:
-                conn.execute(f'drop table if exists {enriched_eval_name}')
-                conn.execute(f'drop table if exists {enriched_test_name}')
+                if not params.store_enriched_train:
+                    conn.execute(f'drop table if exists {enriched_eval_name}')
+                if not params.store_enriched_test:
+                    conn.execute(f'drop table if exists {enriched_test_name}')
 
     def _validate_input(self, data: FeatureSearchInputData, conn: DuckDBPyConnection) -> None:
         """Fail if the target column in any input dataset has missing values,
@@ -220,18 +227,22 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
             def sync_generate() -> None:
                 for generator in generators:
                     _logger.info(f'Generating features with {generator=}')
+                    count = 0
                     for feature in generator.generate(data.feature_search, data.target_column, data.contexts, cursor):
                         output_queue.put(feature)
-                    _logger.info(f'Done generating features with {generator=}')
+                        count += 1
+                    _logger.info(f'Generated {count} features with {generator=}')
             await asyncio.to_thread(sync_generate)
 
     async def _generate_async(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: FeatureSearchInputData,
                               generators: list[FeatureGenerator]) -> None:
         async def agenerate(generator: FeatureGenerator) -> None:
             _logger.info(f'Generating features with {generator=}')
+            count = 0
             async for feature in generator.agenerate(data.feature_search, data.target_column, data.contexts, conn):
                 await output_queue.aput(feature)
-            _logger.info(f'Done generating features with {generator=}')
+                count += 1
+            _logger.info(f'Generated {count} features with {generator=}')
 
         if self.run_generators_concurrently:
             await asyncio.gather(*[agenerate(generator) for generator in generators])

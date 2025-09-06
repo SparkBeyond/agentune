@@ -220,7 +220,9 @@ class ToySyncFeatureSelector(SyncFeatureSelector[Feature, Regression]):
     def select_final_features(self) -> list[FeatureWithFullStats[Feature, Regression]]:
         average_metric = math.nan if len(self.features) == 0 \
             else sum(ToySyncFeatureSelector.some_metric(x.stats.feature) for x in self.features) / len(self.features)
-        return [x for x in self.features if ToySyncFeatureSelector.some_metric(x.stats.feature) >= average_metric]
+        selected = [x for x in self.features if ToySyncFeatureSelector.some_metric(x.stats.feature) >= average_metric]
+        self.features.clear() # Prepare for reuse
+        return selected
 
 @frozen
 class ToyAsyncFeatureSelector(FeatureSelector[Feature, Regression]):
@@ -236,7 +238,9 @@ class ToyAsyncFeatureSelector(FeatureSelector[Feature, Regression]):
         await asyncio.sleep(0)
         average_metric = math.nan if len(self.features) == 0 \
             else sum(ToySyncFeatureSelector.some_metric(x.stats.feature) for x in self.features) / len(self.features)
-        return [x for x in self.features if ToySyncFeatureSelector.some_metric(x.stats.feature) >= average_metric]
+        selected = [x for x in self.features if ToySyncFeatureSelector.some_metric(x.stats.feature) >= average_metric]
+        self.features.clear() # Prepare for reuse
+        return selected
 
 @frozen
 class ToyAllFeatureSelector(SyncFeatureSelector):
@@ -248,7 +252,9 @@ class ToyAllFeatureSelector(SyncFeatureSelector):
 
     @override
     def select_final_features(self) -> Sequence[FeatureWithFullStats]:
-        return self._added_features
+        selected = tuple(self._added_features)
+        self._added_features.clear() # Prepare for reuse
+        return selected
 
 
 class ToyAsyncEnrichedFeatureSelector(EnrichedFeatureSelector):
