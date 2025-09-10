@@ -49,16 +49,20 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
     def __init__(
         self,
         task_type: TargetKind,
-        top_k: int = 10
+        top_k: int = 10,
+        min_marginal_reduction_threshold: float = 1e-8
     ):
         """Initialize selector.
 
         Args:
             top_k: Number of features to select.
             task_type: 'classification' or 'regression'.
+            min_marginal_reduction_threshold: Minimum marginal error reduction required to add a feature.
+                Features with lower marginal improvement will not be selected. 
         """
         self.top_k = top_k
         self.task_type = task_type
+        self.min_marginal_reduction_threshold = min_marginal_reduction_threshold
 
         # No internal model; selector is model-agnostic
         self.final_importances_: dict[str, list] | None = None
@@ -402,7 +406,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             fname: self._calculate_feature_statistics(vals, target) for fname, vals in feature_values.items()
         }
 
-        # Phase 1: single feature scoring
+        # Phase 1: single feature scoring and initial filtering
         candidate_marginal_scores: dict[str, float] = {}
         for f_name in remaining_feature_names:
             score = self._single_feature_score(stats_by_name[f_name], baseline_stats)
@@ -410,12 +414,24 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         if not remaining_feature_names:
             self.final_importances_ = {'feature': [], 'importance': []}
             return [], {}
+        
+        # Filter out features that don't meet the threshold (they can never improve)
+        viable_features = [
+            f_name for f_name in remaining_feature_names 
+            if candidate_marginal_scores[f_name] > 0.0 and candidate_marginal_scores[f_name] >= self.min_marginal_reduction_threshold
+        ]
+        
+        if not viable_features:
+            # No features meet the threshold, return empty selection
+            return [], {}
 
-        # Select best first feature
-        best_first_feature = max(remaining_feature_names, key=lambda name: (candidate_marginal_scores[name], name))
+        # Select best first feature from viable candidates
+        best_first_feature = max(viable_features, key=lambda name: (candidate_marginal_scores[name], name))
+        best_first_score = candidate_marginal_scores[best_first_feature]
+        
         selected_feature_names.append(best_first_feature)
-        feature_scores[best_first_feature] = candidate_marginal_scores[best_first_feature]
-        remaining_feature_names.remove(best_first_feature)
+        feature_scores[best_first_feature] = best_first_score
+        viable_features.remove(best_first_feature)
 
         # Phase 2: iteratively add features using pairwise scoring
         # Precompute target-shape constants and per-feature normalization outside the loop
@@ -423,14 +439,14 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         norm_feature_values: dict[str, np.ndarray] = {
             name: self._normalize_to_targets(vals, n_targets) for name, vals in feature_values.items()
         }
-        while len(selected_feature_names) < self.top_k and remaining_feature_names:
+        while len(selected_feature_names) < self.top_k and viable_features:
             last_selected_name = selected_feature_names[-1]
             # Update candidate's marginal only against the newly selected feature
             # Normalize Z once to (n_samples, n_targets)
             z = norm_feature_values[last_selected_name]
 
-            # Pre-normalize X for all remaining candidates once (compact)
-            cand_order = list(remaining_feature_names)
+            # Pre-normalize X for all viable candidates once (compact)
+            cand_order = list(viable_features)
             x_stack = np.stack([norm_feature_values[name] for name in cand_order], axis=0)  # (C, N, T)
 
             # Batch compute sxz for all candidates: sxz[c, t] = sum_n X[c, n, t] * Z[n, t]
@@ -438,18 +454,34 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             xz = x_stack * z[None, :, :]
             sxz_matrix = xz.sum(axis=1, dtype=np.float64)  # (C, T)
 
+            # Update scores and remove features that fall below threshold
+            features_to_remove = []
             for idx, cand_name in enumerate(cand_order):
                 sxz_vec = sxz_matrix[idx]
                 pairwise_score = self._pairwise_feature_score(
                     stats_by_name[cand_name], stats_by_name[last_selected_name], baseline_stats, sxz_vec
                 )
                 candidate_marginal_scores[cand_name] = min(candidate_marginal_scores[cand_name], pairwise_score)
+                
+                # Mark features that fall below threshold for removal
+                if candidate_marginal_scores[cand_name] < self.min_marginal_reduction_threshold:
+                    features_to_remove.append(cand_name)
+            
+            # Remove features that no longer meet the threshold
+            for feature_name in features_to_remove:
+                viable_features.remove(feature_name)
+            
+            # If no viable features remain, return current selection
+            if not viable_features:
+                return selected_feature_names, feature_scores
 
-            # Select best remaining feature
-            best_feature = max(remaining_feature_names, key=lambda name: (candidate_marginal_scores[name], name))
+            # Select best remaining viable feature
+            best_feature = max(viable_features, key=lambda name: (candidate_marginal_scores[name], name))
+            best_score = candidate_marginal_scores[best_feature]
+            
             selected_feature_names.append(best_feature)
-            feature_scores[best_feature] = candidate_marginal_scores[best_feature]
-            remaining_feature_names.remove(best_feature)
+            feature_scores[best_feature] = best_score
+            viable_features.remove(best_feature)
 
         return selected_feature_names, feature_scores
 

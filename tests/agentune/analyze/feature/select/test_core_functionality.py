@@ -350,6 +350,112 @@ def test_fake_category_minimal_impact(conn: duckdb.DuckDBPyConnection) -> None:
     assert overlap_ratio >= 0.67, f'Feature overlap ({overlap_ratio:.2f}) should be at least 67% when adding fake feature'
 
 
+def test_linear_pairwise_threshold_functionality(conn: duckdb.DuckDBPyConnection) -> None:
+    """Test LinearPairWiseFeatureSelector threshold functionality."""
+    # Create synthetic dataset with features of varying quality
+    rng = np.random.default_rng(42)
+    n_rows = 300
+    
+    # High-quality features (strongly predictive)
+    x1 = rng.normal(size=n_rows)
+    x2 = rng.normal(size=n_rows)
+    
+    # Medium-quality feature (moderately predictive)
+    x3 = rng.normal(size=n_rows)
+    
+    # Low-quality features (weakly predictive or noise)
+    x4 = rng.normal(size=n_rows) * 0.1  # Very weak signal
+    x5 = rng.normal(size=n_rows)  # Pure noise
+    
+    # Target based primarily on x1 and x2, with small contribution from x3
+    y = (x1 + 0.8 * x2 + 0.2 * x3 + 0.05 * rng.normal(size=n_rows) > 0).astype(int)
+    
+    df = pl.DataFrame({
+        'high_quality_1': x1,
+        'high_quality_2': x2,
+        'medium_quality': x3,
+        'low_quality_1': x4,
+        'low_quality_2': x5,
+        'target': y
+    })
+    
+    # Build enriched API objects
+    builder = EnrichedBuilder()
+    features, source = builder.build(df, 'target')
+    
+    # Test 1: Default threshold (1e-8) - should work as before
+    selector_default = LinearPairWiseFeatureSelector(top_k=5, task_type='classification')
+    selected_default = selector_default.select_features(features, source, 'target', conn)
+    assert len(selected_default) > 0, 'Default threshold should select features'
+    assert len(selected_default) <= 5, 'Should not exceed top_k'
+    
+    # Test 2: High threshold (0.1) - should select fewer features
+    selector_high = LinearPairWiseFeatureSelector(top_k=5, task_type='classification', min_marginal_reduction_threshold=0.1)
+    selected_high = selector_high.select_features(features, source, 'target', conn)
+    assert len(selected_high) <= len(selected_default), 'High threshold should select same or fewer features'
+    
+    # Test 3: Very high threshold (0.5) - might select no features
+    selector_very_high = LinearPairWiseFeatureSelector(top_k=5, task_type='classification', min_marginal_reduction_threshold=0.5)
+    selected_very_high = selector_very_high.select_features(features, source, 'target', conn)
+    assert len(selected_very_high) <= len(selected_high), 'Very high threshold should select same or fewer features'
+    
+    # Test 4: Zero threshold - should still reject features with 0 or negative gain
+    selector_zero = LinearPairWiseFeatureSelector(top_k=5, task_type='classification', min_marginal_reduction_threshold=0.0)
+    _ = selector_zero.select_features(features, source, 'target', conn)
+    
+    # All selected features should have positive marginal gain (> 1e-10 due to effective threshold)
+    if selector_zero.final_importances_ is not None:
+        importance_scores = selector_zero.final_importances_['importance']
+        assert all(score > 1e-10 for score in importance_scores), 'Even with threshold=0, features with zero gain should not be selected'
+    
+    # Test 5: Verify that higher quality features are preferred
+    if len(selected_default) >= 2:
+        selected_names_default = {f.name for f in selected_default}
+        # High quality features should be more likely to be selected
+        high_quality_selected = len({'high_quality_1', 'high_quality_2'} & selected_names_default)
+        assert high_quality_selected > 0, 'At least one high-quality feature should be selected'
+
+
+def test_linear_pairwise_threshold_early_stopping(conn: duckdb.DuckDBPyConnection) -> None:
+    """Test that LinearPairWiseFeatureSelector stops early when no features meet threshold."""
+    # Create dataset where only one feature is truly predictive
+    rng = np.random.default_rng(123)
+    n_rows = 200
+    
+    # One good feature
+    x_good = rng.normal(size=n_rows)
+    
+    # Many noise features (should have very low marginal gain)
+    noise_features = {f'noise_{i}': rng.normal(size=n_rows) * 0.01 for i in range(10)}
+    
+    # Target based only on the good feature
+    y = (x_good + 0.1 * rng.normal(size=n_rows) > 0).astype(int)
+    
+    data_dict = {'good_feature': x_good, 'target': y}
+    data_dict.update(noise_features)
+    df = pl.DataFrame(data_dict)
+    
+    # Build enriched API objects
+    builder = EnrichedBuilder()
+    features, source = builder.build(df, 'target')
+    
+    # Test with moderate threshold - should stop early and select only good features
+    selector = LinearPairWiseFeatureSelector(top_k=10, task_type='classification', min_marginal_reduction_threshold=0.01)
+    selected = selector.select_features(features, source, 'target', conn)
+    
+    # Should select fewer than top_k due to early stopping
+    assert len(selected) < 10, 'Should stop early when features do not meet threshold'
+    assert len(selected) > 0, 'Should select at least the good feature'
+    
+    # The good feature should be selected
+    selected_names = {f.name for f in selected}
+    assert 'good_feature' in selected_names, 'The predictive feature should be selected'
+    
+    # Most noise features should not be selected
+    noise_selected = len([name for name in selected_names if name.startswith('noise_')])
+    assert noise_selected <= 2, 'Most noise features should not meet the threshold'
+
+
 @pytest.mark.parametrize('selector_name', SELECTORS)
 def test_boolean_feature_handling(selector_name: str, conn: duckdb.DuckDBPyConnection) -> None:
     """Selectors should correctly handle boolean features via enriched API.
