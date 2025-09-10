@@ -15,7 +15,6 @@ from attrs import define, field, frozen
 from duckdb import DuckDBPyConnection
 from tests.agentune.analyze.run.feature_search.toys import ToyAsyncFeature
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.feature.eval.base import (
     EfficientEvaluatorParams,
@@ -47,18 +46,18 @@ class DelayingAsyncFeature(ToyAsyncFeature):
     default_for_neg_infinity: float = 0.0
 
     @override 
-    async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate(self, args: tuple[Any, ...], 
                         conn: DuckDBPyConnection) -> float:
         await asyncio.sleep(self.delay_per_row.total_seconds())
-        value = await super().aevaluate(args, contexts, conn)
+        value = await super().aevaluate(args, conn)
         noise = self._rnd.normalvariate() * self.add_random_noise
         return value + noise 
 
     @override
-    async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch(self, input: Dataset, 
                               conn: DuckDBPyConnection) -> pl.Series: 
         await asyncio.sleep(len(input) * self.delay_per_row.total_seconds())
-        values = await super().aevaluate_batch(input, contexts, conn)
+        values = await super().aevaluate_batch(input, conn)
         noises = pl.Series([self._rnd.normalvariate() * self.add_random_noise for _ in range(len(input))])
         return values + noises
     
@@ -141,7 +140,6 @@ async def choose_assert(duckdb_conn: DuckDBPyConnection,
     inputs = FeatureInputs(
         Dataset.from_polars(data),
         'target',
-        TablesWithContextDefinitions.from_list([]),
         duckdb_conn
     )
     metric = RegressionCorrelationMetric()

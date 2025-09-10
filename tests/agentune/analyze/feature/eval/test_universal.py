@@ -3,7 +3,6 @@ import pytest
 from duckdb.duckdb import DuckDBPyConnection
 from tests.agentune.analyze.run.feature_search.toys import ToyAsyncFeature, ToySyncFeature
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.types import float64
@@ -35,12 +34,6 @@ def sync_feature() -> ToySyncFeature:
 def async_feature() -> ToyAsyncFeature:
     return ToyAsyncFeature('a', 'b', 'sum', 'Sum of a and b', 'a + b')
 
-
-@pytest.fixture
-def contexts() -> TablesWithContextDefinitions:
-    return TablesWithContextDefinitions({})
-
-
 def test_universal_sync_supports_sync_features(sync_feature: ToySyncFeature) -> None:
     assert UniversalSyncFeatureEvaluator.supports_feature(sync_feature)
 
@@ -54,17 +47,17 @@ def test_universal_async_rejects_sync_features(sync_feature: ToySyncFeature) -> 
     assert not UniversalAsyncFeatureEvaluator.supports_feature(sync_feature)
 
 def test_universal_sync_evaluator(conn: DuckDBPyConnection, sample_dataset: Dataset,
-                                  sync_feature: ToySyncFeature, contexts: TablesWithContextDefinitions) -> None:
+                                  sync_feature: ToySyncFeature) -> None:
     evaluator = UniversalSyncFeatureEvaluator.for_features([sync_feature])
 
-    result = evaluator.evaluate(sample_dataset, contexts, conn)
+    result = evaluator.evaluate(sample_dataset, conn)
     assert result.schema.names == ['sum']
     assert result.data['sum'].to_list() == [5.0, 7.0, 9.0]  # [1+4, 2+5, 3+6]
 
 async def test_universal_async_evaluator(conn: DuckDBPyConnection, sample_dataset: Dataset,
-                                         async_feature: ToyAsyncFeature, contexts: TablesWithContextDefinitions) -> None:
+                                         async_feature: ToyAsyncFeature) -> None:
     evaluator = UniversalAsyncFeatureEvaluator.for_features([async_feature])
 
-    result = await evaluator.aevaluate(sample_dataset, contexts, conn)
+    result = await evaluator.aevaluate(sample_dataset, conn)
     assert result.schema.names == ['sum']
     assert result.data['sum'].to_list() == [5.0, 7.0, 9.0]  # [1+4, 2+5, 3+6]

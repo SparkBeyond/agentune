@@ -4,7 +4,6 @@ import polars as pl
 from duckdb.duckdb import DuckDBPyConnection
 from tests.agentune.analyze.run.feature_search.toys import ToySyncFeature
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.feature import util
 from agentune.analyze.feature.dedup_names import deduplicate_feature_names
@@ -39,7 +38,7 @@ async def test_substitute_default_values_stream(conn: DuckDBPyConnection) -> Non
         ToySyncFeature('x', 'z', 'x+z', '', ''),
         ToySyncFeature('y', 'z', 'x+z', '', ''), # duplicate (incorrect) name
     ]
-    enriched = await EnrichRunnerImpl().run(features, input_dataset, TablesWithContextDefinitions({}), evaluators, conn,
+    enriched = await EnrichRunnerImpl().run(features, input_dataset, evaluators, conn,
                                             keep_input_columns=input_dataset.schema.names)
     enriched_source = DatasetSource.from_datasets(enriched.schema, [enriched])
 

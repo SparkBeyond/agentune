@@ -131,7 +131,7 @@ class IncrementalEvaluator:
         batch_input = self.inputs.input.slice(self.evaluted_count(), batch_size)
         if len(batch_input) > 0:
             start_time = datetime.datetime.now()
-            results = await self.variant.feature.aevaluate_batch(batch_input, self.inputs.contexts, self.inputs.conn)
+            results = await self.variant.feature.aevaluate_batch(batch_input, self.inputs.conn)
             elapsed_time = datetime.datetime.now() - start_time
             self.outputs.append(results)
             self.time_spent += elapsed_time

@@ -7,7 +7,6 @@ import polars as pl
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import (
     Dataset,
     DatasetSink,
@@ -40,20 +39,20 @@ class EnrichRunnerImpl(EnrichRunner):
     """
 
     @override
-    async def run(self, features: Sequence[Feature], dataset: Dataset, contexts: TablesWithContextDefinitions,
+    async def run(self, features: Sequence[Feature], dataset: Dataset,
                   evaluators: Sequence[type[FeatureEvaluator]], conn: DuckDBPyConnection,
                   keep_input_columns: Sequence[str] = (),
                   deduplicate_names: bool = True) -> Dataset:
         features = self._maybe_deduplicate_feature_names(features, deduplicate_names)
         features_by_evaluator = self._group_features_by_evaluator(features, evaluators)
         all_evaluated = await self._evaluate_all_groups(
-            conn, dataset, contexts, features_by_evaluator
+            conn, dataset, features_by_evaluator
         )
         return self._combine_evaluated_features(all_evaluated, features,
                                                 dataset.select(*keep_input_columns) if keep_input_columns else None)
 
     @override
-    async def run_stream(self, features: Sequence[Feature], dataset_source: DatasetSource, contexts: TablesWithContextDefinitions,
+    async def run_stream(self, features: Sequence[Feature], dataset_source: DatasetSource,
                          dataset_sink: DatasetSink, evaluators: Sequence[type[FeatureEvaluator]], conn: DuckDBPyConnection,
                          keep_input_columns: Sequence[str] = (),
                          deduplicate_names: bool = True) -> None:
@@ -82,7 +81,7 @@ class EnrichRunnerImpl(EnrichRunner):
             output_task = asyncio.create_task(asyncio.to_thread(dataset_sink.write, output_source, output_conn))
 
             async for dataset in input_queue:
-                result = await self.run(features, dataset, contexts, evaluators, conn, keep_input_columns, deduplicate_names)
+                result = await self.run(features, dataset, evaluators, conn, keep_input_columns, deduplicate_names)
                 await output_queue.aput(result)
             output_queue.close()
             await input_queue.await_empty()
@@ -126,7 +125,6 @@ class EnrichRunnerImpl(EnrichRunner):
         self,
         conn: DuckDBPyConnection,
         dataset: Dataset,
-        contexts: TablesWithContextDefinitions,
         features_by_evaluator: dict[type[FeatureEvaluator], list[Feature]]
     ) -> Sequence[_EvaluatedFeatures]:
         """Evaluate all feature groups, running all async evaluators concurrently
@@ -141,13 +139,13 @@ class EnrichRunnerImpl(EnrichRunner):
             else:
                 async_groups.append((evaluator_cls, features))
 
-        async_tasks = [asyncio.create_task(self._evaluate_async_features(conn, dataset, contexts, evaluator_cls, features))
+        async_tasks = [asyncio.create_task(self._evaluate_async_features(conn, dataset, evaluator_cls, features))
                        for evaluator_cls, features in async_groups]
 
         if sync_groups:
             with conn.cursor() as sync_cursor:
                 sync_evaluated = await asyncio.to_thread(
-                    self._evaluate_all_sync_features, dataset.copy_to_thread(), contexts, sync_cursor, sync_groups
+                    self._evaluate_all_sync_features, dataset.copy_to_thread(), sync_cursor, sync_groups
                 )
         else:
             sync_evaluated = []
@@ -159,20 +157,18 @@ class EnrichRunnerImpl(EnrichRunner):
         self,
         conn: DuckDBPyConnection,
         dataset: Dataset,
-        contexts: TablesWithContextDefinitions,
         evaluator_cls: type[FeatureEvaluator],
         features: list[Feature]
     ) -> _EvaluatedFeatures:
         """Evaluate async features as a single group."""
         evaluator = evaluator_cls.for_features(features)
-        evaluated = await evaluator.aevaluate(dataset, contexts, conn)
+        evaluated = await evaluator.aevaluate(dataset, conn)
         _logger.info(f'Evaluated {len(features)} async features with {evaluator_cls.__name__}')
         return _EvaluatedFeatures(evaluated, features)
 
     def _evaluate_all_sync_features(
         self,
         dataset: Dataset,
-        contexts: TablesWithContextDefinitions,
         conn: DuckDBPyConnection,
         sync_groups: list[tuple[type[SyncFeatureEvaluator], list[SyncFeature]]]
     ) -> list[_EvaluatedFeatures]:
@@ -181,7 +177,7 @@ class EnrichRunnerImpl(EnrichRunner):
 
         for evaluator_cls, features in sync_groups:
             evaluator = evaluator_cls.for_features(features)
-            evaluated = evaluator.evaluate(dataset, contexts, conn)
+            evaluated = evaluator.evaluate(dataset, conn)
             all_evaluated.append(_EvaluatedFeatures(evaluated, cast(list[Feature], features)))
             _logger.info(f'Evaluated {len(features)} sync features with {evaluator_cls.__name__}')
 

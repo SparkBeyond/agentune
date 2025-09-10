@@ -10,7 +10,6 @@ import polars as pl
 from attrs import frozen
 from duckdb.duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.database import (
     DuckdbManager,
@@ -108,7 +107,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         # Evaluate candidate features on the feature_search dataset, storing the results in the temp schema.
         (enriched_feature_search_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
             deduplicated_candidate_features, data.feature_search,
-            data.contexts, run_context.ddb_manager, params, 'enriched_feature_search',
+            run_context.ddb_manager, params, 'enriched_feature_search',
             data.target_column
         )
         try:
@@ -140,7 +139,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         try:
             with run_context.ddb_manager.cursor() as conn:
                 enriched_eval_sink = DatasetSink.into_duckdb_table(enriched_eval_name)
-                await params.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval, data.contexts,
+                await params.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval,
                                                       enriched_eval_sink, params.evaluators, conn,
                                                       keep_input_columns=(data.target_column,),
                                                       deduplicate_names=False)
@@ -151,7 +150,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                     conn.execute(f'drop table {enriched_eval_name}')
 
                 enriched_test_sink = DatasetSink.into_duckdb_table(enriched_test_name)
-                await params.enrich_runner.run_stream(deduplicated_selected_features, data.test, data.contexts,
+                await params.enrich_runner.run_stream(deduplicated_selected_features, data.test,
                                                       enriched_test_sink, params.evaluators, conn,
                                                       keep_input_columns=(data.target_column,),
                                                       deduplicate_names=False)
@@ -255,7 +254,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 await agenerate(generator)
 
     async def _enrich_in_batches_and_update_defaults(self, features: list[GeneratedFeature], dataset: Dataset,
-                                                     contexts: TablesWithContextDefinitions, ddb_manager: DuckdbManager,
+                                                     ddb_manager: DuckdbManager,
                                                      params: FeatureSearchParams, target_table_base_name: str,
                                                      target_column: str) -> tuple[list[DuckdbTable], list[Feature]]:
         """Enrich these features in batches of size up to self.max_features_enrich_batch_size,
@@ -272,7 +271,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 for index, feature_group in enumerate(feature_groups):
                     keep_input_columns = (target_column,) if index == 0 else ()
                     enriched_group = await params.enrich_runner.run([gen.feature for gen in feature_group],
-                                                                    dataset, contexts, params.evaluators,
+                                                                    dataset, params.evaluators,
                                                                     conn, keep_input_columns=keep_input_columns,
                                                                     deduplicate_names=False)
                     group_table_name = ddb_manager.temp_random_name(target_table_base_name)

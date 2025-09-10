@@ -10,7 +10,7 @@ from attrs import define
 from duckdb import DuckDBPyConnection
 
 import agentune.analyze.core.types
-from agentune.analyze.context.base import ContextDefinition, TablesWithContextDefinitions
+from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Schema
@@ -113,7 +113,7 @@ class Feature[T](ABC):
 
     # A feature must override at least one of evaluate or evaluate_batch.
 
-    async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate(self, args: tuple[Any, ...], 
                         conn: DuckDBPyConnection) -> T | None:
         """Evaluate a single row.
 
@@ -129,23 +129,23 @@ class Feature[T](ABC):
             {col.name: [value] for col, value in zip(self.params.cols, args, strict=True)},
             schema=self.params.to_polars()
         )
-        return (await self.aevaluate_batch(Dataset(self.params, df), contexts, conn))[0]
+        return (await self.aevaluate_batch(Dataset(self.params, df), conn))[0]
 
-    async def aevaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate_safe(self, args: tuple[Any, ...], 
                              conn: DuckDBPyConnection) -> T | None:
         """As `aevaluate`, but returns None (a missing value) instead of raising an error.
 
         For categorical features, also returns the Other category if `evaluate` returned an unexpected value.
         """
         try:
-            return await self.aevaluate(args, contexts, conn)
+            return await self.aevaluate(args, conn)
         except Exception: # noqa: BLE001
             return None
 
-    async def aevaluate_with_defaults(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate_with_defaults(self, args: tuple[Any, ...], 
                                       conn: DuckDBPyConnection) -> T:
         """As `aevaluate`, but substitutes the self.default_for_xxx values in case of missing values or errors."""
-        value = await self.aevaluate_safe(args, contexts, conn)
+        value = await self.aevaluate_safe(args, conn)
         return self.substitute_defaults(value)
 
     def substitute_defaults(self, value: T | None) -> T:
@@ -164,7 +164,7 @@ class Feature[T](ABC):
         """
         return values.fill_null(self.default_for_missing)
 
-    async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch(self, input: Dataset, 
                               conn: DuckDBPyConnection) -> pl.Series:
         """The default implementation delegates to aevaluate (non-batch version).
 
@@ -173,17 +173,17 @@ class Feature[T](ABC):
         by propagating the error, even if it might have succeeded for a subset of the rows.
         """
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
-        results = await asyncio.gather(*[self.aevaluate_safe(row, contexts, conn) for row in strict_df.iter_rows()])
+        results = await asyncio.gather(*[self.aevaluate_safe(row, conn) for row in strict_df.iter_rows()])
         return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type, values=results)
 
-    async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch_safe(self, input: Dataset, 
                                    conn: DuckDBPyConnection) -> pl.Series:
         try:
-            return (await self.aevaluate_batch(input, contexts, conn)).cast(self.dtype.polars_type, strict=False).rename(self.name)
+            return (await self.aevaluate_batch(input, conn)).cast(self.dtype.polars_type, strict=False).rename(self.name)
         except Exception: # noqa: BLE001
             return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
 
-    async def aevaluate_batch_with_defaults(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch_with_defaults(self, input: Dataset,
                                             conn: DuckDBPyConnection) -> pl.Series:
         """As `aevaluate_batch`, but substitutes the self.default_for_xxx values for missing values.
 
@@ -191,7 +191,7 @@ class Feature[T](ABC):
 
         This method should NOT be overridden by feature implementations.
         """
-        return self.substitute_defaults_batch(await self.aevaluate_batch_safe(input, contexts, conn))
+        return self.substitute_defaults_batch(await self.aevaluate_batch_safe(input, conn))
 
 # Every feature must implement exactly one of the feature value type interfaces (IntFeature, etc) - 
 # it is not enough to directly implement e.g. Feature[int].
@@ -299,7 +299,7 @@ class CategoricalFeature(Feature[str]):
         return agentune.analyze.core.types.string
 
     @override
-    async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch(self, input: Dataset, 
                               conn: DuckDBPyConnection) -> pl.Series:
         """The default implementation delegates to aevaluate (non-batch version).
 
@@ -312,7 +312,7 @@ class CategoricalFeature(Feature[str]):
         # to be as similar as possible to a feature that overrides this method.
         async def aevaluate_error_to_none(row: tuple[Any, ...]) -> str | None:
             try:
-                return await self.aevaluate(row, contexts, conn)
+                return await self.aevaluate(row, conn)
             except Exception: # noqa: BLE001
                 return None
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
@@ -321,9 +321,9 @@ class CategoricalFeature(Feature[str]):
 
     @final
     @override
-    async def aevaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate_safe(self, args: tuple[Any, ...], 
                              conn: DuckDBPyConnection) -> str | None:
-        result = await super().aevaluate_safe(args, contexts, conn)
+        result = await super().aevaluate_safe(args, conn)
         if result == '':
             return None
         elif result is not None and result != CategoricalFeature.other_category and result not in self.categories:
@@ -344,13 +344,13 @@ class CategoricalFeature(Feature[str]):
         )[self.name]
 
     @override
-    async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch_safe(self, input: Dataset, 
                                    conn: DuckDBPyConnection) -> pl.Series:
         # Don't call super().aevaluate_batch_safe; we want to transform unexpected values into other_category
         # before casting the result to the enum type (which would transform them to missing values),
         # which means we use self.raw_dtype where super().aevaluate_batch_safe uses self.dtype
         try:
-            result = (await self.aevaluate_batch(input, contexts, conn)).cast(self.raw_dtype.polars_type, strict=False).rename(self.name)
+            result = (await self.aevaluate_batch(input, conn)).cast(self.raw_dtype.polars_type, strict=False).rename(self.name)
         except Exception: # noqa: BLE001
             return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
         return self._series_result_with_other_category(result)
@@ -361,28 +361,28 @@ class CategoricalFeature(Feature[str]):
 class SyncFeature[T](Feature[T]):
     # A feature must override at least one of evaluate or evaluate_batch.
     
-    def evaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    def evaluate(self, args: tuple[Any, ...], 
                  conn: DuckDBPyConnection) -> T | None:
         df = pl.DataFrame(
             {col.name: [value] for col, value in zip(self.params.cols, args, strict=True)},
             schema=self.params.to_polars()
         )
-        return self.evaluate_batch(Dataset(self.params, df), contexts, conn)[0]
+        return self.evaluate_batch(Dataset(self.params, df), conn)[0]
 
-    def evaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    def evaluate_safe(self, args: tuple[Any, ...], 
                       conn: DuckDBPyConnection) -> T | None:
         try:
-            return self.evaluate(args, contexts, conn)
+            return self.evaluate(args, conn)
         except Exception: # noqa: BLE001
             return None
 
     @final
-    def evaluate_with_defaults(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    def evaluate_with_defaults(self, args: tuple[Any, ...],
                                conn: DuckDBPyConnection) -> T:
-        value = self.evaluate_safe(args, contexts, conn)
+        value = self.evaluate_safe(args, conn)
         return self.substitute_defaults(value)
 
-    def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    def evaluate_batch(self, input: Dataset,
                        conn: DuckDBPyConnection) -> pl.Series:
         """The default implementation delegates to evaluate (non-batch version).
 
@@ -392,56 +392,56 @@ class SyncFeature[T](Feature[T]):
         """
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
         return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type,
-                         values=[self.evaluate_safe(row, contexts, conn) for row in strict_df.iter_rows()])
+                         values=[self.evaluate_safe(row, conn) for row in strict_df.iter_rows()])
 
-    def evaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    def evaluate_batch_safe(self, input: Dataset,
                             conn: DuckDBPyConnection) -> pl.Series:
         try:
-            return self.evaluate_batch(input, contexts, conn).cast(self.dtype.polars_type, strict=False).rename(self.name)
+            return self.evaluate_batch(input, conn).cast(self.dtype.polars_type, strict=False).rename(self.name)
         except Exception: # noqa: BLE001
             return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
 
     @final
-    def evaluate_batch_with_defaults(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    def evaluate_batch_with_defaults(self, input: Dataset,
                                      conn: DuckDBPyConnection) -> pl.Series:
-        return self.substitute_defaults_batch(self.evaluate_batch_safe(input, contexts, conn))
+        return self.substitute_defaults_batch(self.evaluate_batch_safe(input, conn))
 
     @override 
-    async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate(self, args: tuple[Any, ...], 
                        conn: DuckDBPyConnection) -> T | None:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate, args, contexts, cursor)
+            return await asyncio.to_thread(self.evaluate, args, cursor)
 
     @override
-    async def aevaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate_safe(self, args: tuple[Any, ...], 
                              conn: DuckDBPyConnection) -> T | None:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate_safe, args, contexts, cursor)
+            return await asyncio.to_thread(self.evaluate_safe, args, cursor)
 
     @override
-    async def aevaluate_with_defaults(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate_with_defaults(self, args: tuple[Any, ...], 
                                       conn: DuckDBPyConnection) -> T:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate_with_defaults, args, contexts, cursor)
+            return await asyncio.to_thread(self.evaluate_with_defaults, args, cursor)
 
     @override
-    async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch(self, input: Dataset, 
                               conn: DuckDBPyConnection) -> pl.Series:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate_batch, input, contexts, cursor)
+            return await asyncio.to_thread(self.evaluate_batch, input, cursor)
 
     @override
-    async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch_safe(self, input: Dataset, 
                                    conn: DuckDBPyConnection) -> pl.Series:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate_batch_safe, input, contexts, cursor)
+            return await asyncio.to_thread(self.evaluate_batch_safe, input, cursor)
 
 
     @override
-    async def aevaluate_batch_with_defaults(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    async def aevaluate_batch_with_defaults(self, input: Dataset, 
                                             conn: DuckDBPyConnection) -> pl.Series:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate_batch_with_defaults, input, contexts, cursor)
+            return await asyncio.to_thread(self.evaluate_batch_with_defaults, input, cursor)
 
 class SyncIntFeature(IntFeature, SyncFeature[int]): pass
 
@@ -451,9 +451,9 @@ class SyncBoolFeature(BoolFeature, SyncFeature[bool]): pass
 
 class SyncCategoricalFeature(CategoricalFeature, SyncFeature[str]):
     @override
-    def evaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    def evaluate_safe(self, args: tuple[Any, ...], 
                       conn: DuckDBPyConnection) -> str | None:
-        result = super().evaluate_safe(args, contexts, conn)
+        result = super().evaluate_safe(args, conn)
         if result == '':
             return None
         elif result is not None and result != CategoricalFeature.other_category and result not in self.categories:
@@ -463,7 +463,7 @@ class SyncCategoricalFeature(CategoricalFeature, SyncFeature[str]):
 
 
     @override
-    def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    def evaluate_batch(self, input: Dataset, 
                        conn: DuckDBPyConnection) -> pl.Series:
         """The default implementation delegates to evaluate (non-batch version).
 
@@ -476,7 +476,7 @@ class SyncCategoricalFeature(CategoricalFeature, SyncFeature[str]):
         # to be as similar as possible to a feature that overrides this method.
         def evaluate_error_to_none(row: tuple[Any, ...]) -> str | None:
             try:
-                return self.evaluate(row, contexts, conn)
+                return self.evaluate(row, conn)
             except Exception: # noqa: BLE001
                 return None
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
@@ -484,13 +484,13 @@ class SyncCategoricalFeature(CategoricalFeature, SyncFeature[str]):
                          values=[evaluate_error_to_none(row) for row in strict_df.iter_rows()])
 
     @override
-    def evaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    def evaluate_batch_safe(self, input: Dataset, 
                                    conn: DuckDBPyConnection) -> pl.Series:
         # Don't call super().aevaluate_batch_safe; we want to transform unexpected values into other_category
         # before casting the result to the enum type (which would transform them to missing values),
         # which means we use self.raw_dtype where super().aevaluate_batch_safe uses self.dtype
         try:
-            result = self.evaluate_batch(input, contexts, conn).cast(self.raw_dtype.polars_type, strict=False).rename(self.name)
+            result = self.evaluate_batch(input, conn).cast(self.raw_dtype.polars_type, strict=False).rename(self.name)
         except Exception: # noqa: BLE001
             return pl.repeat(None, len(input), dtype=self.dtype.polars_type, eager=True).rename(self.name)
         return self._series_result_with_other_category(result)

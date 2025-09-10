@@ -73,7 +73,7 @@ class SimpleFloatFeature(FloatFeature):
     context_definitions: tuple[ContextDefinition, ...] = ()
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate(self, args: tuple[Any, ...], 
                         conn: DuckDBPyConnection) -> float | None:
         return 0.0
 
@@ -89,7 +89,7 @@ class SimpleIntFeature(IntFeature):
     context_definitions: tuple[ContextDefinition, ...] = ()
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate(self, args: tuple[Any, ...], 
                         conn: DuckDBPyConnection) -> int | None:
         return 0
 
@@ -106,7 +106,7 @@ class SimpleBoolFeature(BoolFeature):
     context_definitions: tuple[ContextDefinition, ...] = ()
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate(self, args: tuple[Any, ...], 
                         conn: DuckDBPyConnection) -> bool | None:
         return True
 
@@ -124,7 +124,7 @@ class SimpleCategoricalFeature(CategoricalFeature):
     context_definitions: tuple[ContextDefinition, ...] = ()
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+    async def aevaluate(self, args: tuple[Any, ...], 
                         conn: DuckDBPyConnection) -> str | None:
         return None
 

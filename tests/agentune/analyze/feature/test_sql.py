@@ -7,8 +7,6 @@ from mypyc.ir.ops import Sequence
 
 from agentune.analyze.context.base import (
     ContextDefinition,
-    TablesWithContextDefinitions,
-    TableWithContextDefinitions,
 )
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
@@ -33,7 +31,7 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
     main_table_name: str = 'main_table'
 
     @override
-    def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    def evaluate_batch(self, input: Dataset, 
                        conn: duckdb.DuckDBPyConnection) -> pl.Series:
         # Separate cursor to register the main table
         with (conn.cursor() as cursor):
@@ -68,9 +66,9 @@ class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
     index_column_name: str = 'row_index_column'
     main_table_name: str = 'main_table'
 
-    def evaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+    def evaluate_batch(self, input: Dataset, 
                        conn: duckdb.DuckDBPyConnection) -> pl.Series:
-        series =  super().evaluate_batch(input, contexts, conn)
+        series =  super().evaluate_batch(input, conn)
         assert series.dtype == self.dtype.polars_type, f'SQL query must return a column of type {self.dtype.polars_type} but returned {series.dtype}'
         assert series.len() == input.data.height, f'SQL query must return the same number of rows as the input data but returned {series.len()}'
         return series
@@ -82,12 +80,6 @@ def test_sql_feature() -> None:
         conn.execute('INSERT INTO context_table VALUES (1, 2), (3, 4)')
 
         context_table = DuckdbTable.from_duckdb('context_table', conn)
-        tables_with_contexts = TablesWithContextDefinitions.from_list([
-            TableWithContextDefinitions(
-                context_table,
-                context_definitions={}
-            )
-        ])
         feature = IntSqlFeatureForTests(
             params=Schema((Field('key', types.int32), )),
             context_tables=(context_table,),
@@ -99,13 +91,13 @@ def test_sql_feature() -> None:
             '''
         )
         
-        assert feature.evaluate((1, ), tables_with_contexts, conn) == 2
-        assert feature.evaluate((3, ), tables_with_contexts, conn) == 4
-        assert feature.evaluate((2, ), tables_with_contexts, conn) is None
+        assert feature.evaluate((1, ), conn) == 2
+        assert feature.evaluate((3, ), conn) == 4
+        assert feature.evaluate((2, ), conn) is None
 
         # Batch, with some repeated and some missing keys, to test the ordering
         assert feature.evaluate_batch(
-            Dataset(feature.params, pl.DataFrame({'key': [3, 2, 1, 3, 1]})), tables_with_contexts, conn).equals(
+            Dataset(feature.params, pl.DataFrame({'key': [3, 2, 1, 3, 1]})), conn).equals(
                 pl.Series('test_sql_feature', [4, None, 2, 4, 2]))
 
 

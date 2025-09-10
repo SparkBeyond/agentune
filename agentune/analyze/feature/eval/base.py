@@ -8,7 +8,6 @@ import polars as pl
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.feature.base import Feature, SyncFeature
 from agentune.analyze.util.polarutil import series_field
@@ -38,7 +37,7 @@ class FeatureEvaluator[F: Feature](ABC):
         ...
 
     @abstractmethod
-    async def aevaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
+    async def aevaluate(self, dataset: Dataset,
                         conn: DuckDBPyConnection) -> Dataset:
         """Args:
             dataset: includes all columns needed by all the features. Any additional columns are ignored.
@@ -51,16 +50,16 @@ class FeatureEvaluator[F: Feature](ABC):
 
 class SyncFeatureEvaluator[F: SyncFeature](FeatureEvaluator[F]):
     @abstractmethod
-    def evaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
+    def evaluate(self, dataset: Dataset,
                  conn: DuckDBPyConnection) -> Dataset:
         """See FeatureEvaluator.aevaluate for details."""
         ...
 
     @override
-    async def aevaluate(self, dataset: Dataset, contexts: TablesWithContextDefinitions, 
+    async def aevaluate(self, dataset: Dataset,
                         conn: DuckDBPyConnection) -> Dataset:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), contexts, cursor)
+            return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), cursor)
 
 # The following classes make up the API of EfficientEvaluator (which comes last)
 
@@ -76,7 +75,6 @@ class FeatureInputs:
 
    input: Dataset
    target_column_name: str
-   contexts: TablesWithContextDefinitions
    conn: DuckDBPyConnection
 
    @property

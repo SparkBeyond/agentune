@@ -10,7 +10,6 @@ from tests.agentune.analyze.run.feature_search.toys import (
     ToySyncFeature,
 )
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSourceFromIterable
@@ -62,7 +61,6 @@ def async_features() -> list[ToyAsyncFeature]:
 
 async def test_run(conn: DuckDBPyConnection, sample_dataset: Dataset,
                    sync_features: Sequence[ToySyncFeature], async_features: Sequence[ToyAsyncFeature]) -> None:
-    contexts = TablesWithContextDefinitions({})
     runner = EnrichRunnerImpl()
     evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
 
@@ -70,19 +68,19 @@ async def test_run(conn: DuckDBPyConnection, sample_dataset: Dataset,
     expected_a_plus_c = [8.0, 10.0, 12.0]  # [1+7, 2+8, 3+9]
     expected_b_plus_c = [11.0, 13.0, 15.0]  # [4+7, 5+8, 6+9]
 
-    sync_result = await runner.run(sync_features, sample_dataset, contexts, evaluators, conn)
+    sync_result = await runner.run(sync_features, sample_dataset, evaluators, conn)
     assert sync_result.data.equals(pl.DataFrame({
         'a_plus_b': expected_a_plus_b,
         'a_plus_c': expected_a_plus_c
     }))
 
-    async_result = await runner.run(async_features, sample_dataset, contexts, evaluators, conn)
+    async_result = await runner.run(async_features, sample_dataset, evaluators, conn)
     assert async_result.data.equals(pl.DataFrame({
         'a_plus_b': expected_a_plus_b,
         'b_plus_c': expected_b_plus_c
     }))
 
-    mixed_result = await runner.run([*sync_features, *async_features], sample_dataset, contexts, evaluators, conn)
+    mixed_result = await runner.run([*sync_features, *async_features], sample_dataset, evaluators, conn)
     assert mixed_result.data.equals(pl.DataFrame({
         'a_plus_b': expected_a_plus_b,
         'a_plus_c': expected_a_plus_c,
@@ -91,7 +89,7 @@ async def test_run(conn: DuckDBPyConnection, sample_dataset: Dataset,
     }))
 
     mixed_result2 = await runner.run([sync_features[0], async_features[0], sync_features[1], async_features[1]],
-                                      sample_dataset, contexts, evaluators, conn)
+                                      sample_dataset, evaluators, conn)
     assert mixed_result2.data.equals(pl.DataFrame({
         'a_plus_b': expected_a_plus_b,
         'a_plus_b_': expected_a_plus_b,
@@ -100,13 +98,12 @@ async def test_run(conn: DuckDBPyConnection, sample_dataset: Dataset,
     })), 'Output column order must match input feature order, regardless of division into evaluators'
 
     with pytest.raises(ValueError, match='No evaluator found for features'):
-        await runner.run([*async_features, *sync_features], sample_dataset, contexts, [UniversalSyncFeatureEvaluator], conn)
+        await runner.run([*async_features, *sync_features], sample_dataset, [UniversalSyncFeatureEvaluator], conn)
 
 
 async def test_run_with_duplicate_names(conn: DuckDBPyConnection,
                                         sample_dataset: Dataset) -> None:
     """Test run() method with duplicate feature names and deduplication enabled."""
-    contexts = TablesWithContextDefinitions({})
     runner = EnrichRunnerImpl()
     evaluators = [UniversalSyncFeatureEvaluator]
 
@@ -116,7 +113,7 @@ async def test_run_with_duplicate_names(conn: DuckDBPyConnection,
         ToySyncFeature('a', 'c', 'sum', 'Second sum', 'a + c'),
     ]
 
-    result = await runner.run(features, sample_dataset, contexts, evaluators, conn)
+    result = await runner.run(features, sample_dataset, evaluators, conn)
 
     # Names should be deduplicated
     assert result.schema.names == ['sum', 'sum_']
@@ -124,24 +121,22 @@ async def test_run_with_duplicate_names(conn: DuckDBPyConnection,
 
     # With dedup disabled, this fails
     with pytest.raises(ValueError, match='Duplicate feature names found'):
-        await runner.run(features, sample_dataset, contexts, evaluators, conn, deduplicate_names=False)
+        await runner.run(features, sample_dataset, evaluators, conn, deduplicate_names=False)
 
 
 async def test_run_with_no_evaluator_for_feature(conn: DuckDBPyConnection,
                                                  sample_dataset: Dataset,
                                                  sync_features: list[ToySyncFeature]) -> None:
     """Test run() method when no evaluator can handle a feature."""
-    contexts = TablesWithContextDefinitions({})
     runner = EnrichRunnerImpl()
     # Only provide async evaluator for sync features
     evaluators = [UniversalAsyncFeatureEvaluator]
 
     with pytest.raises(ValueError, match='No evaluator found for features'):
-        await runner.run(sync_features, sample_dataset, contexts, evaluators, conn)
+        await runner.run(sync_features, sample_dataset, evaluators, conn)
 
 async def test_run_stream(conn: DuckDBPyConnection, sample_dataset: Dataset,
                           sync_features: list[ToySyncFeature], async_features: list[ToyAsyncFeature]) -> None:
-    contexts = TablesWithContextDefinitions({})
     runner = EnrichRunnerImpl()
     features = [*sync_features, *async_features]
     evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
@@ -150,9 +145,9 @@ async def test_run_stream(conn: DuckDBPyConnection, sample_dataset: Dataset,
     sample_datasets = [sample_dataset] * 5
     dataset_source = DatasetSourceFromIterable(sample_dataset.schema, sample_datasets)
 
-    enriched_dataset = await runner.run(features, sample_dataset, contexts, evaluators, conn)
+    enriched_dataset = await runner.run(features, sample_dataset, evaluators, conn)
     dataset_sink = DuckdbTableSink(DuckdbName.qualify('sink', conn))
-    await runner.run_stream(features, dataset_source, contexts, dataset_sink, evaluators, conn)
+    await runner.run_stream(features, dataset_source, dataset_sink, evaluators, conn)
 
     result_table = DuckdbTable.from_duckdb('sink', conn)
     result_dataset = DuckdbTableSource(result_table).to_dataset(conn)
@@ -164,11 +159,10 @@ async def test_run_stream(conn: DuckDBPyConnection, sample_dataset: Dataset,
 async def test_empty_features_list(conn: DuckDBPyConnection,
                                    sample_dataset: Dataset) -> None:
     """Test run() method with empty features list."""
-    contexts = TablesWithContextDefinitions({})
     runner = EnrichRunnerImpl()
     evaluators = [UniversalSyncFeatureEvaluator]
 
-    result = await runner.run([], sample_dataset, contexts, evaluators, conn)
+    result = await runner.run([], sample_dataset, evaluators, conn)
 
     assert result.schema.names == []
     assert result.data.height == 0
@@ -186,7 +180,7 @@ async def test_larger_data_streaming(conn: DuckDBPyConnection) -> None:
     sink = DuckdbTableSink(DuckdbName.qualify('sink', conn))
 
     runner = EnrichRunnerImpl()
-    await runner.run_stream([feature1, feature2], source, TablesWithContextDefinitions({}), sink, evaluators, conn)
+    await runner.run_stream([feature1, feature2], source, sink, evaluators, conn)
 
     sink_table = DuckdbTable.from_duckdb('sink', conn)
     sink_dataset = DuckdbTableSource(sink_table).to_dataset(conn)
@@ -212,13 +206,13 @@ async def test_keep_input_cols(conn: DuckDBPyConnection) -> None:
 
     source_dataset = source.to_dataset(conn)
     enriched_dataset = await runner.run([feature1, feature2], source_dataset,
-                                        TablesWithContextDefinitions({}), evaluators, conn,
+                                        evaluators, conn,
                                         keep_input_columns=['a'])
     assert enriched_dataset.schema.names == ['a', 'a+b', 'a+b_']
     assert enriched_dataset.schema.dtypes == [types.int32, types.float64, types.float64]
     assert enriched_dataset.data['a'].equals(source_dataset.data['a'])
 
-    await runner.run_stream([feature1, feature2], source, TablesWithContextDefinitions({}), sink, evaluators, conn,
+    await runner.run_stream([feature1, feature2], source, sink, evaluators, conn,
                             keep_input_columns=['a'])
 
     sink_table = DuckdbTable.from_duckdb('sink', conn)
