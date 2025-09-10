@@ -9,9 +9,9 @@ import attrs
 import polars as pl
 from attrs import frozen
 from duckdb.duckdb import DuckDBPyConnection, DuckDBPyRelation
-from tests.agentune.analyze.core import default_duckdb_batch_size
 
 from agentune.analyze.context.base import TablesWithContextDefinitions
+from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.database import (
     DuckdbManager,
     DuckdbTable,
@@ -46,6 +46,7 @@ from agentune.analyze.run.feature_search.base import (
     FeatureSearchParams,
     FeatureSearchResults,
     FeatureSearchRunner,
+    NoFeaturesFoundError,
 )
 from agentune.analyze.util.queue import Queue, ScopedQueue
 
@@ -96,6 +97,9 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
 
         with run_context.ddb_manager.cursor() as conn:
             candidate_features = await self._generate_features(conn, data, params.generators)
+
+        if len(candidate_features) == 0:
+            raise NoFeaturesFoundError
 
         # Later we will go back to the original list to recover the original name of each selected feature,
         # since after selection not all deduplication will be needed
@@ -378,7 +382,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                                        params: FeatureSearchParams[TK],
                                        conn: DuckDBPyConnection) -> list[FeatureWithFullStats[Feature, TK]]:
         # Stats calculators are always synchronous. We run them on a single thread, one feature at a time;
-        # TODO use several threads
+        # we could use several threads.
         with conn.cursor() as cursor: # for new thread
             def calculate() -> list[FeatureWithFullStats]:
                 result = []

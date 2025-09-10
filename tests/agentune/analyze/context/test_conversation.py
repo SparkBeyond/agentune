@@ -3,6 +3,7 @@ import logging
 import random
 
 import duckdb
+import pytest
 
 from agentune.analyze.context.conversation import Conversation, ConversationContext, Message
 from agentune.analyze.core.database import DuckdbTable
@@ -70,4 +71,38 @@ def test_conversation_context() -> None:
             convs = context.get_conversations(ids, conn)
             expected = tuple(conversations.get(id) for id in ids)
             assert convs == expected
+
+        # Test with the role being an enum type
+
+        context.index.drop(conn)
+        conn.execute("alter table conversation alter role type enum('user', 'assistant')")
+        context_table2 = DuckdbTable.from_duckdb('conversation', conn)
+        assert context_table2.schema['role'] != context_table.schema['role']
+        context2 = ConversationContext[int](
+            'conversations',
+            context_table2,
+            main_table.schema['id'],
+            context_table2.schema['conv_id'],
+            context_table2.schema['timestamp'],
+            context_table2.schema['role'],
+            context_table2.schema['content'],
+        )
+        for id, conversation in conversations.items():
+            assert context2.get_conversation(conn, id) == conversation
+
+        # Test with the role being some other type: should fail
+        conn.execute('update conversation set role = null')
+        conn.execute('alter table conversation alter role type int')
+        context_table3 = DuckdbTable.from_duckdb('conversation', conn)
+        with pytest.raises(ValueError, match='validator'):
+            ConversationContext[int](
+                'conversations',
+                context_table3,
+                main_table.schema['id'],
+                context_table3.schema['conv_id'],
+                context_table3.schema['timestamp'],
+                context_table3.schema['role'],
+                context_table3.schema['content'],
+            )
+
 

@@ -76,8 +76,6 @@ class FeatureSearchInputData(CopyToThread):
         )
 
 
-# TODO add user-specified params describing project, problem, etc. in freeform for LLM
-
 @frozen
 class FeatureSearchParams[TK: TargetKind]:
     """Non-data arguments to feature search.
@@ -144,4 +142,17 @@ class FeatureSearchRunner[TK: TargetKind](ABC):
 
     @abstractmethod
     async def run(self, run_context: RunContext, data: FeatureSearchInputData,
-                  params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]: ...
+                  params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]:
+        """The feature search algorithm composes the components in `params`:
+
+        1. Generate candidate features using `params.generators` on `data.feature_search`
+        2. Impute default values, using the feature search dataset, if the generator didn't provide default values
+        3. Select the final features using `params.selector` using the enriched feature search dataset
+        4. Enrich `data.feature_evaluation` and `data.test` and calculate statistics on those two datasets
+
+        Raises:
+            NoFeaturesFoundError: if no generator returned any candidate features
+        """
+        ...
+
+class NoFeaturesFoundError(Exception): pass

@@ -242,9 +242,9 @@ class ToyAsyncFeatureSelector(FeatureSelector[Feature, Regression]):
         self.features.clear() # Prepare for reuse
         return selected
 
-@frozen
+@frozen(eq=False, hash=False)
 class ToyAllFeatureSelector(SyncFeatureSelector):
-    _added_features: list[FeatureWithFullStats] = field(factory=list, eq=False, hash=False, init=False)
+    _added_features: list[FeatureWithFullStats] = field(factory=list, init=False)
 
     @override
     def add_feature(self, feature_with_stats: FeatureWithFullStats) -> None:

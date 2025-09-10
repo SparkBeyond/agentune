@@ -11,7 +11,6 @@ from agentune.analyze.core.database import DuckdbIndex, DuckdbName, DuckdbTable
 from agentune.analyze.util.attrutil import frozendict_converter
 
 
-# TODO a better name for this 
 class ContextDefinition(ABC):
     """A way to use an indexed DB table as a particular type of context, e.g. a lookup table (defined by subclasses)."""
 

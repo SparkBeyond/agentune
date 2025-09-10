@@ -8,8 +8,8 @@ from typing import Self, override
 import pyarrow as pa
 from attrs import frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
-from tests.agentune.analyze.core import default_duckdb_batch_size
 
+from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import (
     Dataset,

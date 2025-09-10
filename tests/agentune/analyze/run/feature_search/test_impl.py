@@ -39,13 +39,17 @@ from agentune.analyze.feature.base import (
 )
 from agentune.analyze.feature.dedup_names import deduplicate_feature_names
 from agentune.analyze.feature.gen.base import GeneratedFeature, SyncFeatureGenerator
-from agentune.analyze.feature.select.base import EnrichedFeatureSelector, FeatureSelector
+from agentune.analyze.feature.select.base import (
+    EnrichedFeatureSelector,
+    FeatureSelector,
+)
 from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.feature_search.base import (
     ClassificationFeatureSearchParams,
     FeatureSearchInputData,
     FeatureSearchParams,
     FeatureSearchRunner,
+    NoFeaturesFoundError,
     RegressionFeatureSearchParams,
 )
 from agentune.analyze.run.feature_search.impl import FeatureSearchRunnerImpl
@@ -410,4 +414,16 @@ async def test_keep_enrich_output(input_data: FeatureSearchInputData, run_contex
         assert enriched_train_len == (input_data.feature_eval.to_dataset(conn).height, ), 'Enriched train has expected number of rows'
         enriched_test_len = conn.execute(f'select count(*) from {enriched_test_name}').fetchone()
         assert enriched_test_len == (input_data.test.to_dataset(conn).height, ), 'Enriched test has expected number of rows'
+
+async def test_zero_generated_features(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
+    runner: FeatureSearchRunnerImpl[Regression] = FeatureSearchRunnerImpl()
+    generator = SimplePrebuiltFeaturesGenerator(())
+    selectors: list[FeatureSelector | EnrichedFeatureSelector] = [ToyAllFeatureSelector(), ToySyncEnrichedFeatureSelector()]
+    for selector in selectors:
+        params = RegressionFeatureSearchParams(
+            generators=(generator,),
+            selector=selector
+        )
+        with pytest.raises(NoFeaturesFoundError):
+            await runner.run(run_context, input_data, params)
 

@@ -22,6 +22,10 @@ type Classification = Literal['classification']
 type Regression = Literal['regression']
 
 
+# Feature ABCs set slots=False to allow diamond inheritance from e.g. IntFeature + LlmFeature;
+# Python forbids multiple inheritance from slots classes.
+# To be able to override abstract properties with attrs attributes, you need to make your final
+# class a slots class (i.e. @frozen without slots=False).
 @define(slots=False)
 class Feature[T](ABC):
     """A feature calculates a value that can be used to predict the target in a dataset.

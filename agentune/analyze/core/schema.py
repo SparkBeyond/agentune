@@ -10,7 +10,7 @@ from attrs import field, frozen
 from duckdb import DuckDBPyRelation
 from frozendict import frozendict
 
-from agentune.analyze.core.types import Dtype, EnumDtype
+from agentune.analyze.core.types import ArrayDtype, Dtype, EnumDtype, ListDtype, StructDtype
 from agentune.analyze.util.attrutil import frozendict_converter
 
 # We define these types instad of using pl.Field and pl.Schema because we might want to support e.g. semantic types in the future.
@@ -93,30 +93,41 @@ class Schema:
         return Schema(tuple(Field(col, Dtype.from_polars(dtype)) for col, dtype in pl_schema.items()))
 
 
-# TODO these two methods don't operate recursively on eg lists of enums
+def _contains_enum_type(dtype: Dtype) -> bool:
+    match dtype:
+        case EnumDtype(): return True
+        case ListDtype(inner=inner): return _contains_enum_type(inner)
+        case ArrayDtype(inner=inner): return _contains_enum_type(inner)
+        case StructDtype(fields=fields): return any(_contains_enum_type(inner) for _, inner in fields)
+        case other if other.is_nested(): raise ValueError(f'Unexpected nested type: {other}')
+        case _: return False
+
 def restore_df_types(df: pl.DataFrame, schema: Schema) -> pl.DataFrame:
     """Restore the correct types to a Polars dataframe created from a DuckDB relation, given the schema."""
     # Preserve enum types
     for col in schema.cols:
-        if isinstance(col.dtype, EnumDtype):
-            values = col.dtype.values
-            df = df.cast({col.name: pl.Enum(categories=values)})
+        if _contains_enum_type(col.dtype):
+            df = df.cast({col.name: col.dtype.polars_type})
     return df
 
 def restore_relation_types(relation: DuckDBPyRelation, schema: Schema) -> DuckDBPyRelation:
     """Given a relation that matches an 'erased' version of this schema, return a new relation
     that casts its columns to the types specified in the schema.
     """
-    if not any(dtype.is_enum() for dtype in schema.dtypes):
+    if not any(_contains_enum_type(dtype) for dtype in schema.dtypes):
         return relation
 
     expr = ', '.join(f'"{field.name}"::{field.dtype.duckdb_type} as "{field.name}"' for field in schema.cols)
     return relation.project(expr)
 
 
-def dtype_is(dtype: Dtype) -> Callable[[Any, attrs.Attribute, Field], None]:
+def dtype_is(dtype: Dtype | type[Dtype]) -> Callable[[Any, attrs.Attribute, Field], None]:
     """An attrs field validator that checks that a Field has the given dtype."""
     def validator(_self: Any, _attribute: attrs.Attribute, value: Field) -> None:
-        if value.dtype != dtype:
+        if isinstance(dtype, type):
+            condition = isinstance(value.dtype, dtype)
+        else:
+            condition = value.dtype == dtype
+        if not condition:
             raise ValueError(f'Column {value.name} has dtype {value.dtype}, but should have dtype {dtype}')
     return validator

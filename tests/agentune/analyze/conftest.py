@@ -13,7 +13,7 @@ from agentune.analyze.core.database import DuckdbManager
 from agentune.analyze.llmcache.base import LLMCacheBackend
 from agentune.analyze.llmcache.serializing_kvstore import SerializingKVStore
 from agentune.analyze.llmcache.sqlite_lru import SqliteLru, threadlocal_connections
-from agentune.analyze.run.base import RunContext
+from agentune.analyze.run.base import RunContext, default_httpx_async_client
 from agentune.analyze.util.lrucache import LRUCache
 
 
@@ -41,7 +41,7 @@ async def run_context(ddb_manager: DuckdbManager, httpx_async_client: httpx.Asyn
 @pytest.fixture
 async def httpx_async_client() -> AsyncIterator[httpx.AsyncClient]:
     """Create an httpx client """
-    async with httpx.AsyncClient(http2=True) as client:
+    async with default_httpx_async_client() as client:
         yield client
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import logging
 
 import pytest
-from duckdb.duckdb import BinderException, DuckDBPyConnection
+from duckdb.duckdb import BinderException, ConversionException, DuckDBPyConnection
 
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.run.ingest import sampling
@@ -70,3 +70,16 @@ def test_split_duckdb_table_only_train(conn: DuckDBPyConnection) -> None:
 
     assert split_table.train().to_dataset(conn).height == total_count
     assert split_table.test().to_dataset(conn).height == 0
+
+
+def test_split_duckdb_table_error_recovery(conn: DuckDBPyConnection) -> None:
+    total_count = 1000000
+    conn.execute('CREATE TABLE tab(i int)')
+    conn.execute(f'INSERT INTO tab SELECT t.i FROM unnest(range({total_count})) AS t(i)')
+    schema = Schema.from_duckdb(conn.table('tab'))
+
+    # Pass a string instead of int to trigger an error halfway through, after the first transaction completes
+    with pytest.raises(ConversionException):
+        sampling.split_duckdb_table(conn, 'tab', feature_search_size='foo') # type: ignore[arg-type]
+
+    assert Schema.from_duckdb(conn.table('tab')) == schema, 'Table was restored to original state'

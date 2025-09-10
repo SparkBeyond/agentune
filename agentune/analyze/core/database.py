@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
@@ -13,9 +14,9 @@ from attr import define
 from attrs import field, frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from frozendict import frozendict
-from tests.agentune.analyze.core import default_duckdb_batch_size
 
 import agentune.analyze.core.setup
+from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.util.attrutil import frozendict_converter
@@ -135,12 +136,6 @@ class DuckdbIndex(ABC):
     Make sure to read https://duckdb.org/docs/stable/sql/indexes.html before using.
     """
 
-    # TODO we'll rely on zonemaps a lot for performance of eg time series; 
-    #  therefore we need a method for (re)writing a table in the optimal order once we 
-    #  know what context definitions we want. (We can of course guess ahead of time and always sort on the datetime
-    #  column if there is one, when inserting data, but that's not perfect; sorting is expensive and there might 
-    #  be multiple datetime columns.)
-
     @property
     @abstractmethod
     def name(self) -> DuckdbName: ...
@@ -151,20 +146,19 @@ class DuckdbIndex(ABC):
     @abstractmethod
     def drop(self, conn: DuckDBPyConnection) -> None: ...
 
-    # TODO implement this by returning indexes of all supported types
-    #@staticmethod
-    #def from_duckdb(name: DuckdbName | str, conn: DuckDBPyConnection) -> Sequence[DuckdbIndex]: ...
-
 
 @frozen
 class ArtIndex(DuckdbIndex):
+    """The default duckdb index type. See https://duckdb.org/docs/stable/sql/indexes.html
+
+    The duckdb docs warn:
+    > ART indexes must currently be able to fit in memory during index creation.
+    > Avoid creating ART indexes if the index does not fit in memory during index creation.
+    (My understanding is that it's safe to create an index on an empty table before inserting into it.)
+    """
+
     name: DuckdbName
     cols: tuple[str, ...]
-
-    # TODO documented warning: ART indexes must currently be able to fit in memory during index creation.
-    # Avoid creating ART indexes if the index does not fit in memory during index creation.
-    # (in other words, do more sharding??)
-    # (I think this doesn't apply if we create an index on an empty table and then insert into it?)
 
     @override
     def create(self, conn: DuckDBPyConnection, table_name: DuckdbName | str, if_not_exists: bool = True) -> None:
@@ -334,6 +328,7 @@ class DuckdbManager:
     """
 
     _conn: DuckDBPyConnection
+    _conn_lock: threading.Lock
     _main_database: DuckdbDatabase
     _databases: dict[str, DuckdbDatabase] # By database name
 
@@ -351,6 +346,7 @@ class DuckdbManager:
                 self._conn = duckdb.connect(':memory:', config=config.to_config_dict())
             case DuckdbFilesystemDatabase(path, read_only):
                 self._conn = duckdb.connect(path, read_only, config=config.to_config_dict())
+        self._conn_lock = threading.Lock()
         self._databases = {main_database.default_name: main_database}
         self._main_database = main_database
         # self._conn.load_extension('spatial')
@@ -413,33 +409,34 @@ class DuckdbManager:
             options.append("STORAGE_VERSION 'v1.2.0'")
         options_str = '' if not options else '(' + ', '.join(options) + ')' # empty '()' is invalid
         target = db.path if isinstance(db, DuckdbFilesystemDatabase) else ':memory:'
-        self._conn.execute(f'''ATTACH DATABASE '{target}' AS "{name}" {options_str}''')
-
-        self._databases[name] = db
+        with self._conn_lock:
+            self._conn.execute(f'''ATTACH DATABASE '{target}' AS "{name}" {options_str}''')
+            self._databases[name] = db
 
     def detach(self, name: str) -> None:
         if name == self._main_database.default_name:
             raise ValueError(f'Cannot detach the main database ({name}).')
-        self._conn.execute(f'DETACH DATABASE "{name}"')
-        del self._databases[name]
+        with self._conn_lock:
+            self._conn.execute(f'DETACH DATABASE "{name}"')
+            del self._databases[name]
 
     def cursor(self) -> duckdb.DuckDBPyConnection:
-        # TODO is a Connection threadsafe enough for .cursor() to be called on it concurrently from parallel threads,
-        #  even if that (main) Connection never runs anything else? Or do we need to lock this or use a threadlocal?
         """The caller must close the returned cursor at the end of the code scope that uses it.
 
         The connection instance kept by this class is never exposed to callers; they can only get new cursors via this method.
         The original connection is closed only when the close() method of this class is called.
         """
-        return self._conn.cursor()
+        with self._conn_lock:
+            return self._conn.cursor() # Not sure if .cursor() is threadsafe, better not risk it
 
     def close(self) -> None:
-        try:
-            self._conn.execute(f'drop schema "{DuckdbManager.temp_schema_name}" cascade')
-        except duckdb.ConnectionException as e:
-            if 'Connection already closed' not in str(e):
-                raise
-        self._conn.close()
+        with self._conn_lock:
+            try:
+                self._conn.execute(f'drop schema "{DuckdbManager.temp_schema_name}" cascade')
+            except duckdb.ConnectionException as e:
+                if 'Connection already closed' not in str(e):
+                    raise
+            self._conn.close()
 
     # Convenience methods
 

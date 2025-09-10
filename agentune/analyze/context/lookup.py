@@ -42,7 +42,6 @@ class LookupContext[K](ContextDefinition):
 
     def get(self, conn: DuckDBPyConnection, key: K, value_col: str) -> Any | None:
         """Return the value for the given key, or None if not found."""
-        # TODO relation and column name escaping (double any quotes inside them)
         results = conn.sql(f'select "{value_col}" from {self.table.name} where "{self.key_col.name}" = ?',
                            params=[key]).fetchall()
         assert (len(results) <= 1)

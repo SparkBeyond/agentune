@@ -23,3 +23,9 @@ from agentune.analyze.util import cattrutil
 from . import llm, sercontext  # noqa: F401 unused imports
 
 cattrutil.configure_lazy_include_subclasses # noqa: B018 useless expression
+
+default_duckdb_batch_size = 10000
+'''Used as a default value in function signatures.
+
+Changing this value at runtime does NOT affect the defaults, so don't do it.
+'''

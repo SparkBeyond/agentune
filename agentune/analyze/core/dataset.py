@@ -17,8 +17,8 @@ import polars as pl
 import pyarrow as pa
 from attrs import define, frozen
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
-from tests.agentune.analyze.core import default_duckdb_batch_size
 
+from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.schema import Field, Schema, restore_df_types, restore_relation_types
 from agentune.analyze.core.threading import CopyToThread
@@ -115,8 +115,6 @@ class Dataset(CopyToThread):
         A schema created from them will have some erased types.
         """
         return Dataset(Schema.from_polars(df), df)
-
-    # TODO method from_pandas
 
     def as_source(self) -> DatasetSource:
         return DatasetSourceFromDataset(self)

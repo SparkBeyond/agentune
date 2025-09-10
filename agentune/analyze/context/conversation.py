@@ -24,7 +24,7 @@ from agentune.analyze.util.duckdbutil import results_iter
 
 @frozen
 class Message:
-    role: str # TODO should this be an enum? something else? do we know the set of roles (up to the strings used to encode them)?
+    role: str
     timestamp: datetime.datetime
     content: str
 
@@ -34,7 +34,6 @@ class Conversation:
 
     @messages.validator
     def _validate_messages(self, _attribute: attrs.Attribute, value: tuple[Message, ...]) -> None:
-        # TODO in the long run we may want to disable this due to performance concerns
         if not more_itertools.is_sorted(value, key=lambda m: m.timestamp): # NOTE we permit messages with the same timestamp
             raise ValueError('Messages must be sorted by timestamp')
 
@@ -54,14 +53,20 @@ class ConversationContext[K](ContextDefinition):
     main_table_id_column: Field
     id_column: Field = field()
     timestamp_column: Field = field(validator=dtype_is(types.timestamp))
-    role_column: Field = field(validator=dtype_is(types.string)) # TODO also suppport an enum
+    role_column: Field = field(validator=attrs.validators.or_(dtype_is(types.string), dtype_is(types.EnumDtype)))
     content_column: Field = field(validator=dtype_is(types.string))
 
+    @id_column.validator
+    def _validate_id_column(self, _attribute: attrs.Attribute, value: Field) -> None:
+        if value.dtype != self.main_table_id_column.dtype:
+            raise ValueError(f'ID column {value.name} has dtype {value.dtype}, '
+                             f'but main table ID column {self.main_table_id_column.name} has dtype {self.main_table_id_column.dtype}')
+
     @staticmethod
-    def on_table(name: str, table: DuckdbTable, main_table_id_column: str, id_column: str, 
-                    timestamp_column: str, role_column: str, content_column: str) -> ConversationContext[K]:
+    def on_table(name: str, table: DuckdbTable, main_table_id_column: str, id_column: str,
+                 timestamp_column: str, role_column: str, content_column: str) -> ConversationContext[K]:
         return ConversationContext[K](
-            name, table, 
+            name, table,
             Field(main_table_id_column, table.schema[id_column].dtype),
             table.schema[id_column],
             table.schema[timestamp_column],
@@ -69,12 +74,6 @@ class ConversationContext[K](ContextDefinition):
             table.schema[content_column]
         )
 
-    @id_column.validator
-    def _validate_id_column(self, _attribute: attrs.Attribute, value: Field) -> None:
-        if value.dtype != self.main_table_id_column.dtype:
-            raise ValueError(f'ID column {value.name} has dtype {value.dtype}, '
-                             f'but main table ID column {self.main_table_id_column.name} has dtype {self.main_table_id_column.dtype}')
-    
     @property
     @override
     def index(self) -> DuckdbIndex:

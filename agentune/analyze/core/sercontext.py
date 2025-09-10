@@ -24,9 +24,6 @@ class SerializationContext:
 
     # The final converter to be used, containing all hooks (context-aware and non-context-aware) that have been registered 
     # with this module when this context was created.
-    # TODO the next design step is to wrap the registries in a class and have a (resettable) instance of the class at the module level,
-    # instead of multiple mutable module level variables. However, all the hooks we have and expect to have right now are ones
-    # that can be registered globally and are always valid.
     converter: cattrs.Converter = field(init=False)
     @converter.default
     def _converter_default(self) -> cattrs.Converter:
@@ -44,7 +41,6 @@ class SerializationContext:
     
 
 # Variants on cattrs register/unregister functions that additionally use a SerializationContext.
-# TODO add support for hook factories; add support for non-decorator use (as in plain cattrs).
 
 type ContextStructureHook = Callable[[SerializationContext, Any, type], Any]
 type ContextUnstructureHook = Callable[[SerializationContext, Any], Any]

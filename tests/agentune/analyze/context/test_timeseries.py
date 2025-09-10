@@ -1,4 +1,5 @@
 import datetime
+import logging
 from typing import Literal
 
 import duckdb
@@ -8,6 +9,7 @@ from agentune.analyze.context.timeseries import KtsContext, TimeWindow
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import duckdb_to_polars
 
+_logger = logging.getLogger(__name__)
 
 def test_timeseries() -> None:
     with duckdb.connect(':memory:lookup') as conn:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from typing import override
 
@@ -12,7 +13,7 @@ from attrs import field, frozen
 
 from agentune.analyze.core import setup
 
-# We define these types instad of using pl.Field and pl.Schema because we might want to support e.g. semantic types in the future.
+# We define these types instead of using pl.Field and pl.Schema because we might want to support e.g. semantic types in the future.
 
 # Used in some Polars APIs. Copy of a type union defined in polars._types.
 type PolarsDataType = pl.DataType | polars.datatypes.DataTypeClass
@@ -22,12 +23,6 @@ class Dtype:
     name: str
     duckdb_type: ddt.DuckDBPyType = field(eq=False, hash=False)
     polars_type: PolarsDataType = field(eq=False, hash=False)
-    python_type: type = field(init=False, eq=False, hash=False)
-
-    @python_type.default
-    def _python_type_default(self) -> type:
-        # TODO check if this is correct when working directly with duckdb - there might not be a single answer for both!
-        return self.polars_type.to_python()
 
     def __str__(self) -> str:
         return self.name
@@ -85,9 +80,8 @@ float32 = Dtype('float32', ddt.FLOAT, pl.Float32)
 float64 = Dtype('float64', ddt.DOUBLE, pl.Float64)
 
 string = Dtype('str', ddt.VARCHAR, pl.String)
-json = Dtype('json', duckdb.dtype('JSON'), pl.String)
-
-uuid = Dtype('uuid', ddt.UUID, pl.String)
+json_dtype = Dtype('json', duckdb.dtype('JSON'), pl.String)
+uuid_dtype = Dtype('uuid', ddt.UUID, pl.String)
 
 # Call setup to install the duckdb 'spatial' extension, otherwise the call to duckdb.dtype() will fail.
 setup.setup()
@@ -111,8 +105,8 @@ setup.setup()
 # Point types are currently disabled / unsupported
 # point = Dtype('point', duckdb.dtype('POINT_2D'), pl.Struct([pl.Field('x', pl.Float64), pl.Field('y', pl.Float64)]))
 
-date = Dtype('date', ddt.DATE, pl.Date)
-time = Dtype('time', ddt.TIME, pl.Time)
+date_dtype = Dtype('date', ddt.DATE, pl.Date)
+time_dtype = Dtype('time', ddt.TIME, pl.Time)
 
 # TODO confirm standardization on ms precision
 timestamp = Dtype('timestamp', ddt.TIMESTAMP_MS, pl.Datetime('ms'))
@@ -178,9 +172,9 @@ class StructDtype(Dtype):
             fields
         )
 
-_simple_dtypes = [boolean, int8, int16, int32, int64, uint8, uint16, uint32, uint64, float32, float64, string, json, uuid, date, time, timestamp] # , point]
+_simple_dtypes = [boolean, int8, int16, int32, int64, uint8, uint16, uint32, uint64, float32, float64, string, json_dtype, uuid_dtype, date_dtype, time_dtype, timestamp] # , point]
 _simple_dtype_by_polars_type = {dtype.polars_type: dtype for dtype in _simple_dtypes
-                                if dtype is not json and dtype is not uuid} # those are erased to string
+                                if dtype is not json_dtype and dtype is not uuid_dtype} # those are erased to string
 _simple_dtype_by_duckdb_type_str = {str(dtype.duckdb_type): dtype for dtype in _simple_dtypes}
 _simple_dtype_by_duckdb_type_str[str(ddt.TIMESTAMP)] = timestamp # alias for TIMESTAMP_MS
 
@@ -215,3 +209,14 @@ def dtype_from_duckdb(ddtype: ddt.DuckDBPyType) -> Dtype:
     else:
         raise ValueError(f'Unsupported duckdb type: {ddtype}')
 
+def python_type_from_polars(dtype: Dtype) -> type:
+    """The Python type of scalar values returned from Polars series of this dtype."""
+    return dtype.polars_type.to_python()
+
+def python_type_from_duckdb(dtype: Dtype) -> type:
+    """The Python type of scalar values returned from DuckDB query results of this dtype."""
+    if isinstance(dtype, ArrayDtype):
+        return tuple # Unlike the Polars type, which is list
+    if dtype == uuid_dtype:
+        return uuid.UUID # Unlike the Polars type, which is erased to str
+    return dtype.polars_type.to_python()

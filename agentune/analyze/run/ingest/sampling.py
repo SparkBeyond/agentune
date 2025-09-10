@@ -112,31 +112,38 @@ def split_duckdb_table(conn: DuckDBPyConnection, table_name: DuckdbName | str,
 
     # Ideally this would be a single transaction, but data updates and schema changes can't be interleaved in one transaction.
     # So we need at least three transactions.
-    # TODO I should have a try/except and drop any created columns on error - this code is fragile and errors are possible.
 
-    with transaction_scope(conn):
-        # We can't use `when random() < train_fraction` because random() isn't deterministic since duckdb is
-        # multithreaded (not even if we call setseed() first). And we can't set threads = 1, that would impact
-        # code running on other (python) threads. So we use 'hash(rowid)' instead.
-        # See limitations at: https://duckdb.org/docs/stable/sql/statements/select.html#row-ids
-        # Tables that had undergone deletions and insertions won't have the same rowids as tables with the same data
-        # inserted in one go, but SQL has no notion of row order, so this is already much better than another database
-        # would give us.
-        conn.execute(f'''ALTER TABLE {table_name}
-                         ADD COLUMN "{is_train_col_name}" BOOLEAN
-                         DEFAULT false''') # Accessing rowid or other columns not allowed in DEFAULT clause, so we can't do this in one go
-        conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{is_train_col_name}" DROP DEFAULT')
-        conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{is_train_col_name}" SET NOT NULL')
-        conn.execute(f'''UPDATE {table_name}
-                         SET "{is_train_col_name}" = true
-                         WHERE hash(rowid) % 1000 < ?''', [int(train_fraction * 1000)])
+    try:
+        with transaction_scope(conn):
+            # We can't use `when random() < train_fraction` because random() isn't deterministic since duckdb is
+            # multithreaded (not even if we call setseed() first). And we can't set threads = 1, that would impact
+            # code running on other (python) threads. So we use 'hash(rowid)' instead.
+            # See limitations at: https://duckdb.org/docs/stable/sql/statements/select.html#row-ids
+            # Tables that had undergone deletions and insertions won't have the same rowids as tables with the same data
+            # inserted in one go, but SQL has no notion of row order, so this is already much better than another database
+            # would give us.
+            conn.execute(f'''ALTER TABLE {table_name}
+                             ADD COLUMN "{is_train_col_name}" BOOLEAN
+                             DEFAULT false''') # Accessing rowid or other columns not allowed in DEFAULT clause, so we can't do this in one go
+            conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{is_train_col_name}" DROP DEFAULT')
+            conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{is_train_col_name}" SET NOT NULL')
+            conn.execute(f'''UPDATE {table_name}
+                             SET "{is_train_col_name}" = true
+                             WHERE hash(rowid) % 1000 < ?''', [int(train_fraction * 1000)])
 
-    with transaction_scope(conn):
-        _add_train_sample(conn, table_name, is_train_col_name, is_feature_search_col_name, feature_search_size)
+        with transaction_scope(conn):
+            _add_train_sample(conn, table_name, is_train_col_name, is_feature_search_col_name, feature_search_size)
 
-    with transaction_scope(conn):
-        _add_train_sample(conn, table_name, is_train_col_name, is_feature_eval_col_name, feature_eval_size)
-
+        with transaction_scope(conn):
+            _add_train_sample(conn, table_name, is_train_col_name, is_feature_eval_col_name, feature_eval_size)
+    except Exception as e:
+        try:
+            conn.execute(f'ALTER TABLE {table_name} DROP COLUMN IF EXISTS "{is_train_col_name}"')
+            conn.execute(f'ALTER TABLE {table_name} DROP COLUMN IF EXISTS "{is_feature_search_col_name}"')
+            conn.execute(f'ALTER TABLE {table_name} DROP COLUMN IF EXISTS "{is_feature_eval_col_name}"')
+        except Exception as e2: # noqa: BLE001
+            raise e2 from e
+        raise
 
     return SplitDuckdbTable(DuckdbTable.from_duckdb(table_name, conn),
                             is_train_col_name, is_feature_search_col_name, is_feature_eval_col_name)

@@ -75,8 +75,6 @@ class DefaultLLMProvider(LLMProvider):
     Can raise ImportError if a spec requests a model from a provider whose package is not installed.
     """
 
-    # TODO add cases for the other llama-index LLM types.
-
     @override
     def from_spec(self, spec: LLMSpec, context: LLMContext) -> LLM | None:
         match spec.origin:
@@ -130,8 +128,6 @@ class LLMContext:
     # These are needed to create (most) model instances.
     # The existence of an AsyncClient implies that we're in an asyncio context; this code cannot be used otherwise.
     httpx_async_client: httpx.AsyncClient
-    # TODO: httpx client defaults for timeout/connection limits should maybe be those used in openai client (openai.base_client._DefaultAsyncHttpxClient)
-    #  or probably not, but also probably not the *httpx* defaults, I should check what they are.
 
     httpx_client: httpx.Client = fake_httpx_client # Disallow synchronous HTTP requests by default
 

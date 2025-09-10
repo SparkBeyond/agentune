@@ -46,9 +46,7 @@ class ConnectionProvider(Protocol):
         """
         ...
 
-# TODO turn on sqlite thread safety checking when using threadlocal connections
-
-type ConnectionOpener = Callable[[], Connection]
+type ConnectionOpener = Callable[[bool], Connection] # param: check_same_thread
 type ConnectionProviderFactory = Callable[[ConnectionOpener], ConnectionProvider]
 
 class ThreadLocalConnectionsClosedError(Exception):
@@ -85,7 +83,7 @@ class ThreadLocalConnection(ConnectionProvider):
         try:
             conn = self._local.conn
         except AttributeError:
-            conn = _WeakReferenceableConnection(self.opener())
+            conn = _WeakReferenceableConnection(self.opener(True))
             with self.all_conns_lock:
                 self.all_conns.add(conn)
             self._local.conn = conn
@@ -112,7 +110,7 @@ def connection_pool(size: int = os.cpu_count() or 4,
                     acquire_timeout: timedelta = timedelta(1)) -> ConnectionProviderFactory:
     """Keep a fixed-size pool of reusable connections."""
     def factory(opener: ConnectionOpener) -> ConnectionProvider:
-        return ThreadsafePool(opener, size, acquire_timeout)
+        return ThreadsafePool(lambda: opener(False), size, acquire_timeout)
     return factory
 
 def threadlocal_connections() -> ConnectionProviderFactory:
@@ -240,8 +238,8 @@ class SqliteLru(KVStore[bytes, bytes], ConnectionProvider):
                             cache(key blob primary key not null, value blob not null, atime int not null) strict;''')
         self._cleanup_thread.start()
 
-    def _open_connection(self) -> Connection:
-        conn = sqlite3.connect(self.path, autocommit=False, check_same_thread=False, isolation_level='EXCLUSIVE')
+    def _open_connection(self, check_same_thread: bool) -> Connection:
+        conn = sqlite3.connect(self.path, autocommit=False, check_same_thread=check_same_thread, isolation_level='EXCLUSIVE')
         # Can't do this inside a transaction, and normally there's always a transaction, so we have to end it
         # and then start a new one after we're done
         conn.execute('commit')

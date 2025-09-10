@@ -19,6 +19,7 @@ from agentune.analyze.core.database import (
 )
 from agentune.analyze.core.dataset import Dataset, duckdb_to_dataset
 from agentune.analyze.core.schema import Field
+from agentune.analyze.feature.dedup_names import deduplicate_strings
 
 
 @frozen
@@ -95,15 +96,19 @@ class KtsContext[K](ContextDefinition):
         end_op = '<=' if window.include_end else '<'
         sample_clause = f'USING SAMPLE {window.sample_maxsize} (reservoir, 42)' if window.sample_maxsize else ''
         
-        # Sampling is not deterministic when multithreaded, even when a random seed is provided
+        # Sampling is not deterministic when multithreaded, even when a random seed is provided.
         # And we can only set threads globally (per database), not locally (per connection).
-        # Also I suspect that setting threads replaces the whole threadpool, which is expensive. 
+        # I think setting threads replaces the whole threadpool, which would be very expensive.
         # So right now I'm leaving out the 'set threads', meaning this is not deterministic,
-        # and we need TODO better.
+        # and we need to do better. #189
         try:
             if window.sample_maxsize:
                 #conn.execute('set threads = 1')
                 pass
+
+            # Get unique name for key_exists column that doesn't shadow any other column we need
+            key_exists_col = deduplicate_strings(['key_exists'], [*value_cols, self.key_col.name, self.date_col.name])[0]
+
             # Join key_exists to get a single row of nulls if the key is not found
             # NOTE the USING SAMPLE clause applies to the table, after joins but before any WHERE filtering,
             #  so we need to use a join with a subquery instead of a simple filter on key and dates
@@ -112,7 +117,7 @@ class KtsContext[K](ContextDefinition):
                     key_exists AS (
                         SELECT exists(
                             SELECT 1 FROM {self.table.name} WHERE "{self.key_col.name}" = $key
-                        ) AS key_exists
+                        ) AS {key_exists_col}
                     ),
                     main_table as (
                         SELECT "{self.date_col.name}",
@@ -123,20 +128,18 @@ class KtsContext[K](ContextDefinition):
                             AND "{self.date_col.name}" {end_op} $end
                         ORDER BY "{self.date_col.name}"
                     )
-                SELECT key_exists.key_exists, main_table.*
+                SELECT key_exists.{key_exists_col}, main_table.*
                 FROM key_exists
                 LEFT JOIN main_table on 1
                 {sample_clause}
             ''', params={'key': key, 'start': window.start, 'end': window.end})
             
-            # TODO output column key_exists could conflict with the name of another column;
-            #  duckdb allows multiple columns with the same name in a result set, but polars doesn't
             dataset = duckdb_to_dataset(relation)
-            dataset_without_key_exists = dataset.drop('key_exists')
+            dataset_without_key_exists = dataset.drop(key_exists_col)
 
             # Handle special cases
             if dataset.data.height == 1:
-                key_found = dataset.data['key_exists'].any()
+                key_found = dataset.data[key_exists_col].any()
                 if key_found:
                     if dataset_without_key_exists.data[self.date_col.name].is_null().all():
                         # Key found but no data in time range; return empty time series
