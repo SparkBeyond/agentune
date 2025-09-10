@@ -32,6 +32,8 @@ class FeatureTargetStats:
     sses: np.ndarray
 
 
+_EPSILON = 1e-10
+
 class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
     """Feature selector using SSE-reduction single and pairwise scoring with closed-form linear regression (no weights).
 
@@ -148,7 +150,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             baseline_stats: Baseline statistics from _calculate_baseline_statistics
 
         Returns:
-            Average improvement score across all targets
+            Average normalized improvement score across all targets (0-1 range, interpretable as fraction of variance explained)
         """
         # Check if feature has invalid statistics
         if np.any(np.isinf(feature_stats.sx)):
@@ -156,6 +158,10 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
 
         # Calculate raw scores for each target: stdev_baseline - stdev_with_feature
         raw_scores = []
+        overall_baseline_stdev = np.mean(baseline_stats.stdevs)
+        if overall_baseline_stdev <= _EPSILON:
+            return 0.0
+            
         for i in range(len(baseline_stats.stdevs)):
             if np.isinf(feature_stats.sses[i]):
                 raise ValueError('an infinite value was passed')
@@ -167,22 +173,27 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
                 # Numerical precision issue - clamp to zero
                 sse_normalized = 0.0
             feature_stdev = np.sqrt(sse_normalized)
-            raw_scores.append(baseline_stdev - feature_stdev)
+            
+            raw_improvement = baseline_stdev - feature_stdev
+            normalized_score = raw_improvement / overall_baseline_stdev
 
-        # Average across all targets, handling infinite values
+            raw_scores.append(normalized_score)
+
         finite_scores = [score for score in raw_scores if np.isfinite(score)]
         if len(finite_scores) != len(raw_scores):
             raise ValueError('an infinite value was passed')
 
+        # Calculate average score
         average_score = np.mean(finite_scores)
 
         return float(average_score)
 
-    def _pairwise_feature_score(self, candidate_stats: FeatureTargetStats, selected_stats: FeatureTargetStats,
+    @staticmethod
+    def _pairwise_feature_score(candidate_stats: FeatureTargetStats, selected_stats: FeatureTargetStats,
                                 baseline_stats: TargetStats, sxz: np.ndarray) -> float:
         """Score feature pair via closed-form two-variable regression.
-        Computes mean over targets of stdev(selected-alone) - stdev(joint(candidate, selected)).
-        Unweighted sums; stdev = sqrt(SSE / n).
+        Computes mean over targets of normalized improvement: (stdev(selected-alone) - stdev(joint)) / stdev_baseline.
+        Unweighted sums; stdev = sqrt(SSE / n). Normalized by baseline standard deviation for scale invariance.
         """
         # Check if either feature has invalid statistics
         if (np.any(np.isinf(candidate_stats.sx)) or np.any(np.isinf(selected_stats.sx))):
@@ -205,12 +216,16 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             sy2 = float(baseline_stats.sy2[i])
 
             # Call the 2-variable regression function
-            joint_sses.append(self._lin_regression_2variables_with_sums(
+            joint_sses.append(LinearPairWiseFeatureSelector._lin_regression_2variables_with_sums(
                 sx, sz, sy, sx2, sz2, float(sxz[i]), sxy, szy, n, sy2
             ))
 
         # Calculate improvement scores: stdev_selected_alone - stdev_joint
         unadjusted_scores = []
+        overall_baseline_stdev = np.mean(baseline_stats.stdevs)
+        if overall_baseline_stdev <= _EPSILON:
+            return 0.0
+            
         for i in range(n_targets):
             if np.isinf(selected_stats.sses[i]) or np.isinf(joint_sses[i]):
                 raise ValueError('an infinite value was passed')
@@ -224,9 +239,10 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
                 joint_sse_normalized = 0.0
             selected_stdev = np.sqrt(selected_sse_normalized)
             joint_stdev = np.sqrt(joint_sse_normalized)
-            unadjusted_scores.append(selected_stdev - joint_stdev)
 
-        # Average across all targets, handling infinite values
+            normalized_score = (selected_stdev - joint_stdev) / overall_baseline_stdev
+            unadjusted_scores.append(normalized_score)
+
         finite_scores = [score for score in unadjusted_scores if np.isfinite(score)]
         if len(finite_scores) != len(unadjusted_scores):
             raise ValueError('an infinite value was passed')
@@ -437,13 +453,14 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
 
         return selected_feature_names, feature_scores
 
-    def _lin_regression_2variables_with_sums(self, sx: float, sz: float, sy: float, sx2: float, sz2: float,
+    @staticmethod
+    def _lin_regression_2variables_with_sums(sx: float, sz: float, sy: float, sx2: float, sz2: float,
                                              sxz: float, sxy: float, szy: float, n: float, sy2: float) -> float:
         """Closed-form two-variable linear regression with intercept using sums.
         Returns ((a, b, c), sse).
         """
         # (transpose(X)*X)^-1 * transpose(X)*Y
-        a, b, c = self._solve_3x3_system(sx2, sxz, sx, sxz, sz2, sz, sx, sz, n, sxy, szy, sy)
+        a, b, c = LinearPairWiseFeatureSelector._solve_3x3_system(sx2, sxz, sx, sxz, sz2, sz, sx, sz, n, sxy, szy, sy)
 
         # Calculate SSE: e = a*a*sx2 + 2*a*b*sxz + 2*a*c*sx - 2*a*sxy + b*b*sz2 + 2*b*c*sz - 2*b*szy + n*c*c - 2*c*sy + sy2
         e = (a * a * sx2 + 2 * a * b * sxz + 2 * a * c * sx - 2 * a * sxy +

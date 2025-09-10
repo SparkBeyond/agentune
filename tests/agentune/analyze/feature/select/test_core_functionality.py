@@ -203,6 +203,12 @@ def test_selector_basic_functionality(selector_name: str, dataset_name: str, con
     selector_slug = selector_name.replace(' ', '_').lower()
     dataset_slug = dataset_name.lower()
     if selector_slug == 'linear_pairwise':
+        # Verify importance scores are normalized between 0 and 1
+        assert selector.final_importances_ is not None, 'LinearPairWise should have final_importances_ set'
+        importance_scores = selector.final_importances_['importance']
+        assert all(0.0 <= score <= 1.0 for score in importance_scores), f'LinearPairWise importance scores should be normalized between 0 and 1, got: {importance_scores}'
+        assert len(importance_scores) == len(selected_features), 'Should have one importance score per selected feature'
+        
         gt_file = Path(__file__).parent / 'data' / f'ground_truth_{dataset_slug}_results.json'
         assert gt_file.exists(), f'Expected external ground truth at {gt_file} but it was not found.'
         with gt_file.open() as f:
