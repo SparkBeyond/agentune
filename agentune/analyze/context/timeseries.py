@@ -76,8 +76,9 @@ class KtsContext[K](ContextDefinition):
 
     @staticmethod
     def on_table(name: str, table: DuckdbTable, key_col: str, date_col: str, *value_cols: str) -> KtsContext[K]:
+        relevant_table = DuckdbTable(table.name, table.schema.select(*(key_col, date_col, *value_cols)))
         return KtsContext[K](
-            name, table,
+            name, relevant_table,
             table.schema[key_col],
             table.schema[date_col],
             tuple(table.schema[col] for col in value_cols)

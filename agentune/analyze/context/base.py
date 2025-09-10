@@ -16,7 +16,12 @@ class ContextDefinition(ABC):
 
     @property
     @abstractmethod
-    def table(self) -> DuckdbTable: ...
+    def table(self) -> DuckdbTable:
+        """The table used and the schema of the columns used. This is often a subset of the columns originally in that table.
+
+        This is known to be an incomplete API; some classes may use multiple tables, or particular columns from the main table. #191
+        """
+        ...
 
     @property
     @abstractmethod

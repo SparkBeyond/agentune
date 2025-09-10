@@ -65,8 +65,9 @@ class ConversationContext[K](ContextDefinition):
     @staticmethod
     def on_table(name: str, table: DuckdbTable, main_table_id_column: str, id_column: str,
                  timestamp_column: str, role_column: str, content_column: str) -> ConversationContext[K]:
+        relevant_table = DuckdbTable(table.name, table.schema.select(id_column, timestamp_column, role_column, content_column))
         return ConversationContext[K](
-            name, table,
+            name, relevant_table,
             Field(main_table_id_column, table.schema[id_column].dtype),
             table.schema[id_column],
             table.schema[timestamp_column],

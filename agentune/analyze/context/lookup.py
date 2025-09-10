@@ -26,8 +26,9 @@ class LookupContext[K](ContextDefinition):
 
     @staticmethod
     def on_table(name: str, table: DuckdbTable, key_col: str, *value_cols: str) -> LookupContext[K]:
+        relevant_table = DuckdbTable(table.name, table.schema.select(*(key_col, *value_cols)))
         return LookupContext[K](
-            name, table,
+            name, relevant_table,
             table.schema[key_col],
             tuple(table.schema[col] for col in value_cols)
         )
