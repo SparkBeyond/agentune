@@ -210,10 +210,14 @@ async def cast_to_categorical(query: Query, data: pl.Series, max_categorical: in
     response_obj: CategoricalOptimizerResponse = response.raw
 
     # Check response
-    assert response_obj.query_name, 'query_name cannot be empty'
-    assert response_obj.categories, 'categories cannot be empty'
-    assert response_obj.query_text, 'query_text cannot be empty'
-    assert len(response_obj.categories) <= max_categorical, f'Too many categories: {len(response_obj.categories)} > {max_categorical}'
+    if not response_obj.query_name:
+        raise ValueError('query_name cannot be empty')
+    if not response_obj.categories:
+        raise ValueError('categories cannot be empty')
+    if not response_obj.query_text:
+        raise ValueError('query_text cannot be empty')
+    if len(response_obj.categories) > max_categorical:
+        raise ValueError(f'Too many categories: {len(response_obj.categories)} > {max_categorical}')
 
     categories = response_obj.categories
 

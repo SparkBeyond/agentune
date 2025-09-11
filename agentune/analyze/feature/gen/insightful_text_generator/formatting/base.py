@@ -57,14 +57,16 @@ class ConversationFormatter(DataFormatter):
         df = input.data
 
         conversations = self.conversation_strategy.get_conversations(conn=conn, ids=df[self.conversation_strategy.main_table_id_column.name])
-        assert len(conversations) == len(df), 'Number of conversations does not match number of rows in input data'
+        if len(conversations) != len(df):
+            raise ValueError('Number of conversations does not match number of rows in input data')
         
         # Format each conversation into a string
         formatted_conversations = []
         # filter the dataframe to only include self.params columns
         filtered_df = df.select([self.conversation_strategy.main_table_id_column.name, *self.params.names])
         for row, conversation in zip(filtered_df.iter_rows(), conversations, strict=False):
-            assert conversation is not None, f'Conversation missing for id: {row[0]}'
+            if conversation is None:
+                raise ValueError(f'Conversation missing for id: {row[0]}')
             # Format each message and join into conversation text
             text = [f'[{message.timestamp}] [{message.role}] {message.content}' for message in conversation.messages]
             # add information from the main table - filter the row for this conversation_id

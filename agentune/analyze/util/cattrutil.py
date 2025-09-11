@@ -79,7 +79,8 @@ def configure_lazy_include_subclasses[T](base: type[T], converter: cattrs.Conver
             tag = tag_generator_wrapper(type(val))
             base_hook = tag_to_unstructure_hook()[tag]
             base_dict = base_hook(val)
-            assert tag_name not in base_dict or base_dict[tag_name] == tag
+            if tag_name in base_dict and base_dict[tag_name] != tag:
+                raise ValueError(f'Subclass of {_target_type} tagged {tag} already has attribute named {tag_name} with value {base_dict[tag_name]}')
             return base_hook(val) | {tag_name: tag}
         return hook
 

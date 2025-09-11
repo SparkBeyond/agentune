@@ -43,6 +43,7 @@ select = [
     "FURB",                             # refurb
     "RUF",                              # Ruff-original rules
     "TRY",                              # Tryceratops
+    "S101"
 ]
 
 # We may later want to enable:
@@ -85,7 +86,6 @@ ignore = [
     "PT012",                            # pytest.assert block should contain a single simple statement (oh noes! we have two!)
 
     # Rules we may want to enforce in the future but are ignored for now
-    "S101",                             # Use of assert
     "S608",                             # Possible SQL injection
     "RET505",                           # Unnecessary else after return statement
 ]
@@ -110,4 +110,5 @@ line-ending = "lf"
 "tests/**" = [
     "PLR2004",                          # Magic value constant
     "T201",                             # Use of print
+    "S101",                             # Use of assert
 ]

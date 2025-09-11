@@ -267,7 +267,8 @@ class SimpleEfficientEvaluator(EfficientEvaluator):
 
         # Sanity check
         for candidate in candidate_evaluators:
-            assert candidate.evaluator.effective_cost_per_row() is not None
+            if candidate.evaluator.effective_cost_per_row() is None:
+                raise ValueError('Effective cost for candidate is None')
 
         # Choose cheapest valid evaluator that has high enough certainty, if any, while obeying ROI
         if len(candidate_evaluators) == 0:

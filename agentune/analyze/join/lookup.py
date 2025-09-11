@@ -45,16 +45,20 @@ class LookupJoinStrategy[K](JoinStrategy):
         """Return the value for the given key, or None if not found."""
         results = conn.sql(f'select "{value_col}" from {self.table.name} where "{self.key_col.name}" = ?',
                            params=[key]).fetchall()
-        assert (len(results) <= 1)
-        return results[0][0] if results else None
+        match results:
+            case []: return None
+            case [(result, )]: return result
+            case other: raise ValueError(f'Unexpected query result {other}')
 
     def get_many(self, conn: DuckDBPyConnection, key: K, value_cols: Sequence[str]) -> tuple | None:
         """Return a list of values corresponding to the value_cols, or None if not found."""
         value_cols_query = ', '.join(f'"{col}"' for col in value_cols)
         results = conn.sql(f'select {value_cols_query} from {self.table.name} where "{self.key_col.name}" = ?',
                            params=[key]).fetchall()
-        assert (len(results) <= 1)
-        return results[0] if results else None
+        match results:
+            case []: return None
+            case [tuple(result)]: return result
+            case other: raise ValueError(f'Unexpected query result {other}')
 
     def get_batch(self, conn: DuckDBPyConnection, keys: Sequence[K], value_cols: Sequence[str]) -> Dataset:
         """Return a dataset with one row per key, in the order of the input keys. 
