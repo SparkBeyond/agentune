@@ -10,9 +10,9 @@ import attrs
 import polars as pl
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.conversation import ConversationContext
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Schema
+from agentune.analyze.join.conversation import ConversationJoinStrategy
 
 
 @attrs.define
@@ -31,7 +31,7 @@ class DataFormatter(ABC):
         
         Args:
             input: Dataset containing the data to format
-            conn: Database connection for accessing context tables
+            conn: Database connection for accessing secondary tables
             
         Returns:
             pl.Series of strings with name=self.name
@@ -48,7 +48,7 @@ class ConversationFormatter(DataFormatter):
     Also includes additional fields from the main table.
     '[{field_name}] {field_value}' for each field in self.params.
     """
-    conversation_context: ConversationContext
+    conversation_strategy: ConversationJoinStrategy
     params: Schema
     
     @override
@@ -56,14 +56,13 @@ class ConversationFormatter(DataFormatter):
         """Format conversation data grouped by conversation_id."""
         df = input.data
 
-        # get conversations from context
-        conversations = self.conversation_context.get_conversations(conn=conn, ids=df[self.conversation_context.main_table_id_column.name])
+        conversations = self.conversation_strategy.get_conversations(conn=conn, ids=df[self.conversation_strategy.main_table_id_column.name])
         assert len(conversations) == len(df), 'Number of conversations does not match number of rows in input data'
         
         # Format each conversation into a string
         formatted_conversations = []
         # filter the dataframe to only include self.params columns
-        filtered_df = df.select([self.conversation_context.main_table_id_column.name, *self.params.names])
+        filtered_df = df.select([self.conversation_strategy.main_table_id_column.name, *self.params.names])
         for row, conversation in zip(filtered_df.iter_rows(), conversations, strict=False):
             assert conversation is not None, f'Conversation missing for id: {row[0]}'
             # Format each message and join into conversation text

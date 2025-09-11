@@ -8,9 +8,6 @@ import polars as pl
 from attrs import field, frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import (
-    ContextDefinition,
-)
 from agentune.analyze.core.database import (
     ArtIndex,
     DuckdbIndex,
@@ -20,6 +17,9 @@ from agentune.analyze.core.database import (
 from agentune.analyze.core.dataset import Dataset, duckdb_to_dataset
 from agentune.analyze.core.schema import Field
 from agentune.analyze.feature.dedup_names import deduplicate_strings
+from agentune.analyze.join.base import (
+    JoinStrategy,
+)
 
 
 @frozen
@@ -67,7 +67,9 @@ class TimeSeries:
         
 
 @frozen
-class KtsContext[K](ContextDefinition):
+class KtsJoinStrategy[K](JoinStrategy):
+    """A time-series join strategy. KTS stands for keyed time series."""
+
     name: str
     table: DuckdbTable
     key_col: Field
@@ -75,9 +77,9 @@ class KtsContext[K](ContextDefinition):
     value_cols: Sequence[Field] # can be used to restrict the available value columns from what's in the table
 
     @staticmethod
-    def on_table(name: str, table: DuckdbTable, key_col: str, date_col: str, *value_cols: str) -> KtsContext[K]:
+    def on_table(name: str, table: DuckdbTable, key_col: str, date_col: str, *value_cols: str) -> KtsJoinStrategy[K]:
         relevant_table = DuckdbTable(table.name, table.schema.select(*(key_col, date_col, *value_cols)))
-        return KtsContext[K](
+        return KtsJoinStrategy[K](
             name, relevant_table,
             table.schema[key_col],
             table.schema[date_col],

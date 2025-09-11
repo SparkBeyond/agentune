@@ -9,7 +9,6 @@ import polars as pl
 from attrs import field, frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core import types
 from agentune.analyze.core.database import (
     ArtIndex,
@@ -19,6 +18,7 @@ from agentune.analyze.core.database import (
 )
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field, dtype_is
+from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.util.duckdbutil import results_iter
 
 
@@ -38,14 +38,14 @@ class Conversation:
             raise ValueError('Messages must be sorted by timestamp')
 
 @frozen
-class ConversationContext[K](ContextDefinition):
-    """A context definition for storing conversations in a context table with one row per message.
+class ConversationJoinStrategy[K](JoinStrategy):
+    """A strategy for storing conversations in a secondary table with one row per message.
 
     It is joined to the main table by the conversation id column, whose type K can be any type that supports 
     indexing and equality comparisons.
 
     tparams:
-        K: the type of the conversation id column (self.main_table_id_column in the main table, and self.id_column in the context table).
+        K: the type of the conversation id column (self.main_table_id_column in the main table, and self.id_column in the secondary table).
            This can be any type that supports duckdb indexing and equality comparisons in SQL queries.
     """
     name: str
@@ -64,9 +64,9 @@ class ConversationContext[K](ContextDefinition):
 
     @staticmethod
     def on_table(name: str, table: DuckdbTable, main_table_id_column: str, id_column: str,
-                 timestamp_column: str, role_column: str, content_column: str) -> ConversationContext[K]:
+                 timestamp_column: str, role_column: str, content_column: str) -> ConversationJoinStrategy[K]:
         relevant_table = DuckdbTable(table.name, table.schema.select(id_column, timestamp_column, role_column, content_column))
-        return ConversationContext[K](
+        return ConversationJoinStrategy[K](
             name, relevant_table,
             Field(main_table_id_column, table.schema[id_column].dtype),
             table.schema[id_column],

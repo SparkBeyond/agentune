@@ -6,9 +6,9 @@ from typing import override
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.feature.base import Feature
+from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.util.queue import Queue
 
 
@@ -22,22 +22,22 @@ class GeneratedFeature[F: Feature]:
 
 class FeatureGenerator[F: Feature](ABC): 
     @abstractmethod
-    def agenerate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    def agenerate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                   conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]: ...
 
 # Note that a SyncFeatureGenerator is a generator that operates synchronously, not a generator that generates SyncFeatures.
 class SyncFeatureGenerator[F: Feature](FeatureGenerator[F]):
     @abstractmethod
-    def generate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    def generate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                  conn: DuckDBPyConnection) -> Iterator[GeneratedFeature[F]]: ...
 
     @override
-    async def agenerate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    async def agenerate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                         conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]:
         queue = Queue[GeneratedFeature[F]](1)
         with conn.cursor() as cursor:
             task = asyncio.create_task(asyncio.to_thread(
-                lambda: queue.consume(self.generate(feature_search.copy_to_thread(), target_column, contexts, cursor))))
+                lambda: queue.consume(self.generate(feature_search.copy_to_thread(), target_column, join_strategies, cursor))))
             async for item in queue:
                 yield item
             await task
@@ -48,18 +48,19 @@ class FeatureTransformer[FA: Feature, FB: Feature](ABC):
     For example, a FeatureTransformer[float, bool] which fits cutoffs and ranges to a numeric feature.
     """
     @abstractmethod
-    async def atransform(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    async def atransform(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                          conn: DuckDBPyConnection, feature: FA) -> Sequence[FB] : ...
 
 
 class SyncFeatureTransformer[FA: Feature, FB: Feature](FeatureTransformer[FA, FB]):
     @abstractmethod
-    def transform(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    def transform(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                   conn: DuckDBPyConnection, feature: FA) -> Sequence[FB] : ...
 
     @override
-    async def atransform(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    async def atransform(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                          conn: DuckDBPyConnection, feature: FA) -> Sequence[FB]:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.transform, feature_search.copy_to_thread(), target_column, contexts, cursor, feature)
+            return await asyncio.to_thread(self.transform, feature_search.copy_to_thread(), target_column,
+                                           join_strategies, cursor, feature)
 

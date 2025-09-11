@@ -9,7 +9,6 @@ import pytest
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset
@@ -26,6 +25,7 @@ from agentune.analyze.feature.base import (
     SyncFloatFeature,
     SyncIntFeature,
 )
+from agentune.analyze.join.base import JoinStrategy
 
 _logger = logging.getLogger(__name__)
 
@@ -63,8 +63,8 @@ class IntTestFeature(IntFeature):
     default_for_missing: int = 2
 
     params: Schema = Schema((Field('int', types.int32),))
-    context_tables: Sequence[DuckdbTable] = ()
-    context_definitions: Sequence[ContextDefinition] = ()
+    secondary_tables: Sequence[DuckdbTable] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], 
@@ -86,8 +86,8 @@ class SyncIntTestFeature(SyncIntFeature):
     default_for_missing: int = 2
 
     params: Schema = Schema((Field('int', types.int32),))
-    context_tables: Sequence[DuckdbTable] = ()
-    context_definitions: Sequence[ContextDefinition] = ()
+    secondary_tables: Sequence[DuckdbTable] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     @override
     def evaluate(self, args: tuple[Any, ...], 
@@ -109,8 +109,8 @@ class BoolTestFeature(BoolFeature):
     default_for_missing: bool = True
 
     params: Schema = Schema((Field('int', types.int32),))
-    context_tables: Sequence[DuckdbTable] = ()
-    context_definitions: Sequence[ContextDefinition] = ()
+    secondary_tables: Sequence[DuckdbTable] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], 
@@ -132,8 +132,8 @@ class SyncBoolTestFeature(SyncBoolFeature):
     default_for_missing: bool = True
 
     params: Schema = Schema((Field('int', types.int32),))
-    context_tables: Sequence[DuckdbTable] = ()
-    context_definitions: Sequence[ContextDefinition] = ()
+    secondary_tables: Sequence[DuckdbTable] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     @override
     def evaluate(self, args: tuple[Any, ...], 
@@ -159,8 +159,8 @@ class FloatTestFeature(FloatFeature):
     default_for_neg_infinity: float = 13.0
 
     params: Schema = Schema((Field('int', types.int32),))
-    context_tables: Sequence[DuckdbTable] = ()
-    context_definitions: Sequence[ContextDefinition] = ()
+    secondary_tables: Sequence[DuckdbTable] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], 
@@ -189,8 +189,8 @@ class SyncFloatTestFeature(SyncFloatFeature):
     default_for_neg_infinity: float = 13.0
 
     params: Schema = Schema((Field('int', types.int32),))
-    context_tables: Sequence[DuckdbTable] = ()
-    context_definitions: Sequence[ContextDefinition] = ()
+    secondary_tables: Sequence[DuckdbTable] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     @override
     def evaluate(self, args: tuple[Any, ...], 
@@ -217,8 +217,8 @@ class CategoricalTestFeature(CategoricalFeature):
     default_for_missing: str = 'c'
 
     params: Schema = Schema((Field('int', types.int32),))
-    context_tables: Sequence[DuckdbTable] = ()
-    context_definitions: Sequence[ContextDefinition] = ()
+    secondary_tables: Sequence[DuckdbTable] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], 
@@ -246,8 +246,8 @@ class SyncCategoricalTestFeature(SyncCategoricalFeature):
     default_for_missing: str = 'c'
 
     params: Schema = Schema((Field('int', types.int32),))
-    context_tables: Sequence[DuckdbTable] = ()
-    context_definitions: Sequence[ContextDefinition] = ()
+    secondary_tables: Sequence[DuckdbTable] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     @override
     def evaluate(self, args: tuple[Any, ...], 

@@ -7,8 +7,6 @@ import pytest
 from duckdb import DuckDBPyConnection
 
 import agentune.analyze.core.types as dtypes
-from agentune.analyze.context.base import TablesWithContextDefinitions
-from agentune.analyze.context.conversation import ConversationContext
 from agentune.analyze.core import duckdbio
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.llm import LLMContext, LLMSpec
@@ -21,6 +19,8 @@ from agentune.analyze.feature.gen.insightful_text_generator.insightful_text_gene
     ConversationQueryFeatureGenerator,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
+from agentune.analyze.join.base import TablesWithJoinStrategies
+from agentune.analyze.join.conversation import ConversationJoinStrategy
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,13 +32,13 @@ def test_data_paths() -> dict[str, Path]:
     test_data_dir = Path(__file__).parent.parent.parent / 'data' / 'conversations'
     paths_dict = {
         'main_csv': test_data_dir / 'example_main.csv',
-        'conversations_csv': test_data_dir / 'example_conversations_context.csv'
+        'conversations_csv': test_data_dir / 'example_conversations_secondary.csv'
     }
     return paths_dict
 
 
 @pytest.fixture
-def test_dataset_with_context(test_data_paths: dict[str, Path], conn: DuckDBPyConnection) -> tuple[Dataset, str, TablesWithContextDefinitions]:
+def test_dataset_with_strategy(test_data_paths: dict[str, Path], conn: DuckDBPyConnection) -> tuple[Dataset, str, TablesWithJoinStrategies]:
     """Load and prepare test data for ConversationQueryGenerator."""
     # Load CSV files
     main_df = pl.read_csv(test_data_paths['main_csv'])
@@ -54,8 +54,8 @@ def test_dataset_with_context(test_data_paths: dict[str, Path], conn: DuckDBPyCo
     for field in main_schema.cols:
         main_df = main_df.with_columns(pl.col(field.name).cast(field.dtype.polars_type))
 
-    # Create conversation context schema
-    context_schema = Schema((
+    # Create secondary table schema
+    secondary_schema = Schema((
         Field(name='id', dtype=dtypes.int32),
         Field(name='timestamp', dtype=dtypes.timestamp),
         Field(name='role', dtype=dtypes.string),
@@ -65,19 +65,18 @@ def test_dataset_with_context(test_data_paths: dict[str, Path], conn: DuckDBPyCo
     conversations_df = conversations_df.with_columns(
         pl.col('timestamp').str.to_datetime('%Y-%m-%dT%H:%M:%SZ')
     )
-    for field in context_schema.cols:
+    for field in secondary_schema.cols:
         conversations_df = conversations_df.with_columns(pl.col(field.name).cast(field.dtype.polars_type))
 
     # Create datasets
     main_dataset = Dataset(schema=main_schema, data=main_df)
-    context_dataset = Dataset(schema=context_schema, data=conversations_df)
+    secondary_dataset = Dataset(schema=secondary_schema, data=conversations_df)
 
     # Ingest tables
     duckdbio.ingest(conn, 'main', main_dataset.as_source())
-    context_table = duckdbio.ingest(conn, 'conversations', context_dataset.as_source())
+    context_table = duckdbio.ingest(conn, 'conversations', secondary_dataset.as_source())
 
-    # Create conversation context
-    conversation_context = ConversationContext[int].on_table(
+    conversation_strategy = ConversationJoinStrategy[int].on_table(
         'conversations',
         context_table.table,
         'id',           # main_table_id_column
@@ -88,12 +87,11 @@ def test_dataset_with_context(test_data_paths: dict[str, Path], conn: DuckDBPyCo
     )
 
     # Create index
-    conversation_context.index.create(conn, context_table.table.name, if_not_exists=True)
+    conversation_strategy.index.create(conn, context_table.table.name, if_not_exists=True)
 
-    # Create context definitions
-    contexts = TablesWithContextDefinitions.group([conversation_context])
+    strategies = TablesWithJoinStrategies.group([conversation_strategy])
 
-    return main_dataset, 'outcome', contexts
+    return main_dataset, 'outcome', strategies
 
 
 @pytest.fixture
@@ -109,10 +107,11 @@ async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSp
 
 
 @pytest.mark.integration
-async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_context: tuple[Dataset, str, TablesWithContextDefinitions], conn: DuckDBPyConnection,
+async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tuple[Dataset, str, TablesWithJoinStrategies],
+                                                 conn: DuckDBPyConnection,
                                                  real_llm_with_spec: LLMWithSpec) -> None:
     """Test the complete end-to-end pipeline with real LLM."""
-    main_dataset, target_col, contexts = test_dataset_with_context
+    main_dataset, target_col, strategies = test_dataset_with_strategy
     random_seed = 42  # Use a fixed seed for reproducibility
 
     feature_generator: ConversationQueryFeatureGenerator = ConversationQueryFeatureGenerator(
@@ -130,11 +129,11 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_context: tupl
 
     # imitate the feature search
     target_field = main_dataset.schema[target_col]
-    conversation_contexts = feature_generator.find_conversation_contexts(contexts)
+    conversation_strategies = feature_generator.find_conversation_strategies(strategies)
 
-    for conversation_context in conversation_contexts:
-        # 1. Create a query generator for the conversation context
-        query_generator = feature_generator.create_query_generator(conversation_context, target_field)
+    for conversation_strategy in conversation_strategies:
+        # 1. Create a query generator for the conversation strategy
+        query_generator = feature_generator.create_query_generator(conversation_strategy, target_field)
 
         # 2. Generate queries from the conversation data
         queries = await query_generator.agenerate_queries(main_dataset, conn, random_seed=feature_generator.random_seed)
@@ -163,8 +162,8 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_context: tupl
         sampler = feature_generator._get_sampler(target_field)
         sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
         enrichment_formatter = ConversationFormatter(
-            name=f'enrichment_formatter_{conversation_context.table.name}',
-            conversation_context=conversation_context,
+            name=f'enrichment_formatter_{conversation_strategy.table.name}',
+            conversation_strategy=conversation_strategy,
             params=Schema(cols=())
         )
         enriched_output = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)

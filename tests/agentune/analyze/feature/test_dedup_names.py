@@ -1,11 +1,11 @@
 
 from attrs import frozen
 
-from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.feature.base import Feature, IntFeature
 from agentune.analyze.feature.dedup_names import deduplicate_feature_names, deduplicate_strings
+from agentune.analyze.join.base import JoinStrategy
 
 
 @frozen
@@ -14,8 +14,8 @@ class FeatureForTesting(IntFeature):
     description: str = ''
     technical_description: str = ''
     params: Schema = Schema(())
-    context_tables: tuple[DuckdbTable, ...] = ()
-    context_definitions: tuple[ContextDefinition, ...] = ()
+    secondary_tables: tuple[DuckdbTable, ...] = ()
+    join_strategies: tuple[JoinStrategy, ...] = ()
 
     # Redeclare attributes with defaults
     default_for_missing: int = 0

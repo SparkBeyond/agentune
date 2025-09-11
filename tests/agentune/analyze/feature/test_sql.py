@@ -5,14 +5,14 @@ import polars as pl
 from attrs import define, frozen
 from mypyc.ir.ops import Sequence
 
-from agentune.analyze.context.base import (
-    ContextDefinition,
-)
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSourceFromDataset, duckdb_to_polars
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import IntFeature, SqlQueryFeature, SyncFeature
+from agentune.analyze.join.base import (
+    JoinStrategy,
+)
 
 
 @define(slots=False)
@@ -21,8 +21,8 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
 
     This is an implementation example; it is expected to evolve once we start using it.
 
-    The query can address the main table under the name self.main_table_name and the context tables under their
-    relation names (which are not the same as the context definition names!)
+    The query can address the main table under the name self.main_table_name and the secondary tables under their
+    relation names (which are not the same as the join strategy names!)
 
     Remember to also extend one of the feature type ABCs (IntFeature, etc).
     """
@@ -53,13 +53,13 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
 @frozen
 class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
     params: Schema
-    context_tables: tuple[DuckdbTable, ...]
+    secondary_tables: tuple[DuckdbTable, ...]
     sql_query: str
 
     name: str = 'test_sql_feature'
     description: str = ''
     technical_description: str = ''
-    context_definitions: Sequence[ContextDefinition] = ()
+    join_strategies: Sequence[JoinStrategy] = ()
 
     # Redeclare attributes with defaults
     default_for_missing: int = 0
@@ -82,7 +82,7 @@ def test_sql_feature() -> None:
         context_table = DuckdbTable.from_duckdb('context_table', conn)
         feature = IntSqlFeatureForTests(
             params=Schema((Field('key', types.int32), )),
-            context_tables=(context_table,),
+            secondary_tables=(context_table,),
             sql_query='''
             SELECT context_table.value
             FROM main_table 

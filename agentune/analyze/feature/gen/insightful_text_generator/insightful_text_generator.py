@@ -6,8 +6,6 @@ import polars as pl
 from attrs import define
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
-from agentune.analyze.context.conversation import ConversationContext
 from agentune.analyze.core import types
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field, Schema
@@ -40,6 +38,8 @@ from agentune.analyze.feature.gen.insightful_text_generator.util import (
     execute_llm_caching_aware_columnar,
     parse_json_response_field,
 )
+from agentune.analyze.join.base import TablesWithJoinStrategies
+from agentune.analyze.join.conversation import ConversationJoinStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -72,17 +72,16 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
         # TODO: upgrade to a more sophisticated deduplicator
         return SimpleDeduplicator()
 
-    def find_conversation_contexts(self, contexts: TablesWithContextDefinitions) -> list[ConversationContext]:
-        """Find the ConversationContext in the provided contexts."""
+    def find_conversation_strategies(self, join_strategies: TablesWithJoinStrategies) -> list[ConversationJoinStrategy]:
         return [
-            context_def
-            for table_with_context in contexts
-            for context_def in table_with_context
-            if isinstance(context_def, ConversationContext)
+            strategy
+            for table_with_strategies in join_strategies
+            for strategy in table_with_strategies
+            if isinstance(strategy, ConversationJoinStrategy)
         ]
 
-    def create_query_generator(self, conversation_context: ConversationContext, target_field: Field) -> ConversationQueryGenerator:
-        """Create a ConversationQueryGenerator for the given conversation context."""
+    def create_query_generator(self, conversation_strategy: ConversationJoinStrategy, target_field: Field) -> ConversationQueryGenerator:
+        """Create a ConversationQueryGenerator for the given conversation strategy."""
         sampler = self._get_sampler(target_field)
         deduplicator = self._get_deduplicator()
         return ConversationQueryGenerator(
@@ -92,8 +91,8 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
             deduplicator=deduplicator,
             num_features_to_generate=self.num_features_to_generate,
             formatter=ConversationFormatter(
-                name=f'conversation_formatter_{conversation_context.table.name}',
-                conversation_context=conversation_context,
+                name=f'conversation_formatter_{conversation_strategy.table.name}',
+                conversation_strategy=conversation_strategy,
                 params=Schema(cols=(target_field,))
             ),
             target_field=target_field,
@@ -105,7 +104,7 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
 
     async def enrich_queries(self, queries: list[Query], enrichment_formatter: ConversationFormatter,
                              input_data: Dataset, conn: DuckDBPyConnection) -> pl.DataFrame:
-        """Enrich a subset of queries with additional context information using parallel LLM calls.
+        """Enrich a subset of queries with additional conversation information using parallel LLM calls.
         Returns a DataFrame containing the enriched query results
         """
         # Format the sampled data for enrichment
@@ -193,28 +192,28 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
         return [query for query in results if query is not None]
 
     def create_features_from_queries(self, queries: list[Query], enrichment_formatter: ConversationFormatter,  # noqa: ARG002
-                                     target_field: Field, conversation_context: ConversationContext) -> list[F]:  # noqa: ARG002
+                                     target_field: Field, conversation_strategy: ConversationJoinStrategy) -> list[F]:  # noqa: ARG002
         # TODO: update enriched output type
         return []  # Implement logic to create Features from the enriched queries
 
-    async def agenerate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions,
+    async def agenerate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                         conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]:
         target_field = feature_search.schema[target_column]
-        conversation_contexts = self.find_conversation_contexts(contexts)
+        conversation_strategies = self.find_conversation_strategies(join_strategies)
 
-        for conversation_context in conversation_contexts:
-            # 1. Create a query generator for the conversation context
-            query_generator = self.create_query_generator(conversation_context, target_field)
+        for conversation_strategy in conversation_strategies:
+            # 1. Create a query generator for the conversation
+            query_generator = self.create_query_generator(conversation_strategy, target_field)
 
             # 2. Generate queries from the conversation data
             query_batch = await query_generator.agenerate_queries(feature_search, conn, self.random_seed)
 
-            # 3. Enrich the queries with additional context information
+            # 3. Enrich the queries with additional conversation information
             sampler = self._get_sampler(feature_search.schema[target_column])
             sampled_data = sampler.sample(feature_search, self.num_samples_for_enrichment, self.random_seed)
             enrichment_formatter = ConversationFormatter(
-                name=f'enrichment_formatter_{conversation_context.table.name}',
-                conversation_context=conversation_context,
+                name=f'enrichment_formatter_{conversation_strategy.table.name}',
+                conversation_strategy=conversation_strategy,
                 params=Schema(cols=())
             )
             enriched_output = await self.enrich_queries(query_batch, enrichment_formatter, sampled_data, conn)
@@ -227,7 +226,7 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
                 queries=updated_queries,
                 enrichment_formatter=enrichment_formatter,
                 target_field=target_field,
-                conversation_context=conversation_context
+                conversation_strategy=conversation_strategy
             )
 
             # Yield features one by one

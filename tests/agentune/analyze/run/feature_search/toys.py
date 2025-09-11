@@ -11,7 +11,6 @@ from attrs import field, frozen
 from duckdb import DuckDBPyConnection
 
 import agentune.analyze.util.copy
-from agentune.analyze.context.base import ContextDefinition, TablesWithContextDefinitions
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
@@ -45,6 +44,7 @@ from agentune.analyze.feature.stats.stats import (
     CategoricalFeatureStats,
     NumericFeatureStats,
 )
+from agentune.analyze.join.base import JoinStrategy, TablesWithJoinStrategies
 
 _logger = logging.getLogger(__name__)
 
@@ -72,12 +72,12 @@ class ToySyncFeature(SyncFloatFeature):
     
     @property
     @override
-    def context_tables(self) -> list[DuckdbTable]:
+    def secondary_tables(self) -> list[DuckdbTable]:
         return []
     
     @property
     @override
-    def context_definitions(self) -> list[ContextDefinition]:
+    def join_strategies(self) -> list[JoinStrategy]:
         return []
         
     @override
@@ -113,12 +113,12 @@ class ToyAsyncFeature(FloatFeature):
     
     @property
     @override
-    def context_tables(self) -> list[DuckdbTable]:
+    def secondary_tables(self) -> list[DuckdbTable]:
         return []
     
     @property
     @override
-    def context_definitions(self) -> list[ContextDefinition]:
+    def join_strategies(self) -> list[JoinStrategy]:
         return []
         
     @override
@@ -133,7 +133,7 @@ class ToyAsyncFeature(FloatFeature):
     
 class ToySyncFeatureGenerator(SyncFeatureGenerator[ToySyncFeature]):
     @override
-    def generate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    def generate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                  conn: DuckDBPyConnection) -> Iterator[GeneratedFeature[ToySyncFeature]]:
         for col1 in feature_search.schema.cols:
             for col2 in feature_search.schema.cols:
@@ -145,7 +145,7 @@ class ToySyncFeatureGenerator(SyncFeatureGenerator[ToySyncFeature]):
 
 class ToyAsyncFeatureGenerator(FeatureGenerator[ToyAsyncFeature]):
     @override
-    async def agenerate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    async def agenerate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                         conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[ToyAsyncFeature]]:
         for col1 in feature_search.schema.cols:
             for col2 in feature_search.schema.cols:
@@ -161,14 +161,14 @@ class ToyPrebuiltFeaturesGenerator(SyncFeatureGenerator[Feature]):
     features: tuple[Feature, ...]
 
     @override
-    def generate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions,
+    def generate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                  conn: DuckDBPyConnection) -> Iterator[GeneratedFeature]:
         for feature in self.features:
             yield GeneratedFeature(feature, True)
 
 class ToySyncFeatureTransformer(SyncFeatureTransformer[Feature, Feature]):
     @override
-    def transform(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    def transform(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                   conn: DuckDBPyConnection, feature: Feature) -> list[Feature]:
         if hash(str(feature)) < 2**16:
             return []
@@ -177,7 +177,7 @@ class ToySyncFeatureTransformer(SyncFeatureTransformer[Feature, Feature]):
 
 class ToyAsyncFeatureTransformer(FeatureTransformer[Feature, Feature]):
     @override
-    async def atransform(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions, 
+    async def atransform(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                          conn: DuckDBPyConnection, feature: Feature) -> list[Feature]:
         await asyncio.sleep(0)
         if hash(str(feature)) < 2**16:

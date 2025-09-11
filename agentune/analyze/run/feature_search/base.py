@@ -6,7 +6,6 @@ from typing import Self, final
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import TablesWithContextDefinitions
 from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.threading import CopyToThread
@@ -26,6 +25,7 @@ from agentune.analyze.feature.stats.stats_calculators import (
     CombinedSyncFeatureStatsCalculator,
     CombinedSyncRelationshipStatsCalculator,
 )
+from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.enrich.base import EnrichRunner
 from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
@@ -40,7 +40,7 @@ class FeatureSearchInputData(CopyToThread):
     train: DatasetSource # Includes the feature_search and feature_eval datasets
     test: DatasetSource
     target_column: str
-    contexts: TablesWithContextDefinitions
+    join_strategies: TablesWithJoinStrategies
 
     def __attrs_post_init__(self) -> None:
         if self.train.schema != self.test.schema:
@@ -55,7 +55,7 @@ class FeatureSearchInputData(CopyToThread):
         
     @staticmethod
     def from_split_table(split_table: SplitDuckdbTable, target_column: str,
-                         contexts: TablesWithContextDefinitions,
+                         join_strategies: TablesWithJoinStrategies,
                          conn: DuckDBPyConnection) -> FeatureSearchInputData:
         return FeatureSearchInputData(
             feature_search=split_table.feature_search().to_dataset(conn),
@@ -63,7 +63,7 @@ class FeatureSearchInputData(CopyToThread):
             test=split_table.test(),
             feature_eval=split_table.feature_eval(),
             target_column=target_column,
-            contexts=contexts
+            join_strategies=join_strategies
         )
 
     def copy_to_thread(self) -> Self:
@@ -72,7 +72,7 @@ class FeatureSearchInputData(CopyToThread):
             self.feature_eval.copy_to_thread(),
             self.train.copy_to_thread(),
             self.test.copy_to_thread(),
-            self.target_column, self.contexts
+            self.target_column, self.join_strategies
         )
 
 

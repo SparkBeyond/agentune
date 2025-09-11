@@ -40,8 +40,9 @@ class FeatureEvaluator[F: Feature](ABC):
     async def aevaluate(self, dataset: Dataset,
                         conn: DuckDBPyConnection) -> Dataset:
         """Args:
-            dataset: includes all columns needed by all the features. Any additional columns are ignored.
-            contexts: contains any context tables and objects needed by the features; any additional ones are ignored.
+            dataset: includes all columns needed by all the features. Any additional columns must be ignored by the implementation.
+            conn: makes available contains data declared in `secondary_tables` or `join_strategies`.
+                  Any additional tables or columns must be ignored by the implementation.
 
         Returns:
             A dataset with a column per feature, named with the feature's name.

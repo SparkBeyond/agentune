@@ -9,7 +9,6 @@ import polars as pl
 import pytest
 from attrs import frozen
 
-from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import FloatFeature
@@ -23,6 +22,7 @@ from agentune.analyze.feature.stats.stats_calculators import (
     NumericRegressionCalculator,
     NumericStatsCalculator,
 )
+from agentune.analyze.join.base import JoinStrategy
 
 
 # Simple Feature implementation for testing
@@ -46,11 +46,11 @@ class SimpleNumericFeature(FloatFeature):
         return Schema((Field(self.name, self.dtype),))
 
     @property
-    def context_tables(self) -> Sequence[DuckdbTable]:
+    def secondary_tables(self) -> Sequence[DuckdbTable]:
         return []
 
     @property
-    def context_definitions(self) -> Sequence[ContextDefinition]:
+    def join_strategies(self) -> Sequence[JoinStrategy]:
         return []
 
 

@@ -5,9 +5,9 @@ from typing import Literal
 import duckdb
 import polars as pl
 
-from agentune.analyze.context.timeseries import KtsContext, TimeWindow
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import duckdb_to_polars
+from agentune.analyze.join.timeseries import KtsJoinStrategy, TimeWindow
 
 _logger = logging.getLogger(__name__)
 
@@ -16,9 +16,9 @@ def test_timeseries() -> None:
         conn.execute('create table test(key integer, date timestamp_ms, val1 integer, val2 varchar)')
 
         table = DuckdbTable.from_duckdb('test', conn)
-        context = KtsContext[int]('ts', table, table.schema['key'], table.schema['date'], 
-                                 (table.schema['val1'], table.schema['val2']))
-        context.index.create(conn, 'test')
+        strategy = KtsJoinStrategy[int]('ts', table, table.schema['key'], table.schema['date'],
+                                       (table.schema['val1'], table.schema['val2']))
+        strategy.index.create(conn, 'test')
 
         included_dates = pl.date_range(start=pl.datetime(2020, 1, 1), end=pl.datetime(2020, 1, 5), interval='1d', eager=True)
         included_keys = list(range(1, 5))
@@ -40,7 +40,7 @@ def test_timeseries() -> None:
                                             'left' if window.include_start else \
                                             'right' if window.include_end else \
                                             'none'
-                                result = context.get(conn, key, window, ['val1', 'val2'])
+                                result = strategy.get(conn, key, window, ['val1', 'val2'])
                                 if key not in included_keys:
                                     assert result is None, f'Expected result None for key {key}'
                                 else:
@@ -53,7 +53,7 @@ def test_timeseries() -> None:
                                     else:
                                         # Can't replicate sampling logic exactly, so can't predict rows that would be sampled
                                         window_without_sampling = TimeWindow(start, end, include_start, include_end, None)
-                                        result_without_sampling = context.get(conn, key, window_without_sampling, ['val1', 'val2'])
+                                        result_without_sampling = strategy.get(conn, key, window_without_sampling, ['val1', 'val2'])
                                         assert result_without_sampling is not None
                                         assert result.dataset.data.height == min(result_without_sampling.dataset.data.height, window.sample_maxsize)
                                         for row in result.dataset.data.iter_rows():

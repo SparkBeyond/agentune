@@ -6,7 +6,6 @@ from typing import Any, override
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import (
     ArtIndex,
     DuckdbIndex,
@@ -15,19 +14,20 @@ from agentune.analyze.core.database import (
 )
 from agentune.analyze.core.dataset import Dataset, duckdb_to_dataset
 from agentune.analyze.core.schema import Field
+from agentune.analyze.join.base import JoinStrategy
 
 
 @frozen
-class LookupContext[K](ContextDefinition):
+class LookupJoinStrategy[K](JoinStrategy):
     name: str
     table: DuckdbTable
     key_col: Field
     value_cols: tuple[Field, ...] # can be used to restrict the available value columns from what's in the table
 
     @staticmethod
-    def on_table(name: str, table: DuckdbTable, key_col: str, *value_cols: str) -> LookupContext[K]:
+    def on_table(name: str, table: DuckdbTable, key_col: str, *value_cols: str) -> LookupJoinStrategy[K]:
         relevant_table = DuckdbTable(table.name, table.schema.select(*(key_col, *value_cols)))
-        return LookupContext[K](
+        return LookupJoinStrategy[K](
             name, relevant_table,
             table.schema[key_col],
             tuple(table.schema[col] for col in value_cols)

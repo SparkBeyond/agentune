@@ -15,13 +15,13 @@ import numpy as np
 import polars as pl
 
 import agentune.analyze.core.types
-from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import DatasetSource
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.feature.base import CategoricalFeature, NumericFeature
 from agentune.analyze.feature.select.linear_pairwise import LinearPairWiseFeatureSelector
+from agentune.analyze.join.base import JoinStrategy
 
 from .conftest import EnrichedBuilder
 from .helpers import load_and_clean_csv
@@ -146,20 +146,16 @@ class MockCategoricalFeature(CategoricalFeature):
         return f'# Mock categorical feature {self.name}'
     
     @property
-    def context_objects(self) -> Sequence[ContextDefinition]:
+    def join_strategies(self) -> Sequence[JoinStrategy]:
         return ()
     
     @property
-    def context_tables(self) -> Sequence[DuckdbTable]:
+    def secondary_tables(self) -> Sequence[DuckdbTable]:
         return ()
     
     @property
     def params(self) -> Schema:
         return Schema(())
-
-    @property
-    def context_definitions(self) -> Sequence[ContextDefinition]:
-        return ()
 
 
 def test_string_recognition_categorical_and_multiclass() -> None:
@@ -220,20 +216,17 @@ class MockNumericFeature(NumericFeature):
         return f'# Mock numeric feature {self.name}'
     
     @property
-    def context_objects(self) -> Sequence[ContextDefinition]:
+    def join_strategies(self) -> Sequence[JoinStrategy]:
         return ()
     
     @property
-    def context_tables(self) -> Sequence[DuckdbTable]:
+    def secondary_tables(self) -> Sequence[DuckdbTable]:
         return ()
     
     @property
     def params(self) -> Schema:
         return Schema(())
 
-    @property
-    def context_definitions(self) -> Sequence[ContextDefinition]:
-        return ()
 
 def test_categorical_selection_regression(conn: duckdb.DuckDBPyConnection) -> None:
     """A predictive categorical and numeric are selected in a regression task; noise is not."""

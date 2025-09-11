@@ -25,7 +25,7 @@ from agentune.analyze.util.duckdbutil import transaction_scope
 class DuckdbTableSource(DatasetSource):
     """A dataset stored in a local duckdb database (possibly an in-memory one).
 
-    This is required as the input type for some operations that can't work on generic DatasetSources, most often context data.
+    This is required as the input type for some operations that can't work on generic DatasetSources.
     """
     table: DuckdbTable
     batch_size: int = default_duckdb_batch_size

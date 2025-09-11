@@ -28,7 +28,7 @@ We use duckdb for:
 
 - Interacting with external data formats and remote data storages - the data transports underlying ingest and export.
 - Storing local copies of datasets to be read again later.
-- Indexing local copies of user datasets to enable context queries.
+- Indexing local copies of user datasets to speed up queries.
 - Copying datasets between nodes (in a future distributed scenario)
 
 We use polars to represent dataframes that fit in memory and perform computations on them. When we want to process data, we usually write python code that operates on a sequence of Polars dataframes, although we can also write an SQL query.

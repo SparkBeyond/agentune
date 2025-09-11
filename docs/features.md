@@ -1,3 +1,5 @@
+from agentune.analyze.join.base import JoinStrategy
+
 # Features (for developers)
 
 ## What is a feature?
@@ -31,9 +33,9 @@ They should not be called by users directly; the rest of this document describes
 higher-level APIs. 
 
 ```python
-async def aevaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+async def aevaluate(self, args: tuple[Any, ...], 
                     conn: DuckDBPyConnection) -> T | None:
-async def aevaluate_batch(self, input: Dataset, contexts: TablesWithContextDefinitions,
+async def aevaluate_batch(self, input: Dataset, 
                           conn: DuckDBPyConnection) -> pl.Series:
 ```
 
@@ -43,14 +45,13 @@ to enable better control of concurrent evaluation.)
 
 The main dataset is given either by `args` (for a single row) or by `input` (for a batch of rows).
 A future update will add support for implementing aevaluate by declaring the specific arguments used,
-e.g. `async def aevaluate(self, id: int, name: str, contexts: ...)` (#144).
+e.g. `async def aevaluate(self, id: int, name: str, conn: ...)` (#144).
 
-The contexts are available in duckdb using `conn`. The contexts parameter includes their schemas and 
-context definitions you can use to query them, but a feature can just as well store a context definition
-and use it while ignoring the `contexts` parameter. Because of this redundancy, `contexts` will be removed 
-in a future version (#142).
+The secondary datasets are available in duckdb using `conn`. A feature can store any `JoinStrategy` instances
+that were available during feature generation and use them to query the data, or it can create one later;
+they do not represent the availability of additional data.
 
-The main table can also be made available via `conn` to run queries that join it to the context tables,
+The main table can also be made available via `conn` to run queries that join it to secondary tables,
 by using `conn.register`; see `SqlFeature.evaluate_batch` for an example. 
 
 All data, both input and output, can contain missing values (`na` in Polars, `null` in SQL).
@@ -83,25 +84,25 @@ A Feature instance has three properties describing the input data it requires:
 
 ```python
 def params(self) -> Schema
-def context_tables(self) -> Sequence[DuckdbTable]
-def context_definitions(self) -> Sequence[ContextDefinition]
+def secondary_tables(self) -> Sequence[DuckdbTable]
+def join_strategies(self) -> Sequence[JoinStrategy]
 ```
 
 These are subsets of the data that was available during feature search when the feature was created.
 Specifying what the feature uses lets users run Enrich on new data without providing columns or tables
 that no selected features use.
 
-`context_tables` should be used if the feature runs SQL queries on them; `context_definitions` should be used
-if it uses those objects to access context data. Both can be specified.
+`secondary_tables` should be used if the feature runs SQL queries on them; `join_strategies` should be used
+if it uses those objects to access data. Both can be specified.
 
 When `Feature.evaluate` variants are called, only the data declared in `params` is actually passed in the `args`
 parameter. The `args` are passed in the order in which they were declared in `params`, which may be different
 from the order of these columns in the feature search input dataset. Similarly, the dataset passed to `evaluate_batch`
 includes only the columns declared in `params`. The data available through the DuckDB connection includes only the 
-`context_tables` (and only the columns listed for them in `context_tables`), as well as any tables and columns
-referenced by the declared `context_definitions`.
+`secondary_tables` (and only the columns listed for them in `secondary_tables`), as well as any tables and columns
+referenced by the declared `join_strategies`.
 
-More data MAY be available through the DuckDB connection and in additional columns of the main dataset pasesd to 
+More data MAY be available through the DuckDB connection and in additional columns of the main dataset passed to 
 `evaluate_batch`, but the feature must not access it or rely on it.
 
 ## Safe feature evaluation (evaluate_safe)
@@ -110,9 +111,9 @@ The implementation of `evaluate` SHOULD always return a value of the correct typ
 all features ourselves, we need to guard against bugs and incorrect behavior. This is done in the wrapper methods:
 
 ```python
-async def aevaluate_safe(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+async def aevaluate_safe(self, args: tuple[Any, ...], 
                          conn: DuckDBPyConnection) -> T | None:
-async def aevaluate_batch_safe(self, input: Dataset, contexts: TablesWithContextDefinitions,
+async def aevaluate_batch_safe(self, input: Dataset, 
                                conn: DuckDBPyConnection) -> pl.Series:
 ```
 
@@ -145,9 +146,9 @@ def subsistute_defaults_batch(self, values: pl.Series) -> pl.Series:
 You can also call these convenience methods, which combine `evaluate_safe` and `substitute_defaults`:
 
 ```python
-async def aevaluate_with_defaults(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+async def aevaluate_with_defaults(self, args: tuple[Any, ...], 
                                   conn: DuckDBPyConnection) -> T:
-async def aevaluate_batch_with_defaults(self, input: Dataset, contexts: TablesWithContextDefinitions,
+async def aevaluate_batch_with_defaults(self, input: Dataset, 
                                         conn: DuckDBPyConnection) -> pl.Series:
 ```
 
@@ -183,7 +184,7 @@ Synchronous features implement the subclass `SyncFeature` and the appropriate pe
 The evaluate method has the same signature as before, apart from being synchronous and being called `evaluate` not `aevaluate`:
 
 ```python
-def evaluate(self, args: tuple[Any, ...], contexts: TablesWithContextDefinitions,
+def evaluate(self, args: tuple[Any, ...], 
              conn: DuckDBPyConnection) -> T | None:
 ```
 

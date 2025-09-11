@@ -10,12 +10,12 @@ from attrs import define
 from duckdb import DuckDBPyConnection
 
 import agentune.analyze.core.types
-from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.core.types import Dtype
+from agentune.analyze.join.base import JoinStrategy
 
 type TargetKind = Literal['classification', 'regression']
 type Classification = Literal['classification']
@@ -90,21 +90,23 @@ class Feature[T](ABC):
     
     @property
     @abstractmethod
-    def context_tables(self) -> Sequence[DuckdbTable]: 
-        """Context tables used by the feature (via SQL queries).
-        This affects the parameters to evaluate().
-        Specifying a table with only the columns you will use may, in future, allow us
-        to improve performance.
+    def secondary_tables(self) -> Sequence[DuckdbTable]:
+        """Secondary tables used by the feature (via SQL queries).
+
+        This affects the data available via the connection passed to evaluate(); only the tables and columns
+        declared here or in `self.join_strategies` are guaranteed to exist,
+        and only they may be accessed by evaluate.
         """
         ...
 
     @property
     @abstractmethod
-    def context_definitions(self) -> Sequence[ContextDefinition]:
-        """Context definitions used by the feature (via python methods on the context definitions).
-        This affects the parameters to evaluate().
-        Specifying a context with only the value columns you will use may, in future, allow us
-        to improve performance.
+    def join_strategies(self) -> Sequence[JoinStrategy]:
+        """Join strategies used by the feature via python methods on the strategies.
+
+        This affects the data available via the connection passed to evaluate(); only the tables and columns
+        used by these strategies or declared in `self.secondary_tables` are guaranteed to exist,
+        and only they may be accessed by evaluate.
         """
         ...
 
@@ -123,7 +125,7 @@ class Feature[T](ABC):
         if you override the batch implementation, please consider if you can also override this one
         more efficiently.
 
-        All context tables are available in the provided `conn`ection.
+        All secondary tables are available in the provided `conn`ection.
         """
         df = pl.DataFrame(
             {col.name: [value] for col, value in zip(self.params.cols, args, strict=True)},

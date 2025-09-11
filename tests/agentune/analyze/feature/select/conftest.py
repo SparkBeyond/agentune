@@ -3,11 +3,11 @@ from collections.abc import Sequence
 import polars as pl
 import pytest
 
-from agentune.analyze.context.base import ContextDefinition
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.feature.base import BoolFeature, CategoricalFeature, FloatFeature
+from agentune.analyze.join.base import JoinStrategy
 
 
 class _Num(FloatFeature):
@@ -29,16 +29,12 @@ class _Num(FloatFeature):
         return Schema(())
 
     @property
-    def context_tables(self) -> Sequence[DuckdbTable]:
+    def secondary_tables(self) -> Sequence[DuckdbTable]:
         return []
 
     @property
-    def context_objects(self) -> Sequence[ContextDefinition]:
+    def join_strategies(self) -> Sequence[JoinStrategy]:
         return []
-
-    @property
-    def context_definitions(self) -> Sequence[ContextDefinition]:
-        return ()
 
 
 class _Cat(CategoricalFeature):
@@ -60,11 +56,11 @@ class _Cat(CategoricalFeature):
         return Schema(())
 
     @property
-    def context_tables(self) -> Sequence[DuckdbTable]:
+    def secondary_tables(self) -> Sequence[DuckdbTable]:
         return []
 
     @property
-    def context_objects(self) -> Sequence[ContextDefinition]:
+    def join_strategies(self) -> Sequence[JoinStrategy]:
         return []
 
     @property
@@ -74,10 +70,6 @@ class _Cat(CategoricalFeature):
     @categories.setter
     def categories(self, value: tuple[str, ...]) -> None:
         self._categories = tuple(value)
-
-    @property
-    def context_definitions(self) -> Sequence[ContextDefinition]:
-        return ()
 
 
 class _Bool(BoolFeature):
@@ -96,16 +88,12 @@ class _Bool(BoolFeature):
         return Schema(())
 
     @property
-    def context_tables(self) -> Sequence[DuckdbTable]:
+    def secondary_tables(self) -> Sequence[DuckdbTable]:
         return []
 
     @property
-    def context_objects(self) -> Sequence[ContextDefinition]:
+    def join_strategies(self) -> Sequence[JoinStrategy]:
         return []
-
-    @property
-    def context_definitions(self) -> Sequence[ContextDefinition]:
-        return ()
 
 
 class EnrichedBuilder:

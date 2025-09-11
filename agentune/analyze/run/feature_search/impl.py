@@ -231,7 +231,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 for generator in generators:
                     _logger.info(f'Generating features with {generator=}')
                     count = 0
-                    for feature in generator.generate(data.feature_search, data.target_column, data.contexts, cursor):
+                    for feature in generator.generate(data.feature_search, data.target_column, data.join_strategies, cursor):
                         output_queue.put(feature)
                         count += 1
                     _logger.info(f'Generated {count} features with {generator=}')
@@ -242,7 +242,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         async def agenerate(generator: FeatureGenerator) -> None:
             _logger.info(f'Generating features with {generator=}')
             count = 0
-            async for feature in generator.agenerate(data.feature_search, data.target_column, data.contexts, conn):
+            async for feature in generator.agenerate(data.feature_search, data.target_column, data.join_strategies, conn):
                 await output_queue.aput(feature)
                 count += 1
             _logger.info(f'Generated {count} features with {generator=}')

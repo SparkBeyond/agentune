@@ -21,7 +21,6 @@ from tests.agentune.analyze.run.feature_search.toys import (
     ToySyncFeatureSelector,
 )
 
-from agentune.analyze.context.base import ContextDefinition, TablesWithContextDefinitions
 from agentune.analyze.core.database import DuckdbManager, DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.duckdbio import (
@@ -43,6 +42,7 @@ from agentune.analyze.feature.select.base import (
     EnrichedFeatureSelector,
     FeatureSelector,
 )
+from agentune.analyze.join.base import JoinStrategy, TablesWithJoinStrategies
 from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.feature_search.base import (
     ClassificationFeatureSearchParams,
@@ -69,8 +69,8 @@ class SimpleFloatFeature(FloatFeature):
     default_for_neg_infinity: float = 0.0
 
     params: Schema = Schema(())
-    context_tables: tuple[DuckdbTable, ...] = ()
-    context_definitions: tuple[ContextDefinition, ...] = ()
+    secondary_tables: tuple[DuckdbTable, ...] = ()
+    join_strategies: tuple[JoinStrategy, ...] = ()
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], 
@@ -85,8 +85,8 @@ class SimpleIntFeature(IntFeature):
     default_for_missing: int = 0
 
     params: Schema = Schema(())
-    context_tables: tuple[DuckdbTable, ...] = ()
-    context_definitions: tuple[ContextDefinition, ...] = ()
+    secondary_tables: tuple[DuckdbTable, ...] = ()
+    join_strategies: tuple[JoinStrategy, ...] = ()
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], 
@@ -102,8 +102,8 @@ class SimpleBoolFeature(BoolFeature):
     default_for_missing: bool = True
 
     params: Schema = Schema(())
-    context_tables: tuple[DuckdbTable, ...] = ()
-    context_definitions: tuple[ContextDefinition, ...] = ()
+    secondary_tables: tuple[DuckdbTable, ...] = ()
+    join_strategies: tuple[JoinStrategy, ...] = ()
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], 
@@ -120,8 +120,8 @@ class SimpleCategoricalFeature(CategoricalFeature):
     categories: tuple[str, ...] = ('a', 'b', 'c')
 
     params: Schema = Schema(())
-    context_tables: tuple[DuckdbTable, ...] = ()
-    context_definitions: tuple[ContextDefinition, ...] = ()
+    secondary_tables: tuple[DuckdbTable, ...] = ()
+    join_strategies: tuple[JoinStrategy, ...] = ()
 
     @override
     async def aevaluate(self, args: tuple[Any, ...], 
@@ -133,7 +133,7 @@ class SimplePrebuiltFeaturesGenerator(SyncFeatureGenerator[Feature]):
     features: tuple[GeneratedFeature, ...]
 
     @override
-    def generate(self, feature_search: Dataset, target_column: str, contexts: TablesWithContextDefinitions,
+    def generate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                  conn: DuckDBPyConnection) -> Iterator[GeneratedFeature]:
         yield from self.features
 
@@ -159,7 +159,7 @@ def input_data(input_data_csv_path: Path, ddb_manager: DuckdbManager) -> Feature
         DuckdbTableSink(table_name).write(csv_input, conn)
         table = DuckdbTable.from_duckdb(table_name, conn)
         split = sampling.split_duckdb_table(conn, table.name)
-        input_data = FeatureSearchInputData.from_split_table(split, 'target', TablesWithContextDefinitions.from_list([]), conn)
+        input_data = FeatureSearchInputData.from_split_table(split, 'target', TablesWithJoinStrategies.from_list([]), conn)
         return input_data
 
 async def _test_feature_search[TK: TargetKind](input_data: FeatureSearchInputData, run_context: RunContext,
@@ -286,7 +286,7 @@ def input_data_from_df(run_context: RunContext, df: pl.DataFrame) -> FeatureSear
         conn.execute('create or replace table input as from df')
         table = DuckdbTable.from_duckdb('input', conn)
         split = sampling.split_duckdb_table(conn, table.name)
-        return FeatureSearchInputData.from_split_table(split, 'target', TablesWithContextDefinitions.from_list([]), conn)
+        return FeatureSearchInputData.from_split_table(split, 'target', TablesWithJoinStrategies.from_list([]), conn)
 
 def test_fail_on_invalid_int_target_values(run_context: RunContext) -> None:
     with run_context.ddb_manager.cursor() as conn:
