@@ -9,9 +9,15 @@ import polars as pl
 import pytest
 from attrs import frozen
 
+from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import CategoricalFeature
+from agentune.analyze.feature.problem import (
+    ClassificationProblem,
+    ProblemDescription,
+    RegressionProblem,
+)
 from agentune.analyze.feature.stats.stats import (
     CategoricalClassificationStats,
     CategoricalFeatureStats,
@@ -125,13 +131,14 @@ class TestCategoricalRegressionStats:
         # Create test data
         feature = pl.Series('feature', ['A', 'B', 'A', None, 'C', 'A'])
         target = pl.Series('target', [10.0, 5.0, 12.0, 8.0, 15.0, 9.0])
+        problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleCategoricalFeature(name='test_feature', categories=('A', 'B', 'C'))
 
         # Create calculator instance and calculate stats
         calculator = CategoricalRegressionCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert isinstance(stats, CategoricalRegressionStats)
@@ -153,13 +160,14 @@ class TestCategoricalRegressionStats:
         # Create test data with single category
         feature = pl.Series('feature', ['A', 'A', 'A', 'A'])
         target = pl.Series('target', [10.0, 12.0, 9.0, 11.0])
+        problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleCategoricalFeature(name='test_feature', categories=('A',))
 
         # Create calculator instance and calculate stats
         calculator = CategoricalRegressionCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert stats.n_samples == 4
@@ -180,13 +188,14 @@ class TestCategoricalClassificationStats:
         # Create test data - contingency table-like relationship using only numeric data
         feature = pl.Series('feature', ['0', '0', '1', '1', '2', '2'])  # Feature categories
         target = pl.Series('target', [0, 0, 1, 1, 2, 2])  # Numeric target categories
+        problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), tuple(sorted(target.unique().to_list())))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleCategoricalFeature(name='test_feature', categories=('0', '1', '2'))
 
         # Create calculator instance and calculate stats
         calculator = CategoricalClassificationCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert isinstance(stats, CategoricalClassificationStats)
@@ -213,13 +222,14 @@ class TestCategoricalClassificationStats:
         # Create test data with perfect relationship using numeric data
         feature = pl.Series('feature', ['0', '1', '2'])
         target = pl.Series('target', ['0', '1', '2'])
+        problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.string), tuple(sorted(target.unique().to_list())))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleCategoricalFeature(name='test_feature', categories=('0', '1', '2'))
 
         # Create calculator instance and calculate stats
         calculator = CategoricalClassificationCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert stats.n_samples == 3

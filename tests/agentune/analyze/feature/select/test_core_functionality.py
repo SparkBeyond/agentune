@@ -19,7 +19,16 @@ import numpy as np
 import polars as pl
 import pytest
 
-from agentune.analyze.feature.base import BoolFeature, TargetKind
+from agentune.analyze.core import types
+from agentune.analyze.core.schema import Field
+from agentune.analyze.feature.base import BoolFeature
+from agentune.analyze.feature.problem import (
+    ClassificationProblem,
+    Problem,
+    ProblemDescription,
+    RegressionProblem,
+    TargetKind,
+)
 from agentune.analyze.feature.select.lightgbm import (
     LightGBMFeatureSelector,
 )
@@ -30,7 +39,7 @@ from .helpers import load_and_clean_csv
 
 # Test configuration
 SELECTORS = ['LightGBM', 'Linear PairWise']
-DATASETS = {
+DATASETS: dict[str, dict[str, str | int]] = {
     'titanic': {
         'file_path': str((Path(__file__).parent / 'data' / 'titanic_300_features_anonymized.csv').resolve()),
         'target_col': 'survived',
@@ -73,6 +82,13 @@ def symmetric_ndcg(list_a: list[str], list_b: list[str], k: int = 20) -> float:
 # Timing sweep configuration (using anonymized Titanic dataset)
 TIMING_TOP_KS = [5, 10, 20]
 
+def define_problem(config: dict[str, str | int]) -> Problem:
+    task_type = cast(TargetKind, config['task_type'])
+    target_col = str(config['target_col'])
+    target_dtype = types.int64 # This is not true for all datasets, change this if the selector starts using the dtype
+    target_field = Field(target_col, target_dtype)
+    return ClassificationProblem(ProblemDescription(target_col), target_field, (0, 1)) if task_type == 'classification' \
+        else RegressionProblem(ProblemDescription(target_col), target_field)
 
 # All tests below instantiate EnrichedBuilder to construct Dataset/Source/Features
 def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnection) -> None:
@@ -85,7 +101,6 @@ def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnect
     timing_results = []
     
     for dataset_name, config in DATASETS.items():
-        
         # Load dataset
         df = load_and_clean_csv(str(config['file_path']), dataset_name, cast_text_to_float=True)
         
@@ -94,23 +109,20 @@ def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnect
         features, source = builder.build(df, config['target_col'])  # type: ignore[arg-type]
         
         dataset_timings = {'dataset': dataset_name}
-        
         for top_k in TIMING_TOP_KS:
             if top_k > len(features):
                 dataset_timings[f'top_k_{top_k}'] = 'None'
                 continue
-            
             # Create selectors for comparison via factory to avoid duplication
             selector_names = ['LightGBM', 'Linear PairWise']
-            selectors = {name: create_selector(name, top_k=top_k, task_type=cast(TargetKind, config['task_type'])) for name in selector_names}
+            selectors = {name: create_selector(name, top_k=top_k) for name in selector_names}
             
             # Measure both, but record only Linear PairWise in dataset_timings for CSV/analysis
             times_by_selector: dict[str, float] = {}
-
             for selector_name, selector in selectors.items():
                 # Measure execution time using enriched API
                 start_time = time.time()
-                selected_features = selector.select_features(features, source, str(config['target_col']), conn)
+                selected_features = selector.select_features(features, source, define_problem(config), conn)
                 execution_time = time.time() - start_time
                 
                 times_by_selector[selector_name] = round(execution_time, 3)
@@ -150,12 +162,12 @@ def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnect
             assert max_time <= 300, f'{dataset_name}: max timing ({max_time:.1f}s) should be under 5 minutes'
 
 
-def create_selector(selector_name: str, top_k: int, task_type: TargetKind) -> LinearPairWiseFeatureSelector | LightGBMFeatureSelector:
+def create_selector(selector_name: str, top_k: int) -> LinearPairWiseFeatureSelector | LightGBMFeatureSelector:
     """Factory function to create selectors with unified interface."""
     if selector_name == 'LightGBM':
-        return LightGBMFeatureSelector(top_k=top_k, task_type=task_type)
+        return LightGBMFeatureSelector(top_k=top_k)
     elif selector_name == 'Linear PairWise':
-        return LinearPairWiseFeatureSelector(top_k=top_k, task_type=task_type)
+        return LinearPairWiseFeatureSelector(top_k=top_k)
     else:
         raise ValueError(f'Unknown selector: {selector_name}')
 
@@ -173,8 +185,7 @@ def test_selector_basic_functionality(selector_name: str, dataset_name: str, con
     # Create selector
     selector = create_selector(
         selector_name=selector_name,
-        top_k=cast(int, dataset_config['top_k']),
-        task_type=cast(TargetKind, dataset_config['task_type'])
+        top_k=cast(int, dataset_config['top_k'])
     )
     
     # Get features and source using enriched API
@@ -182,7 +193,7 @@ def test_selector_basic_functionality(selector_name: str, dataset_name: str, con
     features, source = builder.build(df, dataset_config['target_col'])  # type: ignore[arg-type]
     
     # Select features
-    selected_features = selector.select_features(features, source, str(dataset_config['target_col']), conn)
+    selected_features = selector.select_features(features, source, define_problem(dataset_config), conn)
     
     # Basic assertions
     top_k_val = dataset_config['top_k']
@@ -231,15 +242,18 @@ def test_enriched_api_synthetic_data(selector_name: str, task_type: str, conn: d
     x = rng.normal(size=(n_rows, n_features))
     
     # Create target based on task type
+    problem: Problem
     if task_type == 'classification':
         # Binary classification: combine first 3 features
         y_prob = 1 / (1 + np.exp(-(x[:, 0] + 0.5 * x[:, 1] - 0.3 * x[:, 2])))
         y = (rng.random(n_rows) < y_prob).astype(int)
         target_col = 'target_class'
+        problem = ClassificationProblem(ProblemDescription('target_class'), Field('target_class', types.int64), (0, 1))
     else:  # regression
         # Regression: linear combination with noise
         y = x[:, 0] + 0.5 * x[:, 1] - 0.3 * x[:, 2] + 0.1 * rng.normal(size=n_rows)
         target_col = 'target_value'
+        problem = RegressionProblem(ProblemDescription('target_value'), Field('target_value', types.float64))
     
     # Create DataFrame
     feature_cols = [f'feature_{i}' for i in range(n_features)]
@@ -252,10 +266,10 @@ def test_enriched_api_synthetic_data(selector_name: str, task_type: str, conn: d
     features, source = builder.build(df, target_col)
     
     # Create selector
-    selector = create_selector(selector_name, top_k=5, task_type=cast(TargetKind, task_type))
+    selector = create_selector(selector_name, top_k=5)
     
     # Select features
-    selected = selector.select_features(features, source, target_col, conn)
+    selected = selector.select_features(features, source, problem, conn)
     
     # Assertions
     assert len(selected) <= 5, 'Should not exceed top_k=5'
@@ -287,13 +301,15 @@ def test_edge_cases(conn: duckdb.DuckDBPyConnection) -> None:
     features, source = builder.build(df, 'target')
     
     # Test 1: Empty features list
-    selector = LinearPairWiseFeatureSelector(top_k=5, task_type='classification')
-    selected = selector.select_features([], source, 'target', conn)
+    selector = LinearPairWiseFeatureSelector(top_k=5)
+    regression_problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
+    selected = selector.select_features([], source, regression_problem, conn)
     assert len(selected) == 0, 'Empty features should return empty selection'
     
     # Test 2: top_k > available features
-    selector = LinearPairWiseFeatureSelector(top_k=10, task_type='classification')  # top_k > available
-    selected = selector.select_features(features, source, 'target', conn)
+    selector = LinearPairWiseFeatureSelector(top_k=10)  # top_k > available
+    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    selected = selector.select_features(features, source, classification_problem, conn)
     assert len(selected) <= len(features), 'Should not exceed available features'
     assert len(selected) > 0, 'Should still select available features'
 
@@ -329,14 +345,15 @@ def test_fake_category_minimal_impact(conn: duckdb.DuckDBPyConnection) -> None:
     # Base dataset selection
     builder = EnrichedBuilder()
     features_base, source_base = builder.build(df_base, 'target')
-    selector_base = create_selector('Linear PairWise', top_k=3, task_type='classification')
-    selected_base = selector_base.select_features(features_base, source_base, 'target', conn)
+    selector_base = create_selector('Linear PairWise', top_k=3)
+    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    selected_base = selector_base.select_features(features_base, source_base, classification_problem, conn)
     selected_names_base = {f.name for f in selected_base}
     
     # Enhanced dataset selection (with fake feature)
     features_fake, source_fake = builder.build(df_fake, 'target')
-    selector_fake = create_selector('Linear PairWise', top_k=3, task_type='classification')
-    selected_fake = selector_fake.select_features(features_fake, source_fake, 'target', conn)
+    selector_fake = create_selector('Linear PairWise', top_k=3)
+    selected_fake = selector_fake.select_features(features_fake, source_fake, classification_problem, conn)
     selected_names_fake = {f.name for f in selected_fake}
     
     # Compare results
@@ -384,24 +401,25 @@ def test_linear_pairwise_threshold_functionality(conn: duckdb.DuckDBPyConnection
     features, source = builder.build(df, 'target')
     
     # Test 1: Default threshold (1e-8) - should work as before
-    selector_default = LinearPairWiseFeatureSelector(top_k=5, task_type='classification')
-    selected_default = selector_default.select_features(features, source, 'target', conn)
+    selector_default = LinearPairWiseFeatureSelector(top_k=5)
+    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    selected_default = selector_default.select_features(features, source, classification_problem, conn)
     assert len(selected_default) > 0, 'Default threshold should select features'
     assert len(selected_default) <= 5, 'Should not exceed top_k'
     
     # Test 2: High threshold (0.1) - should select fewer features
-    selector_high = LinearPairWiseFeatureSelector(top_k=5, task_type='classification', min_marginal_reduction_threshold=0.1)
-    selected_high = selector_high.select_features(features, source, 'target', conn)
+    selector_high = LinearPairWiseFeatureSelector(top_k=5, min_marginal_reduction_threshold=0.1)
+    selected_high = selector_high.select_features(features, source, classification_problem, conn)
     assert len(selected_high) <= len(selected_default), 'High threshold should select same or fewer features'
     
     # Test 3: Very high threshold (0.5) - might select no features
-    selector_very_high = LinearPairWiseFeatureSelector(top_k=5, task_type='classification', min_marginal_reduction_threshold=0.5)
-    selected_very_high = selector_very_high.select_features(features, source, 'target', conn)
+    selector_very_high = LinearPairWiseFeatureSelector(top_k=5, min_marginal_reduction_threshold=0.5)
+    selected_very_high = selector_very_high.select_features(features, source, classification_problem, conn)
     assert len(selected_very_high) <= len(selected_high), 'Very high threshold should select same or fewer features'
     
     # Test 4: Zero threshold - should still reject features with 0 or negative gain
-    selector_zero = LinearPairWiseFeatureSelector(top_k=5, task_type='classification', min_marginal_reduction_threshold=0.0)
-    _ = selector_zero.select_features(features, source, 'target', conn)
+    selector_zero = LinearPairWiseFeatureSelector(top_k=5, min_marginal_reduction_threshold=0.0)
+    _ = selector_zero.select_features(features, source, classification_problem, conn)
     
     # All selected features should have positive marginal gain (> 1e-10 due to effective threshold)
     if selector_zero.final_importances_ is not None:
@@ -440,8 +458,9 @@ def test_linear_pairwise_threshold_early_stopping(conn: duckdb.DuckDBPyConnectio
     features, source = builder.build(df, 'target')
     
     # Test with moderate threshold - should stop early and select only good features
-    selector = LinearPairWiseFeatureSelector(top_k=10, task_type='classification', min_marginal_reduction_threshold=0.01)
-    selected = selector.select_features(features, source, 'target', conn)
+    selector = LinearPairWiseFeatureSelector(top_k=10, min_marginal_reduction_threshold=0.01)
+    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    selected = selector.select_features(features, source, classification_problem, conn)
     
     # Should select fewer than top_k due to early stopping
     assert len(selected) < 10, 'Should stop early when features do not meet threshold'
@@ -490,8 +509,9 @@ def test_boolean_feature_handling(selector_name: str, conn: duckdb.DuckDBPyConne
     assert any(isinstance(f, BoolFeature) and f.name == 'bool_feature' for f in features)
 
     # Create selector and select features
-    selector = create_selector(selector_name, top_k=3, task_type='classification')
-    selected = selector.select_features(features, source, 'target', conn)
+    selector = create_selector(selector_name, top_k=3)
+    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    selected = selector.select_features(features, source, classification_problem, conn)
 
     # Assertions
     assert len(selected) > 0

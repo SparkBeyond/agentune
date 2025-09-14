@@ -11,12 +11,10 @@ from sklearn.feature_selection import mutual_info_classif
 from agentune.analyze.feature.base import (
     BoolFeature,
     CategoricalFeature,
-    Classification,
     Feature,
     NumericFeature,
-    Regression,
-    TargetKind,
 )
+from agentune.analyze.feature.problem import Problem
 from agentune.analyze.feature.stats.base import (
     FeatureStats,
     RelationshipStats,
@@ -176,12 +174,12 @@ class CombinedSyncFeatureStatsCalculator(SyncFeatureStatsCalculator[Feature]):
         else:
             raise TypeError(f'Unsupported feature type: {type(feature)}')
 
-class BooleanRegressionCalculator(SyncRelationshipStatsCalculator[BoolFeature, Regression]):
+class BooleanRegressionCalculator(SyncRelationshipStatsCalculator[BoolFeature]):
     """Calculator for boolean feature regression statistics."""
 
     @override
     def calculate_from_series(
-        self, feature: BoolFeature, series: pl.Series, target: pl.Series
+        self, feature: BoolFeature, series: pl.Series, target: pl.Series, problem: Problem
     ) -> BooleanRegressionStats:
         """Calculate regression statistics for a boolean feature from polars Series.
 
@@ -237,12 +235,12 @@ class BooleanRegressionCalculator(SyncRelationshipStatsCalculator[BoolFeature, R
         )
 
 
-class BooleanClassificationCalculator(SyncRelationshipStatsCalculator[BoolFeature, Classification]):
+class BooleanClassificationCalculator(SyncRelationshipStatsCalculator[BoolFeature]):
     """Calculator for boolean feature classification statistics."""
     
     @override
     def calculate_from_series(
-        self, feature: BoolFeature, series: pl.Series, target: pl.Series
+        self, feature: BoolFeature, series: pl.Series, target: pl.Series, problem: Problem
     ) -> BooleanClassificationStats:
         """Calculate classification statistics for a boolean feature from polars Series.
 
@@ -324,12 +322,12 @@ class BooleanClassificationCalculator(SyncRelationshipStatsCalculator[BoolFeatur
         )
 
 
-class NumericRegressionCalculator(SyncRelationshipStatsCalculator[NumericFeature, Regression]):
+class NumericRegressionCalculator(SyncRelationshipStatsCalculator[NumericFeature]):
     """Calculator for numeric feature regression statistics."""
 
     @override
     def calculate_from_series(
-        self, feature: NumericFeature, series: pl.Series, target: pl.Series
+        self, feature: NumericFeature, series: pl.Series, target: pl.Series, problem: Problem
     ) -> NumericRegressionStats:
         """Calculate regression statistics for a numeric feature from polars Series.
 
@@ -372,13 +370,13 @@ class NumericRegressionCalculator(SyncRelationshipStatsCalculator[NumericFeature
 
 
 class NumericClassificationCalculator(
-    SyncRelationshipStatsCalculator[NumericFeature, Classification]
+    SyncRelationshipStatsCalculator[NumericFeature]
 ):
     """Calculator for numeric feature classification statistics."""
 
     @override
     def calculate_from_series(
-        self, feature: NumericFeature, series: pl.Series, target: pl.Series
+        self, feature: NumericFeature, series: pl.Series, target: pl.Series, problem: Problem
     ) -> NumericClassificationStats:
         """Calculate classification statistics for a numeric feature from polars Series.
 
@@ -419,13 +417,13 @@ class NumericClassificationCalculator(
 
 
 class CategoricalRegressionCalculator(
-    SyncRelationshipStatsCalculator[CategoricalFeature, Regression]
+    SyncRelationshipStatsCalculator[CategoricalFeature]
 ):
     """Calculator for categorical feature regression statistics."""
 
     @override
     def calculate_from_series(
-        self, feature: CategoricalFeature, series: pl.Series, target: pl.Series
+        self, feature: CategoricalFeature, series: pl.Series, target: pl.Series, problem: Problem
     ) -> CategoricalRegressionStats:
         """Calculate regression stats for a categorical feature.
         Assumptions:
@@ -500,13 +498,13 @@ class CategoricalRegressionCalculator(
 
 
 class CategoricalClassificationCalculator(
-    SyncRelationshipStatsCalculator[CategoricalFeature, Classification]
+    SyncRelationshipStatsCalculator[CategoricalFeature]
 ):
     """Calculator for categorical feature classification statistics."""
 
     @override
     def calculate_from_series(
-        self, feature: CategoricalFeature, series: pl.Series, target: pl.Series
+        self, feature: CategoricalFeature, series: pl.Series, target: pl.Series, problem: Problem
     ) -> CategoricalClassificationStats:
         """Classification stats for a categorical feature."""
         df = pl.DataFrame({'cat': series, 'class': target}).drop_nulls()
@@ -571,19 +569,20 @@ class CategoricalClassificationCalculator(
         )
 
 @frozen
-class CombinedSyncRelationshipStatsCalculator[TK: TargetKind](SyncRelationshipStatsCalculator[Feature, TK]):
-    boolean_calculator: SyncRelationshipStatsCalculator[BoolFeature, TK]
-    numeric_calculator: SyncRelationshipStatsCalculator[NumericFeature, TK]
-    categorical_calculator: SyncRelationshipStatsCalculator[CategoricalFeature, TK]
+class CombinedSyncRelationshipStatsCalculator(SyncRelationshipStatsCalculator[Feature]):
+    boolean_calculator: SyncRelationshipStatsCalculator[BoolFeature]
+    numeric_calculator: SyncRelationshipStatsCalculator[NumericFeature]
+    categorical_calculator: SyncRelationshipStatsCalculator[CategoricalFeature]
     
     @override
-    def calculate_from_series(self, feature: Feature, series: pl.Series, target: pl.Series) -> RelationshipStats[Feature, TK]:
+    def calculate_from_series(self, feature: Feature, series: pl.Series, target: pl.Series,
+                              problem: Problem) -> RelationshipStats[Feature]:
         if isinstance(feature, BoolFeature):
-            return self.boolean_calculator.calculate_from_series(feature, series, target)
+            return self.boolean_calculator.calculate_from_series(feature, series, target, problem)
         elif isinstance(feature, NumericFeature):
-            return self.numeric_calculator.calculate_from_series(feature, series, target)
+            return self.numeric_calculator.calculate_from_series(feature, series, target, problem)
         elif isinstance(feature, CategoricalFeature):
-            return self.categorical_calculator.calculate_from_series(feature, series, target)
+            return self.categorical_calculator.calculate_from_series(feature, series, target, problem)
         else:
             raise TypeError(f'Unsupported feature type: {type(feature)}')
         

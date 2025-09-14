@@ -9,9 +9,15 @@ import polars as pl
 import pytest
 from attrs import frozen
 
+from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import FloatFeature
+from agentune.analyze.feature.problem import (
+    ClassificationProblem,
+    ProblemDescription,
+    RegressionProblem,
+)
 from agentune.analyze.feature.stats.stats import (
     NumericClassificationStats,
     NumericFeatureStats,
@@ -136,13 +142,14 @@ class TestNumericRegressionStats:
         # Create test data - positively correlated
         feature = pl.Series('feature', [1.0, 2.0, 3.0, 4.0, None])
         target = pl.Series('target', [10.0, 20.0, 30.0, 40.0, 50.0])
+        problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleNumericFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = NumericRegressionCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert isinstance(stats, NumericRegressionStats)
@@ -158,13 +165,14 @@ class TestNumericRegressionStats:
         # Create test data with negative correlation
         feature = pl.Series('feature', [4.0, 3.0, 2.0, 1.0])
         target = pl.Series('target', [10.0, 20.0, 30.0, 40.0])
+        problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleNumericFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = NumericRegressionCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert stats.pearson_r == pytest.approx(-1.0)  # Perfect negative correlation
@@ -175,13 +183,14 @@ class TestNumericRegressionStats:
         # Create test data with no correlation - constant target causes NaN correlation
         feature = pl.Series('feature', [1.0, 2.0, 3.0, 4.0])
         target = pl.Series('target', [25.0, 25.0, 25.0, 25.0])
+        problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleNumericFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = NumericRegressionCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         # With a constant target, pearson and spearman correlation will be NaN
@@ -198,13 +207,14 @@ class TestNumericClassificationStats:
         # Create test data - feature values differ by class
         feature = pl.Series('feature', [1.0, 1.2, 5.0, 5.2, None, 10.0, 10.2])
         target = pl.Series('target', ['A', 'A', 'B', 'B', 'C', 'C', 'C'])
+        problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.string), tuple(sorted(target.unique().to_list())))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleNumericFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = NumericClassificationCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert isinstance(stats, NumericClassificationStats)
@@ -218,13 +228,14 @@ class TestNumericClassificationStats:
         # Create test data with no class separation
         feature = pl.Series('feature', [5.0, 5.0, 5.0, 5.0])
         target = pl.Series('target', ['A', 'B', 'C', 'D'])
+        problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.string), tuple(sorted(target.unique().to_list())))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleNumericFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = NumericClassificationCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert np.isnan(stats.anova_f)  # F-stat is nan for identical values

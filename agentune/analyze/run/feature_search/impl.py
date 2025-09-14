@@ -23,7 +23,6 @@ from agentune.analyze.feature.base import (
     Feature,
     FloatFeature,
     IntFeature,
-    TargetKind,
 )
 from agentune.analyze.feature.dedup_names import deduplicate_feature_names, deduplicate_strings
 from agentune.analyze.feature.gen.base import (
@@ -31,15 +30,18 @@ from agentune.analyze.feature.gen.base import (
     GeneratedFeature,
     SyncFeatureGenerator,
 )
+from agentune.analyze.feature.problem import Problem
 from agentune.analyze.feature.select.base import (
     FeatureSelector,
     SyncEnrichedFeatureSelector,
     SyncFeatureSelector,
 )
+from agentune.analyze.feature.stats import stats_calculators
 from agentune.analyze.feature.stats.base import FeatureWithFullStats, FullFeatureStats
 from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.enrich.base import EnrichRunner
 from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
+from agentune.analyze.run.feature_search import problem_discovery
 from agentune.analyze.run.feature_search.base import (
     FeatureSearchInputData,
     FeatureSearchParams,
@@ -52,7 +54,7 @@ from agentune.analyze.util.queue import Queue, ScopedQueue
 _logger = logging.getLogger(__name__)
 
 @frozen
-class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
+class FeatureSearchRunnerImpl(FeatureSearchRunner):
     """The feature search process consists of:
 
     - Generate candidate features (from all generators)
@@ -89,33 +91,35 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
 
     @override
     async def run(self, run_context: RunContext, data: FeatureSearchInputData,
-                  params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]:
+                  params: FeatureSearchParams) -> FeatureSearchResults:
 
         with run_context.ddb_manager.cursor() as conn:
-            await asyncio.to_thread(self._validate_input, data.copy_to_thread(), conn)
+            problem = await asyncio.to_thread(problem_discovery.discover_problem, data.copy_to_thread(),
+                                              params.problem_description, conn, params.max_classes)
+            await asyncio.to_thread(problem_discovery.validate_input, data.copy_to_thread(), problem, conn)
 
         with run_context.ddb_manager.cursor() as conn:
-            candidate_features = await self._generate_features(conn, data, params.generators)
+            candidate_features = await self._generate_features(conn, data, params.generators, problem)
 
         if len(candidate_features) == 0:
             raise NoFeaturesFoundError
 
         # Later we will go back to the original list to recover the original name of each selected feature,
         # since after selection not all deduplication will be needed
-        deduplicated_candidate_features = self._deduplicate_generated_feature_names(candidate_features, existing_names=[data.target_column])
+        deduplicated_candidate_features = self._deduplicate_generated_feature_names(candidate_features, existing_names=[problem.target_column.name])
 
         # Evaluate candidate features on the feature_search dataset, storing the results in the temp schema.
         (enriched_feature_search_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
             deduplicated_candidate_features, data.feature_search,
             run_context.ddb_manager, params, 'enriched_feature_search',
-            data.target_column
+            problem.target_column.name
         )
         try:
             with run_context.ddb_manager.cursor() as conn:
                 selected_features = await self._select_features(features_with_updated_defaults,
-                                                                data.feature_search, data.target_column,
+                                                                data.feature_search, problem.target_column.name,
                                                                 enriched_feature_search_group_tables,
-                                                                params, conn)
+                                                                problem, params, conn)
                 _logger.info(f'Selected {len(selected_features)} features out of {len(features_with_updated_defaults)}')
         finally:
             with run_context.ddb_manager.cursor() as conn:
@@ -131,7 +135,7 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
             return candidate_features[index].feature.name
 
         selected_features_with_original_names = [attrs.evolve(feature, name=original_name(feature)) for feature in selected_features]
-        deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[data.target_column])
+        deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[problem.target_column.name])
 
         enriched_eval_name = params.store_enriched_train or run_context.ddb_manager.temp_random_name('enriched_eval')
         enriched_test_name = params.store_enriched_test or run_context.ddb_manager.temp_random_name('enriched_test')
@@ -141,26 +145,29 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 enriched_eval_sink = DatasetSink.into_duckdb_table(enriched_eval_name)
                 await params.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval,
                                                       enriched_eval_sink, params.evaluators, conn,
-                                                      keep_input_columns=(data.target_column,),
+                                                      keep_input_columns=(problem.target_column.name,),
                                                       deduplicate_names=False)
-                features_with_eval_stats: list[FeatureWithFullStats[Feature, TK]] = await self._calculate_feature_stats_single_data(deduplicated_selected_features,
-                                                                                               enriched_eval_sink.as_source(conn), data.target_column,
-                                                                                               params, conn)
+                features_with_eval_stats: list[FeatureWithFullStats[Feature]] = \
+                    await self._calculate_feature_stats_single_data(deduplicated_selected_features,
+                                                                    enriched_eval_sink.as_source(conn),
+                                                                    problem, conn)
                 if not params.store_enriched_train:
                     conn.execute(f'drop table {enriched_eval_name}')
 
                 enriched_test_sink = DatasetSink.into_duckdb_table(enriched_test_name)
                 await params.enrich_runner.run_stream(deduplicated_selected_features, data.test,
                                                       enriched_test_sink, params.evaluators, conn,
-                                                      keep_input_columns=(data.target_column,),
+                                                      keep_input_columns=(problem.target_column.name,),
                                                       deduplicate_names=False)
-                features_with_test_stats: list[FeatureWithFullStats[Feature, TK]] = await self._calculate_feature_stats_single_data(deduplicated_selected_features,
-                                                                                               enriched_test_sink.as_source(conn), data.target_column,
-                                                                                               params, conn)
+                features_with_test_stats: list[FeatureWithFullStats[Feature]] = \
+                    await self._calculate_feature_stats_single_data(deduplicated_selected_features,
+                                                                    enriched_test_sink.as_source(conn),
+                                                                    problem, conn)
                 if not params.store_enriched_test:
                     conn.execute(f'drop table {enriched_test_name}')
 
-                return FeatureSearchResults(tuple(features_with_eval_stats), tuple(features_with_test_stats),
+                return FeatureSearchResults(problem,
+                                            tuple(features_with_eval_stats), tuple(features_with_test_stats),
                                             DuckdbTable.from_duckdb(enriched_eval_name, conn) if params.store_enriched_train else None,
                                             DuckdbTable.from_duckdb(enriched_test_name, conn) if params.store_enriched_test else None)
         finally:
@@ -169,31 +176,6 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                     conn.execute(f'drop table if exists {enriched_eval_name}')
                 if not params.store_enriched_test:
                     conn.execute(f'drop table if exists {enriched_test_name}')
-
-    def _validate_input(self, data: FeatureSearchInputData, conn: DuckDBPyConnection) -> None:
-        """Fail if the target column in any input dataset has missing values,
-           or non-finite values if it is a float column.
-
-        This requires reading the input datasets an extra time, which can be expensive
-        if they are not stored in duckdb. In particular, without this, we could guarantee
-        only reading the test dataset once (streaming it), and probably the full train dataset too.
-
-        A future improvement can move the check to be done while streaming the dataset,
-        but for now the decision was to check ahead of time.
-
-        Because this can take unbounded time, it is run on the threadpool when this class calls it.
-        """
-        target_df = pl.DataFrame({'target': data.feature_search.data[data.target_column] })
-        if target_df.filter(~pl.col('target').is_finite() | pl.col('target').is_null()).height > 0:
-            raise ValueError('Target column may not contain missing values or non-finite float values (feature search dataset)')
-
-        for name, source in [('feature evaluation', data.feature_eval), ('train', data.train), ('test', data.test)]:
-            source_rel = source.to_duckdb(conn)
-            expr = source_rel.filter(f'''"{data.target_column}" is null or "{data.target_column}" in ('nan'::float, 'inf'::float, '-inf'::float)''').aggregate('count(*)')
-            count = expr.fetchone()
-            match count:
-                case (int(c),) if c > 0: raise ValueError(f'Target column may not contain missing values or non-finite float values ({name} dataset)')
-                case _: pass
 
 
     def _deduplicate_generated_feature_names(self, features: Sequence[GeneratedFeature],
@@ -204,25 +186,25 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                                                                        existing=existing_names), strict=False)]
 
     async def _generate_features(self, conn: DuckDBPyConnection, data: FeatureSearchInputData,
-                                 generators: Sequence[FeatureGenerator]) -> list[GeneratedFeature]:
+                                 generators: Sequence[FeatureGenerator], problem: Problem) -> list[GeneratedFeature]:
         async with ScopedQueue[GeneratedFeature](maxsize=0) as queue: # maxsize=0 means unlimited
             sync_generators = [generator for generator in generators if isinstance(generator, SyncFeatureGenerator)]
             async_generators = [generator for generator in generators if not isinstance(generator, SyncFeatureGenerator)]
 
             if self.run_generators_concurrently:
                 await asyncio.gather(
-                    self._generate_sync(conn, queue, data, sync_generators),
-                    self._generate_async(conn, queue, data, async_generators)
+                    self._generate_sync(conn, queue, data, sync_generators, problem),
+                    self._generate_async(conn, queue, data, async_generators, problem)
                 )
             else:
-                await self._generate_sync(conn, queue, data, sync_generators)
-                await self._generate_async(conn, queue, data, async_generators)
+                await self._generate_sync(conn, queue, data, sync_generators, problem)
+                await self._generate_async(conn, queue, data, async_generators, problem)
 
             queue.close() # so that iteration will terminate when producing the list()
             return list(queue)
 
     async def _generate_sync(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: FeatureSearchInputData,
-                             generators: list[SyncFeatureGenerator]) -> None:
+                             generators: list[SyncFeatureGenerator], problem: Problem) -> None:
         if not generators:
             return
 
@@ -231,18 +213,18 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 for generator in generators:
                     _logger.info(f'Generating features with {generator=}')
                     count = 0
-                    for feature in generator.generate(data.feature_search, data.target_column, data.join_strategies, cursor):
+                    for feature in generator.generate(data.feature_search, problem, data.join_strategies, cursor):
                         output_queue.put(feature)
                         count += 1
                     _logger.info(f'Generated {count} features with {generator=}')
             await asyncio.to_thread(sync_generate)
 
     async def _generate_async(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: FeatureSearchInputData,
-                              generators: list[FeatureGenerator]) -> None:
+                              generators: list[FeatureGenerator], problem: Problem) -> None:
         async def agenerate(generator: FeatureGenerator) -> None:
             _logger.info(f'Generating features with {generator=}')
             count = 0
-            async for feature in generator.agenerate(data.feature_search, data.target_column, data.join_strategies, conn):
+            async for feature in generator.agenerate(data.feature_search, problem, data.join_strategies, conn):
                 await output_queue.aput(feature)
                 count += 1
             _logger.info(f'Generated {count} features with {generator=}')
@@ -318,8 +300,8 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
         return DatasetSource.from_duckdb_parser(read, conn, self.batch_size)
 
     async def _select_features(self, candidate_features: list[Feature], feature_search: Dataset,
-                               target_col: str, enriched_groups: list[DuckdbTable],
-                               params: FeatureSearchParams[TK], conn: DuckDBPyConnection) -> list[Feature]:
+                               target_col: str, enriched_groups: list[DuckdbTable], problem: Problem,
+                               params: FeatureSearchParams, conn: DuckDBPyConnection) -> list[Feature]:
         selector = params.selector
         if isinstance(selector, FeatureSelector):
             target_series = feature_search.data[target_col]
@@ -327,21 +309,21 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 (feature, DatasetSource.from_table(next(table for table in enriched_groups if feature.name in table.schema.names)))
                 for feature in candidate_features
             ]
-            features_with_stats: list[FeatureWithFullStats[Feature, TK]] = \
-                await self._calculate_feature_stats(features_with_data, target_series, params, conn)
+            features_with_stats: list[FeatureWithFullStats[Feature]] = \
+                await self._calculate_feature_stats(features_with_data, target_series, problem, conn)
 
             if isinstance(selector, SyncFeatureSelector):
                 def sync_select() -> list[Feature]:
                     for fws in features_with_stats:
                         selector.add_feature(fws)
-                    return [fws.feature for fws in selector.select_final_features()]
+                    return [fws.feature for fws in selector.select_final_features(problem)]
 
                 return await asyncio.to_thread(sync_select)
 
             else:
                 for fws in features_with_stats:
                     await selector.aadd_feature(fws)
-                return [fws.feature for fws in await selector.aselect_final_features()]
+                return [fws.feature for fws in await selector.aselect_final_features(problem)]
 
         else:
             # selector is EnrichedFeatureSelector. The first enriched table also contains the target column.
@@ -350,11 +332,11 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
             if isinstance(selector, SyncEnrichedFeatureSelector):
                 with conn.cursor() as cursor: # for new thread
                     def select() -> list[Feature]:
-                        return list(selector.select_features(candidate_features, enriched_source, target_col, cursor))
+                        return list(selector.select_features(candidate_features, enriched_source, problem, cursor))
                     return await asyncio.to_thread(select)
 
             else:
-                return list(await selector.aselect_features(candidate_features, enriched_source, target_col, conn))
+                return list(await selector.aselect_features(candidate_features, enriched_source, problem, conn))
 
     def _update_feature_defaults[F: Feature](self, feature: F, enriched: pl.Series) -> F:
         match feature:
@@ -377,9 +359,8 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
 
 
     async def _calculate_feature_stats(self, features_with_data: list[tuple[Feature, DatasetSource]],
-                                       target_series: pl.Series,
-                                       params: FeatureSearchParams[TK],
-                                       conn: DuckDBPyConnection) -> list[FeatureWithFullStats[Feature, TK]]:
+                                       target_series: pl.Series, problem: Problem,
+                                       conn: DuckDBPyConnection) -> list[FeatureWithFullStats[Feature]]:
         # Stats calculators are always synchronous. We run them on a single thread, one feature at a time;
         # we could use several threads.
         with conn.cursor() as cursor: # for new thread
@@ -387,8 +368,12 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
                 result = []
                 for feature, data_source in features_with_data:
                     dataset = data_source.select(feature.name).to_dataset(cursor)
-                    feature_stats = params.feature_stats_calculator.calculate_from_series(feature, dataset.data[feature.name])
-                    relationship_stats = params.relationship_stats_calculator.calculate_from_series(feature, dataset.data[feature.name], target_series)
+                    feature_stats = stats_calculators.default_feature_stats_calculator.calculate_from_series(feature, dataset.data[feature.name])
+                    relationship_stats_calculator = \
+                        stats_calculators.default_regression_calculator if problem.target_kind == 'regression' \
+                        else stats_calculators.default_classification_calculator
+                    relationship_stats = relationship_stats_calculator.calculate_from_series(feature, dataset.data[feature.name],
+                                                                                             target_series, problem)
                     feature_with_stats = FeatureWithFullStats(feature, FullFeatureStats(feature_stats, relationship_stats))
                     result.append(feature_with_stats)
                 return result
@@ -396,11 +381,10 @@ class FeatureSearchRunnerImpl[TK: TargetKind](FeatureSearchRunner[TK]):
             return await asyncio.to_thread(calculate)
 
     async def _calculate_feature_stats_single_data(self, features: list[Feature],
-                                                   dataset_source: DatasetSource, target_col: str,
-                                                   params: FeatureSearchParams[TK],
-                                                   conn: DuckDBPyConnection) -> list[FeatureWithFullStats[Feature, TK]]:
-        target_source = dataset_source.select(target_col)
+                                                   dataset_source: DatasetSource, problem: Problem,
+                                                   conn: DuckDBPyConnection) -> list[FeatureWithFullStats[Feature]]:
+        target_source = dataset_source.select(problem.target_column.name)
         with conn.cursor() as cursor:
-            target_series = (await asyncio.to_thread(target_source.to_dataset, cursor)).data[target_col]
+            target_series = (await asyncio.to_thread(target_source.to_dataset, cursor)).data[problem.target_column.name]
 
-        return await self._calculate_feature_stats([(feature, dataset_source) for feature in features], target_series, params, conn)
+        return await self._calculate_feature_stats([(feature, dataset_source) for feature in features], target_series, problem, conn)

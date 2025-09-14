@@ -6,31 +6,32 @@ from typing import override
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.dataset import DatasetSource
-from agentune.analyze.feature.base import Feature, TargetKind
+from agentune.analyze.feature.base import Feature
+from agentune.analyze.feature.problem import Problem
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
 
 
-class FeatureSelector[F: Feature, T: TargetKind](ABC):
+class FeatureSelector[F: Feature](ABC):
     @abstractmethod
-    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats[F, T]) -> None: ...
+    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats[F]) -> None: ...
 
     @abstractmethod
-    async def aselect_final_features(self) -> Sequence[FeatureWithFullStats[F, T]]: ...
+    async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats[F]]: ...
 
-class SyncFeatureSelector[F: Feature, T: TargetKind](FeatureSelector[F, T]):
+class SyncFeatureSelector[F: Feature](FeatureSelector[F]):
     @abstractmethod
-    def add_feature(self, feature_with_stats: FeatureWithFullStats[F, T]) -> None: ...
+    def add_feature(self, feature_with_stats: FeatureWithFullStats[F]) -> None: ...
 
     @override
-    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats[F, T]) -> None:
+    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats[F]) -> None:
         await asyncio.to_thread(self.add_feature, feature_with_stats)
 
     @abstractmethod
-    def select_final_features(self) -> Sequence[FeatureWithFullStats[F, T]]: ...
+    def select_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats[F]]: ...
 
     @override
-    async def aselect_final_features(self) -> Sequence[FeatureWithFullStats[F, T]]:
-        return await asyncio.to_thread(self.select_final_features)
+    async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats[F]]:
+        return await asyncio.to_thread(self.select_final_features, problem)
 
 class EnrichedFeatureSelector(ABC):
     """A FeatureSelector that requires the entire enriched feature output, not only statistics.
@@ -44,7 +45,7 @@ class EnrichedFeatureSelector(ABC):
 
     @abstractmethod
     async def aselect_features(self, features: Sequence[Feature],
-                               enriched_data: DatasetSource, target_column: str,
+                               enriched_data: DatasetSource, problem: Problem,
                                conn: DuckDBPyConnection) -> Sequence[Feature]:
         """enriched_data contains a column for each feature; the column's name is the feature.name.
 
@@ -55,12 +56,12 @@ class EnrichedFeatureSelector(ABC):
 class SyncEnrichedFeatureSelector(EnrichedFeatureSelector):
     @abstractmethod
     def select_features(self, features: Sequence[Feature],
-                        enriched_data: DatasetSource, target_column: str,
+                        enriched_data: DatasetSource, problem: Problem,
                         conn: DuckDBPyConnection) -> Sequence[Feature]: ...
 
     @override
     async def aselect_features(self, features: Sequence[Feature],
-                               enriched_data: DatasetSource, target_column: str,
+                               enriched_data: DatasetSource, problem: Problem,
                                conn: DuckDBPyConnection) -> Sequence[Feature]:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.select_features, features, enriched_data, target_column, cursor)
+            return await asyncio.to_thread(self.select_features, features, enriched_data, problem, cursor)

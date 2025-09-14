@@ -7,7 +7,8 @@ import polars as pl
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.dataset import DatasetSource
-from agentune.analyze.feature.base import Feature, TargetKind
+from agentune.analyze.feature.base import Feature
+from agentune.analyze.feature.problem import Problem, TargetKind
 from agentune.analyze.feature.select.base import SyncEnrichedFeatureSelector
 
 # Dataset size thresholds for parameter tuning
@@ -48,12 +49,10 @@ class LightGBMFeatureSelector(SyncEnrichedFeatureSelector):
 
     def __init__(
             self,
-            top_k: int = 10,
-            task_type: TargetKind = 'classification',
+            top_k: int = 10
     ):
         """Initialize with unified constructor. Data/columns are passed to select_features()."""
         self.top_k = top_k
-        self.task_type = task_type
         self.importance_type = 'gain'
         # Model-agnostic selector state (mirror LinearPairWise)
         self.final_importances_: dict[str, list] | None = None
@@ -63,16 +62,16 @@ class LightGBMFeatureSelector(SyncEnrichedFeatureSelector):
         self,
         features: Sequence[Feature],
         enriched_data: DatasetSource,
-        target_column: str,
+        problem: Problem,
         conn: DuckDBPyConnection,
     ) -> Sequence[Feature]:
         """Select features using the enriched API, matching the base interface signature."""
         df = enriched_data.to_dataset(conn).data
         feature_cols = [f.name for f in features]
-        selected_names = self._select_features_df(df, target_column, feature_cols)
+        selected_names = self._select_features_df(df, problem.target_column.name, problem.target_kind, feature_cols)
         return [f for f in features if f.name in selected_names]
 
-    def _select_features_df(self, data: pl.DataFrame, target_col: str, feature_cols: list[str]) -> list[str]:
+    def _select_features_df(self, data: pl.DataFrame, target_col: str, target_kind: TargetKind, feature_cols: list[str]) -> list[str]:
         """Select top_k features using a single LightGBM model (DataFrame API)."""
         if not feature_cols:
             self.final_importances_ = {'feature': [], 'importance': []}
@@ -80,14 +79,14 @@ class LightGBMFeatureSelector(SyncEnrichedFeatureSelector):
             return []
 
         x_train = data.select(feature_cols)
-        target_type = pl.Int64 if self.task_type == 'classification' else pl.Float64
+        target_type = pl.Int64 if target_kind == 'classification' else pl.Float64
         y_train = data.select(target_col).to_series().cast(target_type)
 
         params = _get_lightgbm_params(x_train.height)
         # 1) Fit initial model for feature importance
         initial_model = (
             lgb.LGBMClassifier(**params)
-            if self.task_type == 'classification'
+            if target_kind == 'classification'
             else lgb.LGBMRegressor(**params)
         )
         initial_model.fit(x_train.to_numpy(), y_train.to_numpy())
@@ -105,7 +104,7 @@ class LightGBMFeatureSelector(SyncEnrichedFeatureSelector):
 
         # Fit final LightGBM model for importances
         params = _get_lightgbm_params(x_train_topk.height)
-        if self.task_type == 'classification':
+        if target_kind == 'classification':
             final_lgb_model = lgb.LGBMClassifier(**params)
         else:
             final_lgb_model = lgb.LGBMRegressor(**params)

@@ -9,9 +9,15 @@ import polars as pl
 import pytest
 from attrs import frozen
 
+from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import BoolFeature
+from agentune.analyze.feature.problem import (
+    ClassificationProblem,
+    ProblemDescription,
+    RegressionProblem,
+)
 from agentune.analyze.feature.stats.stats import (
     BooleanClassificationStats,
     BooleanFeatureStats,
@@ -120,13 +126,14 @@ class TestBooleanRegressionStats:
         # Create test data
         feature = pl.Series('feature', [True, False, True, None, True])
         target = pl.Series('target', [10.0, 5.0, 12.0, 8.0, 9.0])
+        problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleBoolFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = BooleanRegressionCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert isinstance(stats, BooleanRegressionStats)
@@ -142,13 +149,14 @@ class TestBooleanRegressionStats:
         # Create test data with all True
         feature = pl.Series('feature', [True, True, True])
         target = pl.Series('target', [10.0, 12.0, 9.0])
+        problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleBoolFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = BooleanRegressionCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert stats.n_samples == 3
@@ -167,13 +175,14 @@ class TestBooleanClassificationStats:
         # Create test data
         feature = pl.Series('feature', [True, False, True, None, True])
         target = pl.Series('target', ['A', 'B', 'A', 'B', 'C'])
+        problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.string), tuple(sorted(target.unique().to_list())))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleBoolFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = BooleanClassificationCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert isinstance(stats, BooleanClassificationStats)
@@ -190,13 +199,14 @@ class TestBooleanClassificationStats:
         # Create test data with binary target
         feature = pl.Series('feature', [True, False, True, False])
         target = pl.Series('target', [1, 0, 1, 0])
+        problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), tuple(sorted(target.unique().to_list())))
 
         # Create a simple feature instance for testing
         feature_obj = SimpleBoolFeature(name='test_feature')
 
         # Create calculator instance and calculate stats
         calculator = BooleanClassificationCalculator()
-        stats = calculator.calculate_from_series(feature_obj, feature, target)
+        stats = calculator.calculate_from_series(feature_obj, feature, target, problem)
 
         # Verify results
         assert stats.n_samples == 4

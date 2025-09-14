@@ -6,9 +6,7 @@ from frozendict import frozendict
 from agentune.analyze.feature.base import (
     BoolFeature,
     CategoricalFeature,
-    Classification,
     NumericFeature,
-    Regression,
 )
 from agentune.analyze.feature.stats.base import FeatureStats, RelationshipStats
 from agentune.analyze.util.attrutil import frozendict_converter
@@ -48,7 +46,7 @@ class CategoricalFeatureStats(FeatureStats[CategoricalFeature]):
 
 # --- Concrete relationship-stats subclasses and calculators ---
 @frozen
-class BooleanRegressionStats(RelationshipStats[BoolFeature, Regression]):
+class BooleanRegressionStats(RelationshipStats[BoolFeature]):
     n_samples: int
     n_missing_feature: int
     mean_true: float  # Mean target value when feature is True
@@ -58,7 +56,7 @@ class BooleanRegressionStats(RelationshipStats[BoolFeature, Regression]):
 
 
 @frozen
-class BooleanClassificationStats(RelationshipStats[BoolFeature, Classification]):
+class BooleanClassificationStats(RelationshipStats[BoolFeature]):
     n_samples: int
     n_missing_feature: int
     true_counts: tuple[int, ...]  # Count of True values for each target category
@@ -69,7 +67,7 @@ class BooleanClassificationStats(RelationshipStats[BoolFeature, Classification])
 
 
 @frozen
-class NumericRegressionStats(RelationshipStats[NumericFeature, Regression]):
+class NumericRegressionStats(RelationshipStats[NumericFeature]):
     n_samples: int
     n_missing_feature: int
     pearson_r: float  # Pearson correlation coefficient
@@ -79,7 +77,7 @@ class NumericRegressionStats(RelationshipStats[NumericFeature, Regression]):
 
 
 @frozen
-class NumericClassificationStats(RelationshipStats[NumericFeature, Classification]):
+class NumericClassificationStats(RelationshipStats[NumericFeature]):
     n_samples: int
     n_missing_feature: int
     anova_f: float
@@ -87,7 +85,7 @@ class NumericClassificationStats(RelationshipStats[NumericFeature, Classificatio
 
 
 @frozen
-class CategoricalRegressionStats(RelationshipStats[CategoricalFeature, Regression]):
+class CategoricalRegressionStats(RelationshipStats[CategoricalFeature]):
     n_samples: int
     n_missing_feature: int
     category_counts: tuple[int, ...]  # Count of samples in each category
@@ -97,7 +95,7 @@ class CategoricalRegressionStats(RelationshipStats[CategoricalFeature, Regressio
 
 
 @frozen
-class CategoricalClassificationStats(RelationshipStats[CategoricalFeature, Classification]):
+class CategoricalClassificationStats(RelationshipStats[CategoricalFeature]):
     n_samples: int
     n_missing_feature: int
     categories: tuple[str, ...]  # The feature categories

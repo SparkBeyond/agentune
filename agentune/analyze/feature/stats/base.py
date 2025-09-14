@@ -6,7 +6,8 @@ import polars as pl
 from attrs import frozen
 
 from agentune.analyze.core.dataset import Dataset
-from agentune.analyze.feature.base import Feature, TargetKind
+from agentune.analyze.feature.base import Feature
+from agentune.analyze.feature.problem import Problem
 
 
 # --- Generic base classes ---
@@ -17,7 +18,7 @@ class FeatureStats[F: Feature]:
     n_missing: int  # Number of missing values in the feature
 
 
-class RelationshipStats[F: Feature, TK: TargetKind]:
+class RelationshipStats[F: Feature]:
     """Base class for statistics that describe the relationship between a feature and a target."""
 
     n_samples: int  # Number of samples used in the calculation
@@ -76,7 +77,7 @@ class SyncFeatureStatsCalculator[F: Feature](FeatureStatsCalculator[F]):
 
     @override
     async def acalculate_from_series(self, feature: F, series: pl.Series) -> FeatureStats[F]:
-        return await asyncio.to_thread(self.calculate_from_series, feature, series.clone()) 
+        return await asyncio.to_thread(self.calculate_from_series, feature, series.clone())
 
     def calculate_from_dataset(
         self, feature: F, dataset: Dataset, feature_col: str
@@ -105,7 +106,7 @@ class SyncFeatureStatsCalculator[F: Feature](FeatureStatsCalculator[F]):
 
 
 # Relationship Stats Calculators (feature-target interactions)
-class RelationshipStatsCalculator[F: Feature, T: TargetKind](ABC):
+class RelationshipStatsCalculator[F: Feature](ABC):
     """Calculator for computing feature-target relationship statistics.
 
     Type parameters:
@@ -115,14 +116,15 @@ class RelationshipStatsCalculator[F: Feature, T: TargetKind](ABC):
     
     @abstractmethod
     async def acalculate_from_series(
-        self, feature: F, series: pl.Series, target: pl.Series
-    ) -> RelationshipStats[F, T]:
+        self, feature: F, series: pl.Series, target: pl.Series, problem: Problem
+    ) -> RelationshipStats[F]:
         """Calculate relationship statistics from feature and target polars Series asynchronously.
 
         Args:
             feature: The feature to calculate statistics for
             series: A polars Series containing the feature data
             target: A polars Series containing the target data
+            problem: problem definition including the target column name and list of classes
 
         Returns:
             Relationship statistics object
@@ -132,15 +134,15 @@ class RelationshipStatsCalculator[F: Feature, T: TargetKind](ABC):
 
     @abstractmethod
     async def acalculate_from_dataset(
-        self, feature: F, dataset: Dataset, feature_col: str, target_col: str
-    ) -> RelationshipStats[F, T]:
+        self, feature: F, dataset: Dataset, feature_col: str, problem: Problem
+    ) -> RelationshipStats[F]:
         """Calculate relationship statistics from a dataset stream asynchronously.
 
         Args:
             feature: The feature to calculate statistics for
             dataset: The dataset stream containing the feature and target
             feature_col: The name of the feature column
-            target_col: The name of the target column
+            problem: problem definition including the target column name and list of classes
 
         Returns:
             Relationship statistics object
@@ -149,19 +151,20 @@ class RelationshipStatsCalculator[F: Feature, T: TargetKind](ABC):
         ...
 
 
-class SyncRelationshipStatsCalculator[F: Feature, T: TargetKind](RelationshipStatsCalculator[F, T]):
+class SyncRelationshipStatsCalculator[F: Feature](RelationshipStatsCalculator[F]):
     """Synchronous calculator for feature-target relationship statistics."""
 
     @abstractmethod
     def calculate_from_series(
-        self, feature: F, series: pl.Series, target: pl.Series
-    ) -> RelationshipStats[F, T]:
+        self, feature: F, series: pl.Series, target: pl.Series, problem: Problem
+    ) -> RelationshipStats[F]:
         """Calculate relationship statistics from feature and target polars Series.
 
         Args:
             feature: The feature to calculate statistics for
             series: A polars Series containing the feature data
             target: A polars Series containing the target data
+            problem: problem definition including the target column name and list of classes
 
         Returns:
             Relationship statistics object
@@ -170,13 +173,14 @@ class SyncRelationshipStatsCalculator[F: Feature, T: TargetKind](RelationshipSta
         ...
 
     @override
-    async def acalculate_from_series(self, feature: F, series: pl.Series, target: pl.Series) -> RelationshipStats[F, T]:
-        return await asyncio.to_thread(self.calculate_from_series, feature, series.clone(), target.clone())
+    async def acalculate_from_series(self, feature: F, series: pl.Series, target: pl.Series,
+                                     problem: Problem) -> RelationshipStats[F]:
+        return await asyncio.to_thread(self.calculate_from_series, feature, series.clone(), target.clone(), problem)
 
 
     def calculate_from_dataset(
-        self, feature: F, dataset: Dataset, feature_col: str, target_col: str
-    ) -> RelationshipStats[F, T]:
+        self, feature: F, dataset: Dataset, feature_col: str, problem: Problem
+    ) -> RelationshipStats[F]:
         """Simple implementation for calculating relationship statistics from a dataset.
 
         This implementation simply calls `calculate_from_series` with the relevant columns of the dataset.
@@ -185,34 +189,34 @@ class SyncRelationshipStatsCalculator[F: Feature, T: TargetKind](RelationshipSta
             feature: The feature to calculate statistics for
             dataset: The dataset containing the feature and target
             feature_col: The name of the feature column
-            target_col: The name of the target column
+            problem: problem definition including the target column name and list of classes
 
         Returns:
             Relationship statistics object
 
         """
         feature_series = dataset.data[feature_col]
-        target_series = dataset.data[target_col]
-        return self.calculate_from_series(feature, feature_series, target_series)
+        target_series = dataset.data[problem.target_column.name]
+        return self.calculate_from_series(feature, feature_series, target_series, problem)
 
     @override
     async def acalculate_from_dataset(
-        self, feature: F, dataset: Dataset, feature_col: str, target_col: str
-    ) -> RelationshipStats[F, T]:
-        return await asyncio.to_thread(self.calculate_from_dataset, feature, dataset.copy_to_thread(), feature_col, target_col)
+        self, feature: F, dataset: Dataset, feature_col: str, problem: Problem
+    ) -> RelationshipStats[F]:
+        return await asyncio.to_thread(self.calculate_from_dataset, feature, dataset.copy_to_thread(), feature_col, problem)
 
 
 # --- Bundle all together generically ---
 
 @frozen
-class FullFeatureStats[F: Feature, T: TargetKind]:
+class FullFeatureStats[F: Feature]:
     """Container that combines both feature statistics and relationship statistics."""
 
     feature: FeatureStats[F]  # Statistics about the feature itself
-    relationship: RelationshipStats[F, T]  # Statistics about feature-target relationship
+    relationship: RelationshipStats[F]  # Statistics about feature-target relationship
 
 
 @frozen
-class FeatureWithFullStats[F: Feature, T: TargetKind]:
+class FeatureWithFullStats[F: Feature]:
     feature: F
-    stats: FullFeatureStats[F, T]
+    stats: FullFeatureStats[F]

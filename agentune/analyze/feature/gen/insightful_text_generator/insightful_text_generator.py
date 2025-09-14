@@ -41,6 +41,7 @@ from agentune.analyze.feature.gen.insightful_text_generator.util import (
     execute_llm_caching_aware_columnar,
     parse_json_response_field,
 )
+from agentune.analyze.feature.problem import Problem
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.join.conversation import ConversationJoinStrategy
 
@@ -194,9 +195,9 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
         # Filter out None results
         return [query for query in results if query is not None]
 
-    async def agenerate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
+    async def agenerate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
                         conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]:
-        target_field = feature_search.schema[target_column]
+        target_field = problem.target_column
         conversation_strategies = self.find_conversation_strategies(join_strategies)
 
         for conversation_strategy in conversation_strategies:
@@ -207,7 +208,7 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
             query_batch = await query_generator.agenerate_queries(feature_search, conn, self.random_seed)
 
             # 3. Enrich the queries with additional conversation information
-            sampler = self._get_sampler(feature_search.schema[target_column])
+            sampler = self._get_sampler(target_field)
             sampled_data = sampler.sample(feature_search, self.num_samples_for_enrichment, self.random_seed)
             enrichment_formatter = ConversationFormatter(
                 name=f'conversation_formatter_{conversation_strategy.table.name}',

@@ -8,7 +8,8 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.dataset import DatasetSource
-from agentune.analyze.feature.base import CategoricalFeature, Feature, TargetKind
+from agentune.analyze.feature.base import CategoricalFeature, Feature
+from agentune.analyze.feature.problem import Problem, TargetKind
 from agentune.analyze.feature.select.base import SyncEnrichedFeatureSelector
 from agentune.analyze.feature.util import substitute_default_values
 
@@ -48,7 +49,6 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
     """
     def __init__(
         self,
-        task_type: TargetKind,
         top_k: int = 10,
         min_marginal_reduction_threshold: float = 1e-8
     ):
@@ -61,7 +61,6 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
                 Features with lower marginal improvement will not be selected. 
         """
         self.top_k = top_k
-        self.task_type = task_type
         self.min_marginal_reduction_threshold = min_marginal_reduction_threshold
 
         # No internal model; selector is model-agnostic
@@ -72,7 +71,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         self,
         features: Sequence[Feature],
         enriched_data: DatasetSource,
-        target_column: str,
+        problem: Problem,
         conn: DuckDBPyConnection,
     ) -> Sequence[Feature]:
         """Select features using the enriched API, matching the base interface signature.
@@ -87,6 +86,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         imputed_dataset = substitute_default_values(dataset, features)
         df_pl = imputed_dataset.data
 
+        target_column = problem.target_column.name
         if target_column not in df_pl.columns:
             raise ValueError(f'Target column {target_column} not found in dataset')
         # If no features, return empty selection
@@ -98,7 +98,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             raise ValueError('Feature and target size mismatch')
 
         y_raw = df_pl[target_column].to_numpy()
-        target = self._prepare_targets(y_raw)
+        target = self._prepare_targets(y_raw, problem.target_kind)
         baseline_stats = self._calculate_baseline_statistics(target)
 
         feature_values = self._prepare_feature_values(features, df_pl, target)
@@ -122,7 +122,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
 
         return selected_features
 
-    def _prepare_targets(self, target_values: np.ndarray) -> np.ndarray:
+    def _prepare_targets(self, target_values: np.ndarray, target_kind: TargetKind) -> np.ndarray:
         """Convert targets for regression or classification (binary/multiclass),
         using a stable, sorted class ordering via np.unique.
 
@@ -130,7 +130,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             - Regression/binary: (n_samples, 1)
             - Multiclass: (n_samples, n_classes) one-vs-rest
         """
-        if self.task_type == 'regression':
+        if target_kind == 'regression':
             # Ensure 2D shape for downstream code
             return target_values.reshape(-1, 1)
         else:

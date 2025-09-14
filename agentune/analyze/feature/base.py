@@ -2,7 +2,7 @@ import asyncio
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, ClassVar, Literal, final, override
+from typing import Any, ClassVar, final, override
 
 import attrs
 import polars as pl
@@ -16,10 +16,6 @@ from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.join.base import JoinStrategy
-
-type TargetKind = Literal['classification', 'regression']
-type Classification = Literal['classification']
-type Regression = Literal['regression']
 
 
 # Feature ABCs set slots=False to allow diamond inheritance from e.g. IntFeature + LlmFeature;

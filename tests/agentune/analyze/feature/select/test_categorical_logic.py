@@ -15,11 +15,17 @@ import numpy as np
 import polars as pl
 
 import agentune.analyze.core.types
+from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import DatasetSource
-from agentune.analyze.core.schema import Schema
+from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.types import Dtype
-from agentune.analyze.feature.base import CategoricalFeature, NumericFeature
+from agentune.analyze.feature.base import CategoricalFeature, Feature, NumericFeature
+from agentune.analyze.feature.problem import (
+    ClassificationProblem,
+    ProblemDescription,
+    RegressionProblem,
+)
 from agentune.analyze.feature.select.linear_pairwise import LinearPairWiseFeatureSelector
 from agentune.analyze.join.base import JoinStrategy
 
@@ -41,13 +47,13 @@ TOP_K_FEATURES = 20
 
 # Helpers to reduce duplication in tests below
 def replace_feature_as_categorical(
-    features: Sequence[object],
+    features: Sequence[Feature],
     col_name: str,
     categories: Sequence[str],
     description: str = ''
-) -> list[object]:
+) -> list[Feature]:
     """Return features where `col_name` is replaced by a categorical feature with provided categories."""
-    modified: list[object] = []
+    modified: list[Feature] = []
     for feature in features:
         if hasattr(feature, 'name') and feature.name == col_name:
             modified.append(
@@ -63,7 +69,7 @@ def enrich_as_categorical(
     col_name: str,
     categories: Sequence[str],
     description: str = ''
-) -> tuple[list[object], DatasetSource]:
+) -> tuple[list[Feature], DatasetSource]:
     """Build via EnrichedBuilder and replace a single column's feature as categorical."""
     builder = EnrichedBuilder()
     features, source = builder.build(df, target_col)
@@ -109,7 +115,7 @@ def run_selection_on_df(
     categorical_info: tuple[str, list[str]] | None = None,
 ) -> list[str]:
     """Run feature selection on a DataFrame and return selected feature names."""
-    selector = LinearPairWiseFeatureSelector(top_k=TOP_K_FEATURES, task_type='classification')
+    selector = LinearPairWiseFeatureSelector(top_k=TOP_K_FEATURES)
 
     if categorical_info:
         col_name, categories = categorical_info
@@ -119,7 +125,8 @@ def run_selection_on_df(
         features_seq, source = builder.build(df, target_col)
         features = list(features_seq)
 
-    selected = selector.select_features(features, source, target_col, conn)  # type: ignore[arg-type]
+    problem = ClassificationProblem(ProblemDescription(target_col), Field(target_col, types.int64), (0, 1))
+    selected = selector.select_features(features, source, problem, conn)
     return [f.name for f in selected]
  
 
@@ -256,8 +263,9 @@ def test_categorical_selection_regression(conn: duckdb.DuckDBPyConnection) -> No
     builder = EnrichedBuilder()
     features, source = builder.build(df_reg, 'target')
     
-    selector = LinearPairWiseFeatureSelector(top_k=2, task_type='regression')
-    selected = selector.select_features(features, source, 'target', conn)
+    selector = LinearPairWiseFeatureSelector(top_k=2)
+    problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
+    selected = selector.select_features(features, source, problem, conn)
 
     selected_names = [f.name for f in selected]
     assert selected_names == ['good_cat', 'good_num']
@@ -298,8 +306,9 @@ def test_categorical_selection_multiclass(conn: duckdb.DuckDBPyConnection) -> No
     builder = EnrichedBuilder()
     features, source = builder.build(df_mc, 'target')
     
-    selector = LinearPairWiseFeatureSelector(top_k=2, task_type='classification')
-    selected = selector.select_features(features, source, 'target', conn)
+    selector = LinearPairWiseFeatureSelector(top_k=2)
+    problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.string), tuple(sorted(targets)))
+    selected = selector.select_features(features, source, problem, conn)
 
     selected_names = [f.name for f in selected]
     assert selected_names == ['color', 'shape']
@@ -334,8 +343,9 @@ def test_other_bucket_handling(conn: duckdb.DuckDBPyConnection) -> None:
     builder = EnrichedBuilder()
     features, source = builder.build(df, 'target')
     
-    selector = LinearPairWiseFeatureSelector(top_k=1, task_type='regression')
-    selected = selector.select_features(features, source, 'target', conn)
+    selector = LinearPairWiseFeatureSelector(top_k=1)
+    problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
+    selected = selector.select_features(features, source, problem, conn)
     
     assert len(selected) == 1
     assert selected[0].name == 'many_categories', 'OTHER bucket signal should make categorical win'

@@ -9,21 +9,17 @@ from duckdb import DuckDBPyConnection
 from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.threading import CopyToThread
-from agentune.analyze.feature.base import Classification, Feature, Regression, TargetKind
+from agentune.analyze.feature.base import Feature
 from agentune.analyze.feature.eval.base import FeatureEvaluator
 from agentune.analyze.feature.eval.universal import (
     UniversalAsyncFeatureEvaluator,
     UniversalSyncFeatureEvaluator,
 )
 from agentune.analyze.feature.gen.base import FeatureGenerator
+from agentune.analyze.feature.problem import Problem, ProblemDescription
 from agentune.analyze.feature.select.base import EnrichedFeatureSelector, FeatureSelector
-from agentune.analyze.feature.stats import stats_calculators
 from agentune.analyze.feature.stats.base import (
     FeatureWithFullStats,
-)
-from agentune.analyze.feature.stats.stats_calculators import (
-    CombinedSyncFeatureStatsCalculator,
-    CombinedSyncRelationshipStatsCalculator,
 )
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.run.base import RunContext
@@ -39,7 +35,6 @@ class FeatureSearchInputData(CopyToThread):
     feature_eval: DatasetSource 
     train: DatasetSource # Includes the feature_search and feature_eval datasets
     test: DatasetSource
-    target_column: str
     join_strategies: TablesWithJoinStrategies
 
     def __attrs_post_init__(self) -> None:
@@ -50,11 +45,8 @@ class FeatureSearchInputData(CopyToThread):
         if self.train.schema != self.feature_eval.schema:
             raise ValueError('Train schema must match feature eval schema')
 
-        if self.target_column not in self.feature_search.schema.names:
-            raise ValueError(f'Target column {self.target_column} not found')
-        
     @staticmethod
-    def from_split_table(split_table: SplitDuckdbTable, target_column: str,
+    def from_split_table(split_table: SplitDuckdbTable,
                          join_strategies: TablesWithJoinStrategies,
                          conn: DuckDBPyConnection) -> FeatureSearchInputData:
         return FeatureSearchInputData(
@@ -62,7 +54,6 @@ class FeatureSearchInputData(CopyToThread):
             train=split_table.train(), 
             test=split_table.test(),
             feature_eval=split_table.feature_eval(),
-            target_column=target_column,
             join_strategies=join_strategies
         )
 
@@ -72,12 +63,12 @@ class FeatureSearchInputData(CopyToThread):
             self.feature_eval.copy_to_thread(),
             self.train.copy_to_thread(),
             self.test.copy_to_thread(),
-            self.target_column, self.join_strategies
+            self.join_strategies
         )
 
 
 @frozen
-class FeatureSearchParams[TK: TargetKind]:
+class FeatureSearchParams:
     """Non-data arguments to feature search.
 
     Args:
@@ -89,30 +80,20 @@ class FeatureSearchParams[TK: TargetKind]:
                               completes.
         store_enriched_test:  as above, for the test dataset.
     """
+    problem_description: ProblemDescription
     generators: tuple[FeatureGenerator, ...]
-    selector: FeatureSelector[Feature, TK] | EnrichedFeatureSelector
-    relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[TK]
+    selector: FeatureSelector[Feature] | EnrichedFeatureSelector
     # Must always include at least one evaluator willing to handle every feature generated.
     # Normally this means including the two universal evaluators at the end of the list.
     # Evaluators are tried in the order in which they appear.
     evaluators: tuple[type[FeatureEvaluator], ...] = (UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator)
-    feature_stats_calculator: CombinedSyncFeatureStatsCalculator = stats_calculators.default_feature_stats_calculator
     enrich_runner: EnrichRunner = EnrichRunnerImpl()
     store_enriched_train: DuckdbName | None = None
     store_enriched_test: DuckdbName | None = None
-
-@frozen 
-class RegressionFeatureSearchParams(FeatureSearchParams[Regression]):
-    # Redeclare to set the default
-    relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[Regression] = stats_calculators.default_regression_calculator
+    max_classes: int = 20
 
 @frozen
-class ClassificationFeatureSearchParams(FeatureSearchParams[Classification]):
-    # Redeclare to set the default
-    relationship_stats_calculator: CombinedSyncRelationshipStatsCalculator[Classification] = stats_calculators.default_classification_calculator
-
-@frozen
-class FeatureSearchResults[TK: TargetKind]:
+class FeatureSearchResults:
     """Args:
     enriched_train: if FeatureSearchParams.store_enriched_train was given, this is the table where the data was stored.
                     This is the data that features_with_train_stats was computed on.
@@ -120,9 +101,9 @@ class FeatureSearchResults[TK: TargetKind]:
                     columns of the original input.
     enriched_test:  as above, for the test dataset.
     """
-
-    features_with_train_stats: tuple[FeatureWithFullStats[Feature, TK], ...]
-    features_with_test_stats: tuple[FeatureWithFullStats[Feature, TK], ...]
+    problem: Problem
+    features_with_train_stats: tuple[FeatureWithFullStats[Feature], ...]
+    features_with_test_stats: tuple[FeatureWithFullStats[Feature], ...]
     enriched_train: DuckdbTable | None = None
     enriched_test: DuckdbTable | None = None
 
@@ -135,14 +116,14 @@ class FeatureSearchResults[TK: TargetKind]:
         return tuple(f.feature for f in self.features_with_test_stats)
 
 
-class FeatureSearchRunner[TK: TargetKind](ABC):
+class FeatureSearchRunner(ABC):
     """The current implementation is not specialized per TargetKind, but including the type parameter in the class signature
     makes the code much simpler than passing it to every method along the way.
     """
 
     @abstractmethod
     async def run(self, run_context: RunContext, data: FeatureSearchInputData,
-                  params: FeatureSearchParams[TK]) -> FeatureSearchResults[TK]:
+                  params: FeatureSearchParams) -> FeatureSearchResults:
         """The feature search algorithm composes the components in `params`:
 
         1. Generate candidate features using `params.generators` on `data.feature_search`
