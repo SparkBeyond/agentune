@@ -1,4 +1,5 @@
 import logging
+import math
 from pathlib import Path
 
 import httpx
@@ -12,6 +13,8 @@ from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.llm import LLMContext, LLMSpec
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.sercontext import LLMWithSpec
+from agentune.analyze.feature.base import CategoricalFeature
+from agentune.analyze.feature.gen.insightful_text_generator.features import create_feature
 from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
     ConversationFormatter,
 )
@@ -162,9 +165,8 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         sampler = feature_generator._get_sampler(target_field)
         sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
         enrichment_formatter = ConversationFormatter(
-            name=f'enrichment_formatter_{conversation_strategy.table.name}',
+            name=f'conversation_formatter_{conversation_strategy.name}',
             conversation_strategy=conversation_strategy,
-            params=Schema(cols=())
         )
         enriched_output = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
         
@@ -209,4 +211,45 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
             logger.info(f'Query "{query.name}" dtype determined as: {query.return_type}')
         
         logger.info(f'Dtype determination successful: {len(updated_queries)} queries with valid types')
+
+        # 5. Test feature creation and evaluation
+        features = [create_feature(
+            query=query,
+            instance_description=feature_generator.instance_description,
+            formatter=enrichment_formatter,
+            model=real_llm_with_spec)
+            for query in updated_queries]
         
+        # Validate features were created
+        for feature in features:
+            logger.info(f'Created feature: {feature.name} - {feature.description}')
+        assert len(features) > 0 and len(main_dataset.data) > 0
+
+        # 6. Test feature evaluation on first row
+        for feature in features:
+            strict_df = pl.DataFrame([main_dataset.data.get_column(col.name) for col in feature.params.cols])
+            first_row_args = strict_df.row(0, named=False)
+            # Evaluate the feature on the first row
+            result = await feature.aevaluate(first_row_args, conn)
+
+            # Validate result
+            if result is None:
+                logger.info(f'Feature {feature.name} returned None (missing value)')
+            else:
+                # Check that the type of the result matches the expected Python type from DuckDB
+                expected_python_type = dtypes.python_type_from_polars(feature.dtype)
+                assert isinstance(result, expected_python_type), f'Feature {feature.name} returned {type(result)} but expected {expected_python_type}'
+                
+                # Additional type-specific validation
+                if feature.dtype.is_numeric():
+                    # For numeric types, check that the result is not NaN or infinite
+                    assert isinstance(result, float | int), f'Feature {feature.name} returned non-numeric type {type(result)}'
+                    assert not math.isnan(float(result)), f'Feature {feature.name} returned NaN'
+                    assert not math.isinf(float(result)), f'Feature {feature.name} returned infinite value'
+                elif isinstance(feature, CategoricalFeature):
+                    # For categorical/enum types, check that the result is one of the valid categories
+                    assert result in feature.categories or result == CategoricalFeature.other_category, f'Feature {feature.name} returned "{result}" which is not in valid categories: {feature.categories}'
+                
+                logger.info(f'Feature {feature.name} evaluation successful: {result} (type: {type(result).__name__})')
+            
+        logger.info('Feature creation and evaluation test completed successfully')

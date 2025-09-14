@@ -8,13 +8,16 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
 from agentune.analyze.core.dataset import Dataset
-from agentune.analyze.core.schema import Field, Schema
+from agentune.analyze.core.schema import Field
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.base import Feature
 from agentune.analyze.feature.gen.base import FeatureGenerator, GeneratedFeature
 from agentune.analyze.feature.gen.insightful_text_generator.dedup.base import (
     QueryDeduplicator,
     SimpleDeduplicator,
+)
+from agentune.analyze.feature.gen.insightful_text_generator.features import (
+    create_feature,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
     ConversationFormatter,
@@ -29,7 +32,7 @@ from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import
     DataSampler,
     RandomSampler,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
+from agentune.analyze.feature.gen.insightful_text_generator.schema import PARSER_OUT_FIELD, Query
 from agentune.analyze.feature.gen.insightful_text_generator.type_detector import (
     cast_to_categorical,
     decide_dtype,
@@ -91,9 +94,9 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
             deduplicator=deduplicator,
             num_features_to_generate=self.num_features_to_generate,
             formatter=ConversationFormatter(
-                name=f'conversation_formatter_{conversation_strategy.table.name}',
+                name=f'conversation_formatter_{conversation_strategy.name}',
                 conversation_strategy=conversation_strategy,
-                params=Schema(cols=(target_field,))
+                params_to_print=(target_field,)
             ),
             target_field=target_field,
             field_descriptions=self.field_descriptions,
@@ -125,7 +128,7 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
         
         # Parse responses (already in optimal columnar structure)
         parsed_columns = [
-            [parse_json_response_field(resp, 'response') for resp in column]
+            [parse_json_response_field(resp, PARSER_OUT_FIELD) for resp in column]
             for column in response_columns
         ]
         
@@ -191,11 +194,6 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
         # Filter out None results
         return [query for query in results if query is not None]
 
-    def create_features_from_queries(self, queries: list[Query], enrichment_formatter: ConversationFormatter,  # noqa: ARG002
-                                     target_field: Field, conversation_strategy: ConversationJoinStrategy) -> list[F]:  # noqa: ARG002
-        # TODO: update enriched output type
-        return []  # Implement logic to create Features from the enriched queries
-
     async def agenerate(self, feature_search: Dataset, target_column: str, join_strategies: TablesWithJoinStrategies,
                         conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]:
         target_field = feature_search.schema[target_column]
@@ -212,9 +210,8 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
             sampler = self._get_sampler(feature_search.schema[target_column])
             sampled_data = sampler.sample(feature_search, self.num_samples_for_enrichment, self.random_seed)
             enrichment_formatter = ConversationFormatter(
-                name=f'enrichment_formatter_{conversation_strategy.table.name}',
-                conversation_strategy=conversation_strategy,
-                params=Schema(cols=())
+                name=f'conversation_formatter_{conversation_strategy.table.name}',
+                conversation_strategy=conversation_strategy
             )
             enriched_output = await self.enrich_queries(query_batch, enrichment_formatter, sampled_data, conn)
 
@@ -222,14 +219,13 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
             updated_queries = await self.determine_dtypes(query_batch, enriched_output)
 
             # 5. Create Features from the enriched queries
-            features = self.create_features_from_queries(
-                queries=updated_queries,
-                enrichment_formatter=enrichment_formatter,
-                target_field=target_field,
-                conversation_strategy=conversation_strategy
-            )
+            features = [create_feature(
+                query=query,
+                instance_description=self.instance_description,
+                formatter=enrichment_formatter,
+                model=self.query_enrich_model)
+                for query in updated_queries]
 
             # Yield features one by one
             for feature in features:
-                yield GeneratedFeature(feature, False)
-
+                yield GeneratedFeature(feature, False)  # type: ignore[arg-type]

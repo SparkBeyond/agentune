@@ -1,6 +1,10 @@
 """Prompt templates and utilities for query generation."""
 
 # Main prompt template for query generation
+from agentune.analyze.core import types
+from agentune.analyze.feature.base import CategoricalFeature
+from agentune.analyze.feature.gen.insightful_text_generator.schema import PARSER_OUT_FIELD
+
 QUESTIONNAIRE_PROMPT = '''
 Below are a set of {instance_full_description}.
 
@@ -88,29 +92,29 @@ def create_questionnaire_prompt(
     )
 
 
-ENRICH_CONVERSATION_PROMPT = '''
+QUERIES_ENHANCEMENT_PROMPT = f'''
 Below is a single instance from a dataset.
-It contains the following fields (some may be missing): 
-{instance_description}
+It contains the following fields (some may be missing):
+{{instance_description}}
 Below is the instance followed by a task to perform on it.
 
 Instance
-########## 
+##########
 
-{instance}
+{{instance}}
 
 Task
-########## 
+##########
 
 As data scientists, we are interested in the following high-level question:
-{queries_str}
+{{queries_str}}
 
 For the data instance above, please provide an answer to the question.
-Your format should be a dictionary with a single "response" key containing your answer.
+Your format should be a dictionary with a single "{PARSER_OUT_FIELD}" key containing your answer.
 E.g:
-    {{
-        "response": <answer>
-    }}
+    {{{{
+        "{PARSER_OUT_FIELD}": <answer>
+    }}}}
 
 Please reply with a complete, parseable, properly structured JSON.
 '''
@@ -131,7 +135,7 @@ def create_enrich_conversation_prompt(
     Returns:
         Formatted prompt string ready for LLM
     """
-    return ENRICH_CONVERSATION_PROMPT.format(
+    return QUERIES_ENHANCEMENT_PROMPT.format(
         instance=instance,
         queries_str=queries_str,
         instance_description=instance_description
@@ -173,3 +177,54 @@ CATEGORICAL_OPTIMIZER_PROMPT = '''You are a data analysis expert. Your task: opt
 - categories: List of category names (≤ {max_categorical})
 - query_text: Refined query that maps to your categories
 '''
+
+
+QUERY_FEATURE_PROMPT = '''
+Below is a single instance from a dataset.
+It contains the following fields (some may be missing):
+{instance_description}
+Below is the instance followed by a task to perform on it.
+
+Instance
+##########
+
+{instance}
+
+Task
+##########
+
+As data scientists, we are interested in the following high-level question/feature:
+{query_text}
+
+For the data instance above, please provide an answer for this question.
+
+{output_instructions}
+'''
+
+
+def get_output_instructions(dtype: types.Dtype) -> str:
+    """Generate output instructions based on the data type."""
+    if dtype == types.boolean:
+        return f'''Output Instructions:
+Your answer should be a boolean value (true or false).
+Example: {{"{PARSER_OUT_FIELD}": true}}'''
+
+    elif dtype == types.int32:
+        return f'''Output Instructions:
+Your answer should be an integer value.
+Example: {{"{PARSER_OUT_FIELD}": 42}}'''
+
+    elif dtype == types.float64:
+        return f'''Output Instructions:
+Your answer should be a numeric value (integer or float).
+Example: {{"{PARSER_OUT_FIELD}": 3.14}}'''
+
+    elif isinstance(dtype, types.EnumDtype):
+        categories = list(dtype.values)
+        categories_str = ', '.join(f'"{cat}"' for cat in categories)
+        return f'''Output Instructions:
+Your answer should be one of the following categories: {categories_str}.
+If the answer doesn't fit any of the specific categories, use "{CategoricalFeature.other_category}".
+Example: {{"{PARSER_OUT_FIELD}": "{categories[0]}"}}'''
+
+    raise NotImplementedError(f'Output instructions not implemented for dtype: {dtype}')

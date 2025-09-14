@@ -71,8 +71,8 @@ def detect_float_type(data: pl.Series, max_error_percentage: float) -> types.Dty
     return None
 
 
-def detect_categorical_type(data: pl.Series, max_categorical: int,
-                            min_threshold_percentage: float, min_coverage: float) -> types.Dtype | None:
+def detect_categorical_type(data: pl.Series, max_categorical: int, min_threshold_percentage: float, 
+                            min_coverage: float, max_chars: int) -> types.Dtype | None:
     """Detect if the data can be represented as categorical/enum values and return the enum type.
     
     Args:
@@ -80,6 +80,7 @@ def detect_categorical_type(data: pl.Series, max_categorical: int,
         max_categorical: Maximum number of categories for enum
         min_threshold_percentage: Minimum percentage of total data a category must represent
         min_coverage: Minimum coverage the top categories must provide
+        max_chars: Maximum number of characters for each category value
 
     Returns:
         types.EnumDtype if data is detected as categorical, None otherwise
@@ -98,14 +99,18 @@ def detect_categorical_type(data: pl.Series, max_categorical: int,
 
     # Take top max_categorical values
     top_values = qualifying_values.head(max_categorical)
-    
+    column_name = top_values.columns[0]  # Get the actual column name
+
+    # Check if any value exceeds max_chars
+    if top_values.select(pl.col(column_name).str.len_chars().max()).item() > max_chars:
+        return None
+
     # Calculate coverage of top categories
     top_coverage = top_values.select('count').sum().item() / total_count
     
     # Check if coverage meets minimum requirement
     if top_coverage >= min_coverage:
         # The value_counts returns columns with original column name and "count"
-        column_name = top_values.columns[0]  # Get the actual column name
         categories = [str(row[0]) for row in top_values.select(column_name).iter_rows()]
         
         return types.EnumDtype(*categories)
@@ -114,7 +119,7 @@ def detect_categorical_type(data: pl.Series, max_categorical: int,
 
 
 def decide_dtype(query: Query, data: pl.Series, max_categorical: int, max_error_percentage: float = 0.01,
-                 min_threshold_percentage: float = 0.01, min_coverage: float = 0.9) -> types.Dtype:
+                 min_threshold_percentage: float = 0.01, min_categorical_coverage: float = 0.9, max_categorical_chars: int = 50) -> types.Dtype:
     """Decide the appropriate data type for a query based on the data values.
     
     Args:
@@ -122,7 +127,8 @@ def decide_dtype(query: Query, data: pl.Series, max_categorical: int, max_error_
         data: Polars Series with the data
         max_categorical: Maximum number of categories for enum (default: 10)
         min_threshold_percentage: Minimum percentage of total data a category must represent (default: 0.01 = 1%)
-        min_coverage: Minimum coverage the top categories must provide (default: 0.9 = 90%)
+        min_categorical_coverage: Minimum coverage the top categories must provide (default: 0.9 = 90%)
+        max_categorical_chars: Maximum number of characters for each category value (default: 50)
 
     Returns:
         The appropriate Dtype for the data
@@ -152,8 +158,8 @@ def decide_dtype(query: Query, data: pl.Series, max_categorical: int, max_error_
     if dtype is not None:
         logger.debug(f'Query {query.name}: {n_unique} unique values out of {len(data)} total -> {dtype}')
         return dtype
-    
-    dtype = detect_categorical_type(data, max_categorical, min_threshold_percentage, min_coverage)
+
+    dtype = detect_categorical_type(data, max_categorical, min_threshold_percentage, min_categorical_coverage, max_categorical_chars)
     if dtype is not None:
         # Log histogram in single line for categorical
         value_counts = data.value_counts().sort('count', descending=True)

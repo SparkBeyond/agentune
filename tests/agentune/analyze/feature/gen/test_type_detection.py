@@ -123,7 +123,7 @@ class TestBasicTypeDetectors:
     def test_is_categorical_valid_categories(self) -> None:
         """Test categorical detection with valid categories."""
         data = pl.Series(['red', 'blue', 'red', 'green', 'blue', 'red', 'yellow'] * 10)  # 70 items
-        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.05, min_coverage=0.8)
+        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.05, min_coverage=0.8, max_chars=30)
         assert isinstance(result, types.EnumDtype)
         assert len(result.values) <= 5
     
@@ -131,20 +131,20 @@ class TestBasicTypeDetectors:
         """Test categorical detection with insufficient coverage."""
         # Create data where top categories don't meet coverage threshold
         data = pl.Series(['a'] * 10 + ['b'] * 5 + [f'rare_{i}' for i in range(100)])  # 115 total
-        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.01, min_coverage=0.8)
+        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.01, min_coverage=0.8, max_chars=30)
         assert result is None
     
     def test_is_categorical_below_threshold_percentage(self) -> None:
         """Test categorical detection with categories below threshold percentage."""
         # All categories appear only once (too rare)
         data = pl.Series([f'item_{i}' for i in range(100)])
-        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.05, min_coverage=0.8)
+        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.05, min_coverage=0.8, max_chars=30)
         assert result is None
     
     def test_is_categorical_exactly_max_categories(self) -> None:
         """Test categorical detection with exactly max categories."""
         data = pl.Series(['a'] * 30 + ['b'] * 25 + ['c'] * 20 + ['d'] * 15 + ['e'] * 10)  # 100 total
-        result = detect_categorical_type(data, max_categorical=4, min_threshold_percentage=0.05, min_coverage=0.8)
+        result = detect_categorical_type(data, max_categorical=4, min_threshold_percentage=0.05, min_coverage=0.8, max_chars=30)
         assert isinstance(result, types.EnumDtype)
         assert len(result.values) == 4  # 4 categories
 
@@ -192,7 +192,7 @@ class TestDecideDtype:
         query = Query('test_string', 'What is the description?', types.string)
         # Create data with many unique values (low coverage)
         data = pl.Series([f'description_{i}' for i in range(100)])
-        result = decide_dtype(query, data, max_categorical=5, min_coverage=0.8)
+        result = decide_dtype(query, data, max_categorical=5, min_categorical_coverage=0.8)
         assert result == types.string
     
     def test_decide_dtype_empty_data(self) -> None:
@@ -296,7 +296,7 @@ class TestEdgeCases:
             + ['category_c'] * 600
             + [f'rare_{i}' for i in range(100)]
         )
-        result = decide_dtype(query, data, max_categorical=5, min_coverage=0.8)
+        result = decide_dtype(query, data, max_categorical=5, min_categorical_coverage=0.8)
         assert isinstance(result, types.EnumDtype)
     
     def test_all_same_value(self) -> None:
