@@ -29,7 +29,7 @@ def discover_problem(data: FeatureSearchInputData, description: ProblemDescripti
     Note that the concrete classes that can be returned are ClassificationProblem and RegressionProblem;
     the base class Problem is abstract.
 
-    The classes are discovered from the feature evaluation dataset, which is read once.
+    The classes are discovered from the train dataset, which is read once.
     This can take unbounded time, so it should be run on the threadpool.
 
     It can also run out of memory if the target column has very high cardinality.
@@ -69,7 +69,7 @@ def discover_problem(data: FeatureSearchInputData, description: ProblemDescripti
                 classes = target_dtype.values
             else:
                 with conn.cursor() as cursor:
-                    source_rel = data.feature_eval.to_duckdb(cursor)
+                    source_rel = data.train.to_duckdb(cursor)
                     cursor.register('source', source_rel)
                     # Unfortunately the `limit` doesn't actually stop duckdb from collecting all distinct values in memory first,
                     # even if there are many more than the limit.
