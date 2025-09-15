@@ -12,6 +12,11 @@ from agentune.analyze.feature.stats.base import FeatureWithFullStats
 
 
 class FeatureSelector[F: Feature](ABC):
+    """Select a subset of the candidate features.
+
+    The feature stats are calculated on the feature eval dataset.
+    """
+
     @abstractmethod
     async def aadd_feature(self, feature_with_stats: FeatureWithFullStats) -> None: ...
 
