@@ -9,7 +9,7 @@ import attrs
 import duckdb
 import polars as pl
 import pytest
-from duckdb.duckdb import DuckDBPyConnection
+from duckdb.duckdb import CatalogException, DuckDBPyConnection
 
 from agentune.analyze.core import types
 from agentune.analyze.core.database import (
@@ -108,6 +108,14 @@ def test_duckdb_manager_config() -> None:
             "Sanity check of what we're testing"
         assert conn.sql("SELECT current_setting('python_enable_replacements')").fetchone() == (False, ), \
             'Default value of setting set in DuckdbConnectionConfig overrides duckdb default'
+
+        df = pl.DataFrame({'id': [1]}) # noqa: F841
+        with ddb_manager.cursor() as conn2:
+            conn2.execute('SET python_enable_replacements = true;')
+            conn2.execute('select * from df') # Works if enabled explicitly for a connection
+        with ddb_manager.cursor() as conn3:
+            with pytest.raises(CatalogException, match='Table with name df does not exist'):
+                conn3.execute('select * from df') # Other connections are not affected by it being enabled on a previous connection
 
         default_threads = cast(int, conn.sql("SELECT current_setting('threads')").fetchall()[0][0])
         assert default_threads > 1, "Sanity check of what we're testing (fails on a single core machine, sorry)"
