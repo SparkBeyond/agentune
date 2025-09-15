@@ -6,6 +6,7 @@ from attrs import field, frozen
 from frozendict import frozendict
 
 from agentune.analyze.core import types
+from agentune.analyze.core.database import DuckdbName
 from agentune.analyze.core.schema import Field
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.util.attrutil import frozendict_converter
@@ -46,7 +47,7 @@ class ProblemDescription:
     date_column: str | None = None
     comments: str | None = None
     main_table: TableDescription | None = None # To comment on other columns of the main table
-    secondary_tables: frozendict[str, TableDescription] = field(default=frozendict(), converter=frozendict_converter)
+    secondary_tables: frozendict[DuckdbName, TableDescription] = field(default=frozendict(), converter=frozendict_converter)
 
     def __attrs_post_init__(self) -> None:
         if self.problem_type == 'classification' and isinstance(self.target_desired_outcome, RegressionDirection):

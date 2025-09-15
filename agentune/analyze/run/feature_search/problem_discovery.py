@@ -4,6 +4,8 @@ from typing import cast
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
+from agentune.analyze.core.database import DuckdbTable
+from agentune.analyze.core.schema import Schema
 from agentune.analyze.feature.problem import (
     ClassificationClass,
     ClassificationProblem,
@@ -11,6 +13,7 @@ from agentune.analyze.feature.problem import (
     ProblemDescription,
     RegressionDirection,
     RegressionProblem,
+    TableDescription,
     TargetKind,
 )
 from agentune.analyze.run.feature_search.base import FeatureSearchInputData
@@ -94,6 +97,20 @@ def discover_problem(data: FeatureSearchInputData, description: ProblemDescripti
                 raise ValueError(f'Target column {description.target_column} dtype {target_dtype} not supported '
                                 f'with desired outcome {description.target_desired_outcome}')
 
+def _validate_table_description(description: TableDescription, schema: Schema, name: str) -> None:
+    for col_name in description.column_descriptions:
+        if col_name not in schema.names:
+            raise ValueError(f'Description given for column {col_name} but it does not exist in {name}')
+
+def _validate_secondary_table(table: DuckdbTable, conn: DuckDBPyConnection, description: ProblemDescription) -> None:
+    if not DuckdbTable.exists(table.name, conn):
+        raise ValueError(f'Secondary table {table.name} does not exist')
+    actual_table = DuckdbTable.from_duckdb(table.name, conn)
+    if actual_table.schema != table.schema:
+        raise ValueError(f'Secondary table {table.name} has schema {actual_table.schema} but input specifies schema {table.schema}')
+    if actual_table.name in description.secondary_tables:
+        _validate_table_description(description.secondary_tables[actual_table.name], actual_table.schema, f'table {table.name}')
+
 
 
 def validate_input(data: FeatureSearchInputData, problem: Problem, conn: DuckDBPyConnection) -> None:
@@ -109,6 +126,14 @@ def validate_input(data: FeatureSearchInputData, problem: Problem, conn: DuckDBP
 
     This can take unbounded time, so it should be run on the threadpool.
     """
+    if problem.problem_description.main_table is not None:
+        _validate_table_description(problem.problem_description.main_table, data.feature_search.schema, 'feature search input')
+    for secondary_table in problem.problem_description.secondary_tables:
+        if secondary_table not in data.join_strategies.tables:
+            raise ValueError(f'Description given for secondary table {secondary_table} but it does not exist in feature search input')
+    for secondary_table_with_join_strategies in data.join_strategies.tables.values():
+        _validate_secondary_table(secondary_table_with_join_strategies.table, conn, problem.problem_description)
+
     target_name = problem.target_column.name
     for name, source in [('feature search', data.feature_search.as_source()), ('feature evaluation', data.feature_eval), ('train', data.train), ('test', data.test)]:
         source_rel = source.to_duckdb(conn)

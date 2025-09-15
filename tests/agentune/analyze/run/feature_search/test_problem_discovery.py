@@ -6,13 +6,16 @@ import pytest
 from duckdb.duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
+from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.schema import Field
 from agentune.analyze.feature.problem import (
     ClassificationProblem,
     ProblemDescription,
     RegressionDirection,
     RegressionProblem,
+    TableDescription,
 )
+from agentune.analyze.join.base import TablesWithJoinStrategies, TableWithJoinStrategies
 from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.feature_search import problem_discovery
 
@@ -173,3 +176,60 @@ def test_fail_on_invalid_float_target_values(run_context: RunContext) -> None:
             # Clean for next cycle
             conn.execute(f'delete from input where target {operator} {invalid_value}')
             assert conn.fetchone() == (1,)
+
+def test_table_descriptions(run_context: RunContext, conn: DuckDBPyConnection) -> None:
+    conn.execute('create table secondary(y int)')
+    secondary_table = DuckdbTable.from_duckdb('secondary', conn)
+
+    input_data = input_data_from_df(run_context, pl.DataFrame({
+        'x': [float(x % 10) for x in range(1, 1000)],
+        'target': [float(t % 3) for t in range(1, 1000)],
+    }))
+    input_data = attrs.evolve(input_data, join_strategies=TablesWithJoinStrategies.from_list([
+        TableWithJoinStrategies(secondary_table, {})
+    ]))
+
+    problem = RegressionProblem(
+        ProblemDescription('target'),
+        input_data.feature_search.schema['target']
+    )
+    problem_discovery.validate_input(input_data, problem, conn) # No descriptions - OK
+
+    problem = RegressionProblem(
+        ProblemDescription('target', main_table=TableDescription(column_descriptions={'x': 'x column', 'target': 'target column'})),
+        input_data.feature_search.schema['target']
+    )
+    problem_discovery.validate_input(input_data, problem, conn) # Description of main table column - OK
+
+    with pytest.raises(ValueError, match='column y but it does not exist in feature search input'):
+        problem = RegressionProblem(
+            ProblemDescription('target', main_table=TableDescription(column_descriptions={'y': 'y column'})),
+            input_data.feature_search.schema['target']
+        )
+        problem_discovery.validate_input(input_data, problem, conn)
+
+    problem = RegressionProblem(
+        ProblemDescription('target', secondary_tables={secondary_table.name: TableDescription('secondary table')}),
+        input_data.feature_search.schema['target']
+    )
+    problem_discovery.validate_input(input_data, problem, conn) # Description of secondary table - OK
+
+    problem = RegressionProblem(
+        ProblemDescription('target', secondary_tables={secondary_table.name: TableDescription('secondary table', column_descriptions={'y': 'y column'})}),
+        input_data.feature_search.schema['target']
+    )
+    problem_discovery.validate_input(input_data, problem, conn) # Description of secondary table column - OK
+
+    with pytest.raises(ValueError, match='it does not exist in feature search input'):
+        problem = RegressionProblem(
+            ProblemDescription('target', secondary_tables={DuckdbName.qualify('tertiary', conn): TableDescription('secondary table', column_descriptions={'y': 'y column'})}),
+            input_data.feature_search.schema['target']
+        )
+        problem_discovery.validate_input(input_data, problem, conn)
+
+    with pytest.raises(ValueError, match='column z but it does not exist in table'):
+        problem = RegressionProblem(
+            ProblemDescription('target', secondary_tables={secondary_table.name: TableDescription('secondary table', column_descriptions={'z': 'z column'})}),
+            input_data.feature_search.schema['target']
+        )
+        problem_discovery.validate_input(input_data, problem, conn)
