@@ -39,11 +39,6 @@ from agentune.analyze.feature.select.base import (
     SyncFeatureSelector,
 )
 from agentune.analyze.feature.stats.base import FeatureStats, FeatureWithFullStats
-from agentune.analyze.feature.stats.stats import (
-    BooleanFeatureStats,
-    CategoricalFeatureStats,
-    NumericFeatureStats,
-)
 from agentune.analyze.join.base import JoinStrategy, TablesWithJoinStrategies
 
 _logger = logging.getLogger(__name__)
@@ -81,12 +76,12 @@ class ToySyncFeature(SyncFloatFeature):
         return []
         
     @override
-    def evaluate(self, args: tuple[Any, ...], 
+    def evaluate(self, args: tuple[Any, ...],
                  conn: DuckDBPyConnection) -> float:
         return args[0] + args[1]
     
     @override
-    def evaluate_batch(self, input: Dataset, 
+    def evaluate_batch(self, input: Dataset,
                        conn: DuckDBPyConnection) -> pl.Series:
         return input.data.get_column(self.col1) + input.data.get_column(self.col2)
     
@@ -122,12 +117,12 @@ class ToyAsyncFeature(FloatFeature):
         return []
         
     @override
-    async def aevaluate(self, args: tuple[Any, ...], 
+    async def aevaluate(self, args: tuple[Any, ...],
                         conn: DuckDBPyConnection) -> float:
         return args[0] + args[1]
     
     @override
-    async def aevaluate_batch(self, input: Dataset, 
+    async def aevaluate_batch(self, input: Dataset,
                               conn: DuckDBPyConnection) -> pl.Series:
         return input.data.get_column(self.col1) + input.data.get_column(self.col2)
     
@@ -199,25 +194,18 @@ class ToyAsyncFeatureDescriber(FeatureDescriber[Feature]):
 
 @frozen
 class ToySyncFeatureSelector(SyncFeatureSelector[Feature]):
-    features: list[FeatureWithFullStats[Feature]] = field(factory=list)
+    features: list[FeatureWithFullStats] = field(factory=list)
 
     @override
-    def add_feature(self, feature_with_stats: FeatureWithFullStats[Feature]) -> None:
+    def add_feature(self, feature_with_stats: FeatureWithFullStats) -> None:
         self.features.append(feature_with_stats)
     
     @staticmethod
     def some_metric(stats: FeatureStats) -> float:
-        if isinstance(stats, NumericFeatureStats):
-            return stats.mean
-        elif isinstance(stats, CategoricalFeatureStats):
-            return stats.unique_count
-        elif isinstance(stats, BooleanFeatureStats):
-            return stats.coverage
-        else:
-            raise TypeError(f'Unknown feature stats type: {type(stats)}')
+        return float(len(stats.support))
 
     @override
-    def select_final_features(self, problem: Problem) -> list[FeatureWithFullStats[Feature]]:
+    def select_final_features(self, problem: Problem) -> list[FeatureWithFullStats]:
         average_metric = math.nan if len(self.features) == 0 \
             else sum(ToySyncFeatureSelector.some_metric(x.stats.feature) for x in self.features) / len(self.features)
         selected = [x for x in self.features if ToySyncFeatureSelector.some_metric(x.stats.feature) >= average_metric]
@@ -226,15 +214,15 @@ class ToySyncFeatureSelector(SyncFeatureSelector[Feature]):
 
 @frozen
 class ToyAsyncFeatureSelector(FeatureSelector[Feature]):
-    features: list[FeatureWithFullStats[Feature]] = field(factory=list)
+    features: list[FeatureWithFullStats] = field(factory=list)
 
     @override
-    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats[Feature]) -> None:
+    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats) -> None:
         await asyncio.sleep(0)
         self.features.append(feature_with_stats)
 
     @override
-    async def aselect_final_features(self, problem: Problem) -> list[FeatureWithFullStats[Feature]]:
+    async def aselect_final_features(self, problem: Problem) -> list[FeatureWithFullStats]:
         await asyncio.sleep(0)
         average_metric = math.nan if len(self.features) == 0 \
             else sum(ToySyncFeatureSelector.some_metric(x.stats.feature) for x in self.features) / len(self.features)

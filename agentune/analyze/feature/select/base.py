@@ -13,24 +13,24 @@ from agentune.analyze.feature.stats.base import FeatureWithFullStats
 
 class FeatureSelector[F: Feature](ABC):
     @abstractmethod
-    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats[F]) -> None: ...
+    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats) -> None: ...
 
     @abstractmethod
-    async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats[F]]: ...
+    async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats]: ...
 
 class SyncFeatureSelector[F: Feature](FeatureSelector[F]):
     @abstractmethod
-    def add_feature(self, feature_with_stats: FeatureWithFullStats[F]) -> None: ...
+    def add_feature(self, feature_with_stats: FeatureWithFullStats) -> None: ...
 
     @override
-    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats[F]) -> None:
+    async def aadd_feature(self, feature_with_stats: FeatureWithFullStats) -> None:
         await asyncio.to_thread(self.add_feature, feature_with_stats)
 
     @abstractmethod
-    def select_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats[F]]: ...
+    def select_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats]: ...
 
     @override
-    async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats[F]]:
+    async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats]:
         return await asyncio.to_thread(self.select_final_features, problem)
 
 class EnrichedFeatureSelector(ABC):

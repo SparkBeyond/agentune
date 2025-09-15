@@ -147,7 +147,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                                                       enriched_eval_sink, params.evaluators, conn,
                                                       keep_input_columns=(problem.target_column.name,),
                                                       deduplicate_names=False)
-                features_with_eval_stats: list[FeatureWithFullStats[Feature]] = \
+                features_with_eval_stats: list[FeatureWithFullStats] = \
                     await self._calculate_feature_stats_single_data(deduplicated_selected_features,
                                                                     enriched_eval_sink.as_source(conn),
                                                                     problem, conn)
@@ -159,7 +159,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                                                       enriched_test_sink, params.evaluators, conn,
                                                       keep_input_columns=(problem.target_column.name,),
                                                       deduplicate_names=False)
-                features_with_test_stats: list[FeatureWithFullStats[Feature]] = \
+                features_with_test_stats: list[FeatureWithFullStats] = \
                     await self._calculate_feature_stats_single_data(deduplicated_selected_features,
                                                                     enriched_test_sink.as_source(conn),
                                                                     problem, conn)
@@ -309,7 +309,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                 (feature, DatasetSource.from_table(next(table for table in enriched_groups if feature.name in table.schema.names)))
                 for feature in candidate_features
             ]
-            features_with_stats: list[FeatureWithFullStats[Feature]] = \
+            features_with_stats: list[FeatureWithFullStats] = \
                 await self._calculate_feature_stats(features_with_data, target_series, problem, conn)
 
             if isinstance(selector, SyncFeatureSelector):
@@ -360,7 +360,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
 
     async def _calculate_feature_stats(self, features_with_data: list[tuple[Feature, DatasetSource]],
                                        target_series: pl.Series, problem: Problem,
-                                       conn: DuckDBPyConnection) -> list[FeatureWithFullStats[Feature]]:
+                                       conn: DuckDBPyConnection) -> list[FeatureWithFullStats]:
         # Stats calculators are always synchronous. We run them on a single thread, one feature at a time;
         # we could use several threads.
         with conn.cursor() as cursor: # for new thread
@@ -368,10 +368,9 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                 result = []
                 for feature, data_source in features_with_data:
                     dataset = data_source.select(feature.name).to_dataset(cursor)
-                    feature_stats = stats_calculators.default_feature_stats_calculator.calculate_from_series(feature, dataset.data[feature.name])
-                    relationship_stats_calculator = \
-                        stats_calculators.default_regression_calculator if problem.target_kind == 'regression' \
-                        else stats_calculators.default_classification_calculator
+                    feature_stats_calculator = stats_calculators.UnifiedStatsCalculator()
+                    feature_stats = feature_stats_calculator.calculate_from_series(feature, dataset.data[feature.name])
+                    relationship_stats_calculator = stats_calculators.UnifiedRelationshipStatsCalculator()
                     relationship_stats = relationship_stats_calculator.calculate_from_series(feature, dataset.data[feature.name],
                                                                                              target_series, problem)
                     feature_with_stats = FeatureWithFullStats(feature, FullFeatureStats(feature_stats, relationship_stats))
@@ -382,7 +381,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
 
     async def _calculate_feature_stats_single_data(self, features: list[Feature],
                                                    dataset_source: DatasetSource, problem: Problem,
-                                                   conn: DuckDBPyConnection) -> list[FeatureWithFullStats[Feature]]:
+                                                   conn: DuckDBPyConnection) -> list[FeatureWithFullStats]:
         target_source = dataset_source.select(problem.target_column.name)
         with conn.cursor() as cursor:
             target_series = (await asyncio.to_thread(target_source.to_dataset, cursor)).data[problem.target_column.name]

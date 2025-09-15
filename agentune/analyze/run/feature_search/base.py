@@ -102,8 +102,8 @@ class FeatureSearchResults:
     enriched_test:  as above, for the test dataset.
     """
     problem: Problem
-    features_with_train_stats: tuple[FeatureWithFullStats[Feature], ...]
-    features_with_test_stats: tuple[FeatureWithFullStats[Feature], ...]
+    features_with_train_stats: tuple[FeatureWithFullStats, ...]
+    features_with_test_stats: tuple[FeatureWithFullStats, ...]
     enriched_train: DuckdbTable | None = None
     enriched_test: DuckdbTable | None = None
 
