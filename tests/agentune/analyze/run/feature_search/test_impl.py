@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, override
 
+import attrs
 import polars as pl
 import pytest
 from attrs import frozen
@@ -168,8 +169,13 @@ async def _test_feature_search(input_data: FeatureSearchInputData, run_context: 
     assert results.enriched_train is None
     assert results.enriched_test is None
 
+    # Regression test - check that all components are reusable and don't keep state from the last run
+    # Don't require the order of the features to stay the same
     results2 = await feature_search_runner.run(run_context, input_data, params)
-    assert results2 == results # Regression test - check that all components are reusable and don't keep state from the last run
+    assert set(results2.features_with_train_stats) == set(results.features_with_train_stats)
+    assert set(results2.features_with_test_stats) == set(results.features_with_test_stats)
+    assert attrs.evolve(results2, features_with_train_stats=results.features_with_train_stats,
+                        features_with_test_stats=results.features_with_test_stats) == results
 
     with run_context.ddb_manager.cursor() as conn:
         table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()

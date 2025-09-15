@@ -3,6 +3,7 @@
 import httpx
 import polars as pl
 import pytest
+from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
@@ -21,6 +22,7 @@ from agentune.analyze.feature.gen.insightful_text_generator.formatting.base impo
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
 
 
+@frozen
 class SimpleFormatter(DataFormatter):
     """Simple formatter that returns readable text."""
     params = Schema(cols=(
@@ -59,7 +61,6 @@ async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSp
 class TestFeatureTypes:
     """Tests for each feature type using create_feature and real LLM evaluation."""
 
-    @pytest.mark.skip(reason='Waiting for LLM model to be hashable')  # TODO: remove when LLM is hashable
     def test_feature_objects_are_hashable(self, formatter: DataFormatter, real_llm_with_spec: LLMWithSpec) -> None:
         """Test that all feature objects are hashable and can be used in sets/dicts."""
         # Create different feature types

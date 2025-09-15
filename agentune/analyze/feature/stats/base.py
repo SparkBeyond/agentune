@@ -111,7 +111,6 @@ class RelationshipStatsCalculator[F: Feature](ABC):
 
     Type parameters:
     F: The type of features to calculate statistics for
-    T: The type of target (classification or regression)
     """
     
     @abstractmethod

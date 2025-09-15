@@ -69,11 +69,21 @@ def _register_context_aware_functions(context: SerializationContext, converter: 
 
 @frozen
 class LLMWithSpec:
-    """Classes that use LLMs should use this as the parameter type. It is unstructured by storing 
-    only the LLMSpec, and automatically structured as an LLMWithSpec in the presence of a SerializationContext.
+    """Classes that use LLMs should use this as the parameter type.
+
+    It is unstructured by storing only the LLMSpec, and automatically structured
+    as an LLMWithSpec in the presence of a SerializationContext.
+
+    Equality ignores the LLM and compares only the LLMSpec.
     """
     spec: LLMSpec
     llm: LLM
+
+    def __hash__(self) -> int:
+        return hash(self.spec)
+
+    def __eq__(self, value: object) -> bool:
+        return isinstance(value, LLMWithSpec) and self.spec == value.spec
 
 
 @register_context_structure_hook
