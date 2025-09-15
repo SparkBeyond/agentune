@@ -11,7 +11,7 @@ from agentune.analyze.feature.problem import Problem
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
 
 
-class FeatureSelector[F: Feature](ABC):
+class FeatureSelector(ABC):
     """Select a subset of the candidate features.
 
     The feature stats are calculated on the feature eval dataset.
@@ -23,7 +23,7 @@ class FeatureSelector[F: Feature](ABC):
     @abstractmethod
     async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats]: ...
 
-class SyncFeatureSelector[F: Feature](FeatureSelector[F]):
+class SyncFeatureSelector(FeatureSelector):
     @abstractmethod
     def add_feature(self, feature_with_stats: FeatureWithFullStats) -> None: ...
 

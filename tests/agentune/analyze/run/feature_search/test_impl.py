@@ -125,7 +125,7 @@ class SimpleCategoricalFeature(CategoricalFeature):
         return None
 
 @frozen
-class SimplePrebuiltFeaturesGenerator(SyncFeatureGenerator[Feature]):
+class SimplePrebuiltFeaturesGenerator(SyncFeatureGenerator):
     features: tuple[GeneratedFeature, ...]
 
     @override
@@ -243,6 +243,7 @@ def test_update_feature_defaults() -> None:
                                        default_for_infinity=math.inf, default_for_neg_infinity=math.inf)
 
     adjusted_float_feature = runner._update_feature_defaults(float_feature, pl.Series([-1.0, 0.0, 1.0]))
+    assert isinstance(adjusted_float_feature, FloatFeature)
     assert adjusted_float_feature.default_for_missing == 0.0
     assert adjusted_float_feature.default_for_nan == 0.0
     assert adjusted_float_feature.default_for_infinity == 2.0

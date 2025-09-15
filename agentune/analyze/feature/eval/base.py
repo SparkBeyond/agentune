@@ -9,11 +9,11 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.dataset import Dataset
-from agentune.analyze.feature.base import Feature, SyncFeature
+from agentune.analyze.feature.base import Feature
 from agentune.analyze.util.polarutil import series_field
 
 
-class FeatureEvaluator[F: Feature](ABC): 
+class FeatureEvaluator(ABC):
     """A feature evaluator can evaluate many features at once more efficiently than calling each feature's evaluate method one by one.
     
     This works only for features with particular similiarities: e.g. a group of async features, SQL query features, or AST-based features.
@@ -21,7 +21,7 @@ class FeatureEvaluator[F: Feature](ABC):
 
     @classmethod
     @abstractmethod
-    def supports_feature(cls, feature: F) -> bool: 
+    def supports_feature(cls, feature: Feature) -> bool:
         """Whether this evaluator can evaluate this feature, together with other features for which it returns True,
         more efficiently than evaluating them one by one (or in parallel in the case of async features).
         """
@@ -29,11 +29,11 @@ class FeatureEvaluator[F: Feature](ABC):
 
     @classmethod
     @abstractmethod
-    def for_features(cls, features: Sequence[F]) -> Self: ...
+    def for_features(cls, features: Sequence[Feature]) -> Self: ...
 
     @property
     @abstractmethod
-    def features(self) -> Sequence[F]: 
+    def features(self) -> Sequence[Feature]:
         ...
 
     @abstractmethod
@@ -49,7 +49,7 @@ class FeatureEvaluator[F: Feature](ABC):
         """
         ...
 
-class SyncFeatureEvaluator[F: SyncFeature](FeatureEvaluator[F]):
+class SyncFeatureEvaluator(FeatureEvaluator):
     @abstractmethod
     def evaluate(self, dataset: Dataset,
                  conn: DuckDBPyConnection) -> Dataset:

@@ -6,7 +6,7 @@ than specialized batch evaluators but ensures all features can be evaluated.
 """
 import asyncio
 from collections.abc import Sequence
-from typing import Self, override
+from typing import Self, cast, override
 
 import polars as pl
 from attrs import frozen
@@ -19,7 +19,7 @@ from agentune.analyze.feature.eval.base import FeatureEvaluator, SyncFeatureEval
 
 
 @frozen
-class UniversalSyncFeatureEvaluator(SyncFeatureEvaluator[SyncFeature]):
+class UniversalSyncFeatureEvaluator(SyncFeatureEvaluator):
     """Universal evaluator for sync features using their batch_evaluate methods."""
     
     features: tuple[SyncFeature, ...]
@@ -31,8 +31,8 @@ class UniversalSyncFeatureEvaluator(SyncFeatureEvaluator[SyncFeature]):
 
     @override 
     @classmethod
-    def for_features(cls, features: Sequence[SyncFeature]) -> Self:
-        return cls(tuple(features))
+    def for_features(cls, features: Sequence[Feature]) -> Self:
+        return cls(cast(tuple[SyncFeature, ...], tuple(features)))
 
     @override
     def evaluate(self, dataset: Dataset,
@@ -43,7 +43,7 @@ class UniversalSyncFeatureEvaluator(SyncFeatureEvaluator[SyncFeature]):
 
 
 @frozen    
-class UniversalAsyncFeatureEvaluator(FeatureEvaluator[Feature]):
+class UniversalAsyncFeatureEvaluator(FeatureEvaluator):
     """Universal evaluator for async features using their aevaluate_batch methods."""
     
     features: tuple[Feature, ...]

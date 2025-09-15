@@ -126,10 +126,10 @@ class ToyAsyncFeature(FloatFeature):
                               conn: DuckDBPyConnection) -> pl.Series:
         return input.data.get_column(self.col1) + input.data.get_column(self.col2)
     
-class ToySyncFeatureGenerator(SyncFeatureGenerator[ToySyncFeature]):
+class ToySyncFeatureGenerator(SyncFeatureGenerator):
     @override
     def generate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                 conn: DuckDBPyConnection) -> Iterator[GeneratedFeature[ToySyncFeature]]:
+                 conn: DuckDBPyConnection) -> Iterator[GeneratedFeature]:
         for col1 in feature_search.schema.cols:
             for col2 in feature_search.schema.cols:
                 if problem.target_column.name not in (col1.name, col2.name) and \
@@ -138,10 +138,10 @@ class ToySyncFeatureGenerator(SyncFeatureGenerator[ToySyncFeature]):
                                              f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
                     yield GeneratedFeature(feature, False)
 
-class ToyAsyncFeatureGenerator(FeatureGenerator[ToyAsyncFeature]):
+class ToyAsyncFeatureGenerator(FeatureGenerator):
     @override
     async def agenerate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                        conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[ToyAsyncFeature]]:
+                        conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature]:
         for col1 in feature_search.schema.cols:
             for col2 in feature_search.schema.cols:
                 if problem.target_column.name not in (col1.name, col2.name) and \
@@ -152,7 +152,7 @@ class ToyAsyncFeatureGenerator(FeatureGenerator[ToyAsyncFeature]):
                     yield GeneratedFeature(feature, False)
 
 @frozen
-class ToyPrebuiltFeaturesGenerator(SyncFeatureGenerator[Feature]):
+class ToyPrebuiltFeaturesGenerator(SyncFeatureGenerator):
     features: tuple[Feature, ...]
 
     @override
@@ -161,7 +161,7 @@ class ToyPrebuiltFeaturesGenerator(SyncFeatureGenerator[Feature]):
         for feature in self.features:
             yield GeneratedFeature(feature, True)
 
-class ToySyncFeatureTransformer(SyncFeatureTransformer[Feature, Feature]):
+class ToySyncFeatureTransformer(SyncFeatureTransformer):
     @override
     def transform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
                   conn: DuckDBPyConnection, feature: Feature) -> list[Feature]:
@@ -170,7 +170,7 @@ class ToySyncFeatureTransformer(SyncFeatureTransformer[Feature, Feature]):
         else:
             return [agentune.analyze.util.copy.replace(feature, name=f'{feature.name}, transformed')]
 
-class ToyAsyncFeatureTransformer(FeatureTransformer[Feature, Feature]):
+class ToyAsyncFeatureTransformer(FeatureTransformer):
     @override
     async def atransform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
                          conn: DuckDBPyConnection, feature: Feature) -> list[Feature]:
@@ -180,12 +180,12 @@ class ToyAsyncFeatureTransformer(FeatureTransformer[Feature, Feature]):
         else:
             return [agentune.analyze.util.copy.replace(feature, name=f'{feature.name}, transformed')]
 
-class ToySyncFeatureDescriber(SyncFeatureDescriber[Feature]):
+class ToySyncFeatureDescriber(SyncFeatureDescriber):
     @override
     def description(self, feature: Feature) -> str:
         return f'{feature.name} described'
 
-class ToyAsyncFeatureDescriber(FeatureDescriber[Feature]):
+class ToyAsyncFeatureDescriber(FeatureDescriber):
     @override
     async def adescription(self, feature: Feature) -> str:
         await asyncio.sleep(0)
@@ -193,7 +193,7 @@ class ToyAsyncFeatureDescriber(FeatureDescriber[Feature]):
     
 
 @frozen
-class ToySyncFeatureSelector(SyncFeatureSelector[Feature]):
+class ToySyncFeatureSelector(SyncFeatureSelector):
     features: list[FeatureWithFullStats] = field(factory=list)
 
     @override
@@ -213,7 +213,7 @@ class ToySyncFeatureSelector(SyncFeatureSelector[Feature]):
         return selected
 
 @frozen
-class ToyAsyncFeatureSelector(FeatureSelector[Feature]):
+class ToyAsyncFeatureSelector(FeatureSelector):
     features: list[FeatureWithFullStats] = field(factory=list)
 
     @override

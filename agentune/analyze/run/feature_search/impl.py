@@ -336,22 +336,22 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
             else:
                 return list(await selector.aselect_features(candidate_features, enriched_source, problem, conn))
 
-    def _update_feature_defaults[F: Feature](self, feature: F, enriched: pl.Series) -> F:
+    def _update_feature_defaults(self, feature: Feature, enriched: pl.Series) -> Feature:
         match feature:
             case IntFeature():
-                return cast(F, attrs.evolve(feature, default_for_missing=int(cast(float, enriched.median()))))
+                return attrs.evolve(feature, default_for_missing=int(cast(float, enriched.median())))
             case BoolFeature():
-                return cast(F, attrs.evolve(feature, default_for_missing=False))
+                return attrs.evolve(feature, default_for_missing=False)
             case CategoricalFeature():
-                return cast(F, attrs.evolve(feature, default_for_missing=CategoricalFeature.other_category))
+                return attrs.evolve(feature, default_for_missing=CategoricalFeature.other_category)
             case FloatFeature():
                 finite_values = enriched.replace([math.inf, -math.inf], [None, None])
                 max_val = cast(float, finite_values.max()) + 1
                 min_val = cast(float, finite_values.min()) - 1
                 substituted = enriched.replace([math.inf, -math.inf], [max_val, min_val])
                 median = cast(float, substituted.median())
-                return cast(F, attrs.evolve(feature, default_for_missing=median, default_for_nan=median,
-                                            default_for_infinity=max_val, default_for_neg_infinity=min_val))
+                return attrs.evolve(feature, default_for_missing=median, default_for_nan=median,
+                                    default_for_infinity=max_val, default_for_neg_infinity=min_val)
             case _:
                 raise TypeError(f'Unexpected feature type {type(feature)}')
 

@@ -10,7 +10,6 @@ from agentune.analyze.core import types
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field
 from agentune.analyze.core.sercontext import LLMWithSpec
-from agentune.analyze.feature.base import Feature
 from agentune.analyze.feature.gen.base import FeatureGenerator, GeneratedFeature
 from agentune.analyze.feature.gen.insightful_text_generator.dedup.base import (
     QueryDeduplicator,
@@ -49,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 @define
-class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
+class ConversationQueryFeatureGenerator(FeatureGenerator):
     # LLM and generation settings
     query_generator_model: LLMWithSpec
     num_samples_for_generation: int
@@ -196,7 +195,7 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
         return [query for query in results if query is not None]
 
     async def agenerate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                        conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]:
+                        conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature]:
         target_field = problem.target_column
         conversation_strategies = self.find_conversation_strategies(join_strategies)
 
@@ -229,4 +228,4 @@ class ConversationQueryFeatureGenerator[F: Feature](FeatureGenerator):
 
             # Yield features one by one
             for feature in features:
-                yield GeneratedFeature(feature, False)  # type: ignore[arg-type]
+                yield GeneratedFeature(feature, False)

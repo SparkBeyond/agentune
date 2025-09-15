@@ -14,28 +14,28 @@ from agentune.analyze.util.queue import Queue
 
 
 @frozen
-class GeneratedFeature[F: Feature]:
-    feature: F
+class GeneratedFeature:
+    feature: Feature
     has_good_defaults: bool
     # If False, the feature search will replace the feature's default values using some default logic;
     # if True, it will leave the existing defaults in place.
 
 
-class FeatureGenerator[F: Feature](ABC): 
+class FeatureGenerator(ABC):
     @abstractmethod
     def agenerate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                  conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]: ...
+                  conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature]: ...
 
 # Note that a SyncFeatureGenerator is a generator that operates synchronously, not a generator that generates SyncFeatures.
-class SyncFeatureGenerator[F: Feature](FeatureGenerator[F]):
+class SyncFeatureGenerator(FeatureGenerator):
     @abstractmethod
     def generate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                 conn: DuckDBPyConnection) -> Iterator[GeneratedFeature[F]]: ...
+                 conn: DuckDBPyConnection) -> Iterator[GeneratedFeature]: ...
 
     @override
     async def agenerate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                        conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature[F]]:
-        queue = Queue[GeneratedFeature[F]](1)
+                        conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature]:
+        queue = Queue[GeneratedFeature](1)
         with conn.cursor() as cursor:
             task = asyncio.create_task(asyncio.to_thread(
                 lambda: queue.consume(self.generate(feature_search.copy_to_thread(), problem, join_strategies, cursor))))
@@ -44,23 +44,24 @@ class SyncFeatureGenerator[F: Feature](FeatureGenerator[F]):
             await task
 
 
-class FeatureTransformer[FA: Feature, FB: Feature](ABC): 
+class FeatureTransformer(ABC):
     """Builds new features on top of an existing one.
-    For example, a FeatureTransformer[float, bool] which fits cutoffs and ranges to a numeric feature.
+
+    For example, it could transform float features to boolean ones by fitting cutoffs and ranges to a numeric feature.
     """
     @abstractmethod
     async def atransform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                         conn: DuckDBPyConnection, feature: FA) -> Sequence[FB] : ...
+                         conn: DuckDBPyConnection, feature: Feature) -> Sequence[Feature] : ...
 
 
-class SyncFeatureTransformer[FA: Feature, FB: Feature](FeatureTransformer[FA, FB]):
+class SyncFeatureTransformer(FeatureTransformer):
     @abstractmethod
     def transform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                  conn: DuckDBPyConnection, feature: FA) -> Sequence[FB] : ...
+                  conn: DuckDBPyConnection, feature: Feature) -> Sequence[Feature] : ...
 
     @override
     async def atransform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                         conn: DuckDBPyConnection, feature: FA) -> Sequence[FB]:
+                         conn: DuckDBPyConnection, feature: Feature) -> Sequence[Feature]:
         with conn.cursor() as cursor:
             return await asyncio.to_thread(self.transform, feature_search.copy_to_thread(), problem,
                                            join_strategies, cursor, feature)

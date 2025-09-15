@@ -82,7 +82,7 @@ class FeatureSearchParams:
     """
     problem_description: ProblemDescription
     generators: tuple[FeatureGenerator, ...]
-    selector: FeatureSelector[Feature] | EnrichedFeatureSelector
+    selector: FeatureSelector | EnrichedFeatureSelector
     # Must always include at least one evaluator willing to handle every feature generated.
     # Normally this means including the two universal evaluators at the end of the list.
     # Evaluators are tried in the order in which they appear.
