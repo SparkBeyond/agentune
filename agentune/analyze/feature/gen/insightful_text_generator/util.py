@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 
 from llama_index.core.llms import ChatMessage
 
@@ -40,16 +41,17 @@ async def execute_llm_caching_aware_columnar(llm_with_spec: LLMWithSpec, prompt_
 
 def extract_json_from_response(response: str) -> dict:
     """Extract JSON from LLM response."""
-    def _raise_no_json_error() -> None:
+    # Look for JSON code blocks using regex
+    # Pattern allows for optional newlines after ```json and before ```
+    json_pattern = r'```json\s*(.*?)\s*```'
+    matches = re.findall(json_pattern, response, re.DOTALL)
+    
+    if len(matches) == 0:
         raise ValueError('No JSON found in response')
+    elif len(matches) > 1:
+        raise ValueError(f'Multiple JSON sections found in response ({len(matches)} sections)')
     
-    start = response.find('{')
-    end = response.rfind('}') + 1
-    if start != -1 and end > start:
-        json_str = response[start:end]
-    else:
-        _raise_no_json_error()
-    
+    json_str = matches[0].strip()
     return json.loads(json_str)
 
 

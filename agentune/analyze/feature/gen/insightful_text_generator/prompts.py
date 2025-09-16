@@ -111,12 +111,13 @@ As data scientists, we are interested in the following high-level question:
 
 For the data instance above, please provide an answer to the question.
 Your format should be a dictionary with a single "{PARSER_OUT_FIELD}" key containing your answer.
-E.g:
-    {{{{
-        "{PARSER_OUT_FIELD}": <answer>
-    }}}}
-
-Please reply with a complete, parseable, properly structured JSON.
+Please respond with a proper json. Your answer will be parsed by a computer, so please ensure it is well-structured and valid JSON.
+The json code block should start with three backticks and end with three backticks, like this:
+```json
+{{{{
+    "{PARSER_OUT_FIELD}": <answer>
+}}}}
+```
 '''
 
 
