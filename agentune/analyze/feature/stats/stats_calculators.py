@@ -5,6 +5,7 @@ from typing import cast, override
 
 import numpy as np
 import polars as pl
+from scipy import stats
 
 from agentune.analyze.feature.base import (
     BoolFeature,
@@ -12,7 +13,7 @@ from agentune.analyze.feature.base import (
     Feature,
     NumericFeature,
 )
-from agentune.analyze.feature.problem import Problem
+from agentune.analyze.feature.problem import Problem, RegressionProblem
 from agentune.analyze.feature.stats.base import (
     BinningInfo,
     CategoryClassMatrix,
@@ -20,6 +21,12 @@ from agentune.analyze.feature.stats.base import (
     RelationshipStats,
     SyncFeatureStatsCalculator,
     SyncRelationshipStatsCalculator,
+)
+
+# Import regression stats classes from regression_stats module
+from agentune.analyze.feature.stats.regression_stats import (
+    NumericRegressionFeatureStats,
+    NumericRegressionRelationshipStats,
 )
 from agentune.analyze.util.feature_sse_reduction import calculate_sse_reduction
 
@@ -47,7 +54,10 @@ def _mean_shift_and_lift_from_confusion(matrix: np.ndarray
             ]
             lift_rows.append(tuple(float(x) for x in row_lift))
         else:
-            raise ValueError('An empty row was encountered in the confusion matrix.')
+            # Use NaN for empty rows, continue processing other rows
+            n_classes = matrix.shape[1]
+            mean_shift_rows.append(tuple(float('nan') for _ in range(n_classes)))
+            lift_rows.append(tuple(float('nan') for _ in range(n_classes)))
     return tuple(mean_shift_rows), tuple(lift_rows)
 
 
@@ -295,3 +305,142 @@ class UnifiedRelationshipStatsCalculator(SyncRelationshipStatsCalculator):
             totals_per_class=totals,
             missing_percentage_per_class=missing_pct,
         )
+
+
+# ---------------------------------------------------------------------------
+# Regression-specific calculators
+# ---------------------------------------------------------------------------
+
+class NumericRegressionStatsCalculator(UnifiedStatsCalculator):
+    """Calculator for enhanced numeric feature statistics in regression problems."""
+    
+    def __init__(self, n_histogram_bins: int = 10, numeric_feature_bins: int = 5):
+        """Initialize the calculator.
+        
+        Args:
+            n_histogram_bins: Number of bins to use for histograms (default: 10)
+            numeric_feature_bins: Number of bins for categorical conversion (inherited from UnifiedStatsCalculator)
+        """
+        super().__init__(numeric_feature_bins=numeric_feature_bins)
+        self.n_histogram_bins = n_histogram_bins
+    
+    @override
+    def calculate_from_series(self, feature: Feature, series: pl.Series) -> NumericRegressionFeatureStats:
+        """Calculate enhanced feature statistics for numeric features."""
+        # Get base statistics using parent class
+        base_stats = super().calculate_from_series(feature, series)
+        values = series.drop_nulls().to_numpy()
+        
+        # Calculate histogram for numeric features
+        counts, bin_edges = self._create_histogram(values)
+        return NumericRegressionFeatureStats(
+            n_total=base_stats.n_total,
+            n_missing=base_stats.n_missing,
+            categories=base_stats.categories,
+            value_counts=base_stats.value_counts,
+            support=base_stats.support,
+            histogram_counts=counts,
+            histogram_bin_edges=bin_edges
+        )
+    
+    def _create_histogram(self, values: np.ndarray) -> tuple[tuple[int, ...], tuple[float, ...]]:
+        """Create histogram from numeric values using numpy's standard format.
+        
+        Returns:
+            Tuple of (counts, bin_edges) where bin_edges has length len(counts) + 1
+        """
+        if len(values) == 0:
+            return (), ()
+        
+        # Use numpy's histogram function
+        counts, bin_edges = np.histogram(values, bins=self.n_histogram_bins)
+        
+        return tuple(int(c) for c in counts), tuple(float(e) for e in bin_edges)
+
+
+class NumericRegressionRelationshipStatsCalculator(UnifiedRelationshipStatsCalculator):
+    """Calculator for enhanced numeric feature-target relationship statistics in regression."""
+    
+    def __init__(self, numeric_feature_bins: int = 5, target_numeric_bins: int = 5):
+        """Initialize the calculator.
+        
+        Args:
+            numeric_feature_bins: Number of bins for categorical conversion (inherited)
+            target_numeric_bins: Number of bins for target conversion (inherited)
+        """
+        super().__init__(numeric_feature_bins=numeric_feature_bins, target_numeric_bins=target_numeric_bins)
+    
+    @override
+    def calculate_from_series(
+        self, feature: Feature, series: pl.Series, target: pl.Series, problem: Problem
+    ) -> NumericRegressionRelationshipStats:
+        """Calculate enhanced relationship statistics for numeric feature-target combinations."""
+        # Default correlation values
+        pearson_corr = spearman_corr = 0.0
+        base_stats = super().calculate_from_series(feature, series, target, problem)
+
+        if not feature.is_numeric() or not isinstance(problem, RegressionProblem):
+            raise ValueError('NumericRegressionRelationshipStatsCalculator can only be used for numeric features in regression problems.')
+
+        # Calculate correlations for numeric features in regression problems
+        df = pl.DataFrame({'feature': series, 'target': target}).drop_nulls()
+        # Need at least 2 data points to calculate correlation
+        if len(df) >= 2:  # noqa: PLR2004
+            feature_values = df['feature'].to_numpy()
+            target_values = df['target'].to_numpy()
+    
+            pearson_corr_result, _ = stats.pearsonr(feature_values, target_values)
+            spearman_corr_result, _ = stats.spearmanr(feature_values, target_values)
+            pearson_corr = float(pearson_corr_result)
+            spearman_corr = float(spearman_corr_result)
+
+        return NumericRegressionRelationshipStats(
+            n_total=base_stats.n_total,
+            n_missing=base_stats.n_missing,
+            classes=base_stats.classes,
+            lift=base_stats.lift,
+            mean_shift=base_stats.mean_shift,
+            sse_reduction=base_stats.sse_reduction,
+            binning_info=base_stats.binning_info,
+            totals_per_class=base_stats.totals_per_class,
+            missing_percentage_per_class=base_stats.missing_percentage_per_class,
+            pearson_correlation=pearson_corr,
+            spearman_correlation=spearman_corr
+        )
+
+
+def should_use_regression_stats(feature: Feature, problem: Problem) -> bool:
+    """Determine if regression statistics should be used for a feature-problem combination.
+    
+    Args:
+        feature: The feature to analyze
+        problem: The problem definition
+        
+    Returns:
+        True if both feature and target are numeric and it's a regression problem
+    """
+    return (
+        feature.is_numeric() and 
+        isinstance(problem, RegressionProblem) and
+        problem.target_column.dtype.is_numeric()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Factory functions for selecting appropriate calculators
+# ---------------------------------------------------------------------------
+
+def get_feature_stats_calculator(feature: Feature, problem: Problem) -> SyncFeatureStatsCalculator:
+    """Factory function to get the appropriate feature stats calculator based on feature and problem type."""
+    if should_use_regression_stats(feature, problem):
+        return NumericRegressionStatsCalculator()
+    else:
+        return UnifiedStatsCalculator()
+
+
+def get_relationship_stats_calculator(feature: Feature, problem: Problem) -> SyncRelationshipStatsCalculator:
+    """Factory function to get the appropriate relationship stats calculator based on feature and problem type."""
+    if should_use_regression_stats(feature, problem):
+        return NumericRegressionRelationshipStatsCalculator()
+    else:
+        return UnifiedRelationshipStatsCalculator()

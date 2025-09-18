@@ -366,9 +366,9 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                 result = []
                 for feature, data_source in features_with_data:
                     dataset = data_source.select(feature.name).to_dataset(cursor)
-                    feature_stats_calculator = stats_calculators.UnifiedStatsCalculator()
+                    feature_stats_calculator = stats_calculators.get_feature_stats_calculator(feature, problem)
                     feature_stats = feature_stats_calculator.calculate_from_series(feature, dataset.data[feature.name])
-                    relationship_stats_calculator = stats_calculators.UnifiedRelationshipStatsCalculator()
+                    relationship_stats_calculator = stats_calculators.get_relationship_stats_calculator(feature, problem)
                     relationship_stats = relationship_stats_calculator.calculate_from_series(feature, dataset.data[feature.name],
                                                                                              target_series, problem)
                     feature_with_stats = FeatureWithFullStats(feature, FullFeatureStats(feature_stats, relationship_stats))
