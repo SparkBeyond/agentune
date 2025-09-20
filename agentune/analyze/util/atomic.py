@@ -21,4 +21,11 @@ class AtomicInt:
         with self.__lock:
             self.__value += diff
             return self.__value
-    
+
+    def setmax(self, max_value: int) -> None:
+        with self.__lock:
+            self.__value = max(self.__value, max_value)
+
+    def setmin(self, min_value: int) -> None:
+        with self.__lock:
+            self.__value = min(self.__value, min_value)

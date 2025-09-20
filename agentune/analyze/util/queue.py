@@ -102,14 +102,14 @@ class Queue[T](Iterable[T], AsyncIterable[T]):
                 yield ret
                 raise StopAsyncIteration from None
     
-    def consume(self, iterator: Iterator[T], then_close: bool = True) -> None:
-        for x in iterator:
+    def consume(self, iterable: Iterable[T], then_close: bool = True) -> None:
+        for x in iterable:
             self.put(x)
         if then_close:
             self._queue.shutdown()
 
-    async def aconsume(self, iterator: AsyncIterator[T], then_close: bool = True) -> None:
-        async for x in iterator:
+    async def aconsume(self, iterable: AsyncIterable[T], then_close: bool = True) -> None:
+        async for x in iterable:
             await self.aput(x)
         if then_close:
             self._queue.shutdown()

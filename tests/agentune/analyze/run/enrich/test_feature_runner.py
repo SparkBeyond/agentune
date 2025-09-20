@@ -1,9 +1,12 @@
+import asyncio
 import functools
 import logging
 from collections.abc import Sequence
+from typing import Any, override
 
 import polars as pl
 import pytest
+from attrs import frozen
 from duckdb.duckdb import DuckDBPyConnection
 from tests.agentune.analyze.run.feature_search.toys import (
     ToyAsyncFeature,
@@ -16,14 +19,63 @@ from agentune.analyze.core.dataset import Dataset, DatasetSourceFromIterable
 from agentune.analyze.core.duckdbio import DuckdbTableSink, DuckdbTableSource
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.types import float64
+from agentune.analyze.feature.base import FloatFeature
 from agentune.analyze.feature.eval.base import FeatureEvaluator
 from agentune.analyze.feature.eval.universal import (
     UniversalAsyncFeatureEvaluator,
     UniversalSyncFeatureEvaluator,
 )
+from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
+from agentune.analyze.util.atomic import AtomicInt
 
 _logger = logging.getLogger(__name__)
+
+@frozen
+class CountingAsyncFeature(FloatFeature):
+    """Adds two float columns together. Sleep for a bit. Count max concurrent feature executions."""
+
+    concurrent_calls: AtomicInt
+    max_concurrent_calls: AtomicInt
+
+    col1: str
+    col2: str
+    name: str
+    description: str
+    technical_description: str
+
+    # Redeclare attributes with defaults
+    default_for_missing: float = 0.0
+    default_for_nan: float = 0.0
+    default_for_infinity: float = 0.0
+    default_for_neg_infinity: float = 0.0
+
+    @property
+    @override
+    def params(self) -> Schema:
+        return Schema((Field(self.col1, types.float64), Field(self.col2, types.float64), ))
+
+    @property
+    @override
+    def secondary_tables(self) -> list[DuckdbTable]:
+        return []
+
+    @property
+    @override
+    def join_strategies(self) -> list[JoinStrategy]:
+        return []
+
+    @override
+    async def aevaluate(self, args: tuple[Any, ...],
+                        conn: DuckDBPyConnection) -> float:
+        self.concurrent_calls.inc_and_get()
+        await asyncio.sleep(0.001)
+        self.max_concurrent_calls.setmax(self.concurrent_calls.get())
+        await asyncio.sleep(0.001)
+        self.concurrent_calls.inc_and_get(-1)
+
+        return args[0] + args[1]
+
 
 @pytest.fixture
 def sample_dataset() -> Dataset:
@@ -224,3 +276,21 @@ async def test_keep_input_cols(conn: DuckDBPyConnection) -> None:
     assert sink_dataset.data['a'].equals(source.select('a').to_dataset(conn).data['a'])
     assert sink_dataset.data['a+b'].sort().equals(expected_sums)
     assert sink_dataset.data['a+b_'].sort().equals(expected_sums)
+
+async def test_limits(conn: DuckDBPyConnection, sample_dataset: Dataset) -> None:
+    for _ in range(6):
+        sample_dataset = sample_dataset.vstack(sample_dataset) # 3*2^6 rows
+
+    concurrent_calls = AtomicInt()
+    max_concurrent_calls = AtomicInt()
+    features = [
+        CountingAsyncFeature(concurrent_calls, max_concurrent_calls, 'a', 'b', 'a_plus_b', 'Async adds a and b', 'a + b'),
+        CountingAsyncFeature(concurrent_calls, max_concurrent_calls, 'b', 'c', 'b_plus_c', 'Async adds b and c', 'b + c'),
+    ]
+
+    runner = EnrichRunnerImpl(max_async_features_eval=10)
+    evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
+
+    await runner.run(features, sample_dataset, evaluators, conn)
+
+    assert max_concurrent_calls.get() == 10

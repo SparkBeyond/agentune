@@ -17,6 +17,7 @@ from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import Feature, SyncFeature
 from agentune.analyze.feature.dedup_names import deduplicate_feature_names
 from agentune.analyze.feature.eval.base import FeatureEvaluator, SyncFeatureEvaluator
+from agentune.analyze.feature.eval.limits import async_features_eval_limit_context
 from agentune.analyze.run.enrich.base import EnrichRunner
 from agentune.analyze.util.queue import ScopedQueue
 
@@ -36,20 +37,33 @@ class EnrichRunnerImpl(EnrichRunner):
     
     Groups features by evaluator, runs async evaluators concurrently and sync evaluators
     sequentially on separate threads. Returns dataset with columns in original feature order.
+
+    Args:
+        max_async_features_eval: the max number of async features being evaluated at a time.
+
+                                 We assume async features are efficient (in the sense that they don't block threads needlessly
+                                 and they don't spawn synchronous in-process work); this limit is meant to avoid creating
+                                 too many asyncio tasks at once, which uses memory unnecessarily. It should be kept
+                                 high enough to saturate whatever external async resource these features are accessing.
+
+                                 In the future, this limit may become more specific to particular feature types.
     """
+
+    max_async_features_eval: int = 1000
 
     @override
     async def run(self, features: Sequence[Feature], dataset: Dataset,
                   evaluators: Sequence[type[FeatureEvaluator]], conn: DuckDBPyConnection,
                   keep_input_columns: Sequence[str] = (),
                   deduplicate_names: bool = True) -> Dataset:
-        features = self._maybe_deduplicate_feature_names(features, deduplicate_names)
-        features_by_evaluator = self._group_features_by_evaluator(features, evaluators)
-        all_evaluated = await self._evaluate_all_groups(
-            conn, dataset, features_by_evaluator
-        )
-        return self._combine_evaluated_features(all_evaluated, features,
-                                                dataset.select(*keep_input_columns) if keep_input_columns else None)
+        with async_features_eval_limit_context(self.max_async_features_eval):
+            features = self._maybe_deduplicate_feature_names(features, deduplicate_names)
+            features_by_evaluator = self._group_features_by_evaluator(features, evaluators)
+            all_evaluated = await self._evaluate_all_groups(
+                conn, dataset, features_by_evaluator
+            )
+            return self._combine_evaluated_features(all_evaluated, features,
+                                                    dataset.select(*keep_input_columns) if keep_input_columns else None)
 
     @override
     async def run_stream(self, features: Sequence[Feature], dataset_source: DatasetSource,

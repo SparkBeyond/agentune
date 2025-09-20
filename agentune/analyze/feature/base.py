@@ -15,6 +15,7 @@ from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.core.types import Dtype
+from agentune.analyze.feature.eval.limits import amap_gather_with_limit
 from agentune.analyze.join.base import JoinStrategy
 
 
@@ -171,7 +172,8 @@ class Feature[T](ABC):
         by propagating the error, even if it might have succeeded for a subset of the rows.
         """
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
-        results = await asyncio.gather(*[self.aevaluate_safe(row, conn) for row in strict_df.iter_rows()])
+        results = await amap_gather_with_limit(strict_df.iter_rows(), lambda row: self.aevaluate_safe(row, conn), True)
+        results = [None if isinstance(result, BaseException) else result for result in results]
         return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type, values=results)
 
     async def aevaluate_batch_safe(self, input: Dataset, 
@@ -314,7 +316,7 @@ class CategoricalFeature(Feature[str]):
             except Exception: # noqa: BLE001
                 return None
         strict_df = pl.DataFrame([input.data.get_column(col.name) for col in self.params.cols])
-        results = await asyncio.gather(*[aevaluate_error_to_none(row) for row in strict_df.iter_rows()])
+        results = await amap_gather_with_limit(strict_df.iter_rows(), aevaluate_error_to_none, False)
         return pl.Series(name=self.name, dtype=self.raw_dtype.polars_type, values=results)
 
     @final
