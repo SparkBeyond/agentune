@@ -13,7 +13,7 @@ from agentune.analyze.feature.base import (
     Feature,
     NumericFeature,
 )
-from agentune.analyze.feature.problem import Problem, RegressionProblem
+from agentune.analyze.feature.problem import ClassificationProblem, Problem, RegressionProblem
 from agentune.analyze.feature.stats.base import (
     BinningInfo,
     CategoryClassMatrix,
@@ -112,12 +112,19 @@ def _build_confusion_matrix(cats: Sequence[object], classes: Sequence[object], d
     return matrix
 
 
-def _missing_and_totals_per_class(feature_series: pl.Series, class_series: pl.Series
+def _missing_and_totals_per_class(feature_series: pl.Series, class_series: pl.Series,
+                                  classes: tuple[str, ...]
                                   ) -> tuple[tuple[float, ...], tuple[int, ...]]:
-    """Compute missing percentage and totals per class using the provided class labels.
-    class_series should already reflect any binning that was applied to the target.
+    """Compute missing percentage and totals per class using the provided class ordering.
+    
+    Args:
+        feature_series: The feature data
+        class_series: The class data (should already reflect any binning applied to the target)
+        classes: The class ordering to use
+        
+    Returns:
+        Tuple of (missing_percentages, totals) in the provided class order
     """
-    classes = class_series.drop_nulls().unique().sort().to_list()
     missing_pct: list[float] = []
     totals: list[int] = []
     for cls in classes:
@@ -164,15 +171,18 @@ def _feature_to_categorical(feature: Feature, series: pl.Series, numeric_feature
     raise TypeError(f'Unsupported feature type for unified stats: {type(feature)}')
 
 
-def _prepare_class_target_series(target_series: pl.Series, bins: int, is_numeric: bool = False) -> pl.Series:
+def _prepare_class_target_series(target_series: pl.Series, bins: int, problem: Problem) -> pl.Series:
     """Prepare target series for classification metrics.
 
-    If numeric → bin to quantiles with quantile names being the range. Otherwise cast to string labels.
+    For regression problems with numeric targets → bin to quantiles.
+    For classification problems → cast to string labels (don't re-bin even if numeric).
     """
-    if is_numeric:
+    if isinstance(problem, RegressionProblem):
+        # For regression: always bin numeric targets into quantiles
         labels_series, _ = _bin_numeric_to_quantiles(target_series, bins)
         return labels_series
     else:
+        # For classification: use target as-is, just cast to string (don't re-bin)
         return target_series.cast(pl.Utf8)
 
 
@@ -260,27 +270,39 @@ class UnifiedRelationshipStatsCalculator(SyncRelationshipStatsCalculator):
         cats = list(cat_labels)
 
         # 2. Unify the Target into a categorical "class" series
-        # Determine if the target is numeric and needs binning.
-        is_numeric_target = target.dtype.is_numeric()
+        # For regression: bin numeric targets. For classification: use as-is.
         class_series_full = _prepare_class_target_series(
-            target, bins=self.target_numeric_bins, is_numeric=is_numeric_target
+            target, bins=self.target_numeric_bins, problem=problem
         )
 
         # 3. Perform Universal Classification Metric Calculations
         df_full = pl.DataFrame({'cat': cat_series_full, 'class': class_series_full})
         df_non_null = df_full.drop_nulls(['cat', 'class'])
 
-        classes_list = class_series_full.drop_nulls().unique().sort().to_list()
-        classes = tuple(str(c) for c in classes_list)
+        def prepare_classes_list() -> tuple[str, ...]:
+            """Determine class ordering based on problem type."""
+            if isinstance(problem, ClassificationProblem):
+                # For classification (numeric or non-numeric): start with official classes, then add any extras from data
+                classes = list(problem.classes)
+                data_classes = class_series_full.drop_nulls().unique().sort().to_list()
+                for cls in data_classes:
+                    if str(cls) not in [str(c) for c in classes]:
+                        classes.append(str(cls))
+                return tuple(str(c) for c in classes)
+            else:
+                # For regression: classes come from binning, use data ordering
+                return tuple(str(c) for c in class_series_full.drop_nulls().unique().sort().to_list())
+
+        classes = prepare_classes_list()
 
         # Build the confusion matrix, which is the basis for most metrics
-        matrix = _build_confusion_matrix(cats, classes_list, df_non_null)
+        matrix = _build_confusion_matrix(cats, classes, df_non_null)
 
         # Calculate probability shift and lift from the confusion matrix
         prob_shift, lift = _mean_shift_and_lift_from_confusion(matrix)
 
         # Calculate per-class totals and missing percentages
-        missing_pct, totals = _missing_and_totals_per_class(series, class_series_full)
+        missing_pct, totals = _missing_and_totals_per_class(series, class_series_full, classes)
 
         # Calculate SSE reduction for sse_reduction field
         sse_reduction = calculate_sse_reduction(feature, series, target)

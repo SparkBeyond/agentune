@@ -17,7 +17,7 @@ from attrs import frozen
 
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.schema import Field, Schema
-from agentune.analyze.core.types import float64, string
+from agentune.analyze.core.types import float64, int64, string
 from agentune.analyze.feature.base import BoolFeature, CategoricalFeature, Feature, FloatFeature
 from agentune.analyze.feature.problem import (
     ClassificationProblem,
@@ -400,3 +400,112 @@ def test_binned_series_matches_bin_edges() -> None:
     # Should produce only 1 unique bin for constant values
     unique_const_bins = binned_const.drop_nulls().unique().to_list()
     assert len(unique_const_bins) == 1
+
+
+def test_class_ordering_follows_problem_definition() -> None:
+    """Test that classes appear in the order defined in the Problem, not data order.
+    
+    This test verifies that:
+    1. For classification with non-numeric targets: Classes appear in the official order from the Problem object
+    2. Classes not in data still appear with 0/NaN values as appropriate
+    3. Classes in data but not in official list appear after official classes
+    4. For regression or classification with numeric targets: Uses data ordering (since classes come from binning)
+    """
+    # Create a problem with specific class ordering: ['A', 'B', 'C'] (must be sorted)
+    problem_desc = ProblemDescription(target_column='target')
+    target_field = Field(name='target', dtype=string)
+    problem = ClassificationProblem(
+        problem_description=problem_desc,
+        target_column=target_field,
+        classes=('A', 'B', 'C')  # Official ordering: A, B, C (sorted)
+    )
+    
+    # Create feature
+    feature = SimpleCategoricalFeature(name='feature', categories=('X', 'Y'), technical_description='Test feature')
+    
+    # Create data where classes appear in different order and some official classes are missing
+    # Data has classes in order: A, B, D (missing C, extra D)
+    feature_data = pl.Series('feature', ['X', 'X', 'Y', 'Y', 'X'])
+    target_data = pl.Series('target', ['A', 'B', 'A', 'D', 'B'])  # D is not in official classes
+    
+    # Calculate stats
+    calc = UnifiedRelationshipStatsCalculator()
+    stats = calc.calculate_from_series(feature, feature_data, target_data, problem)
+    
+    # Verify the ordering: official classes first, then extra classes
+    expected_classes = ('A', 'B', 'C', 'D')  # Official classes first, then extra classes
+    assert stats.classes == expected_classes, f'Expected {expected_classes}, got {stats.classes}'
+    
+    # Verify totals match the ordering
+    # A: 2, B: 2, C: 0 (not in data), D: 1
+    expected_totals = (2, 2, 0, 1)
+    assert stats.totals_per_class == expected_totals, f'Expected {expected_totals}, got {stats.totals_per_class}'
+    
+    # Verify missing percentages match the ordering (all should be 0.0 since no feature values are missing)
+    expected_missing_pct = (0.0, 0.0, float('nan'), 0.0)  # NaN for class C which has 0 total
+    assert len(stats.missing_percentage_per_class) == 4
+    assert stats.missing_percentage_per_class[0] == pytest.approx(expected_missing_pct[0], abs=1e-12)
+    assert stats.missing_percentage_per_class[1] == pytest.approx(expected_missing_pct[1], abs=1e-12)
+    assert np.isnan(stats.missing_percentage_per_class[2])  # NaN for empty class
+    assert stats.missing_percentage_per_class[3] == pytest.approx(expected_missing_pct[3], abs=1e-12)
+    
+    # Verify that the confusion matrix dimensions match
+    assert stats.lift is not None and stats.mean_shift is not None
+    assert len(stats.lift) == 2  # 2 feature categories (X, Y)
+    assert len(stats.mean_shift) == 2  # 2 feature categories (X, Y)
+    assert all(len(row) == 4 for row in stats.lift)  # 4 classes (A, B, C, D)
+    assert all(len(row) == 4 for row in stats.mean_shift)  # 4 classes (A, B, C, D)
+
+
+def test_numeric_classification_not_rebinned() -> None:
+    """Test that numeric classification targets are not re-binned.
+    
+    This verifies that when we have a classification problem with numeric classes,
+    the target values are treated as categorical labels (not binned into quantiles).
+    """
+    # Create a numeric classification problem with classes [0, 1, 2]
+    problem_desc = ProblemDescription(target_column='target', problem_type='classification')
+    target_field = Field(name='target', dtype=int64)
+    classification_problem = ClassificationProblem(
+        problem_description=problem_desc,
+        target_column=target_field,
+        classes=(0, 1, 2)  # Numeric classes but still classification
+    )
+    
+    # Create a regression problem for comparison
+    regression_desc = ProblemDescription(target_column='target', problem_type='regression')
+    regression_problem = RegressionProblem(
+        problem_description=regression_desc,
+        target_column=target_field
+    )
+    
+    # Create test data
+    feature = SimpleNumericFeature(name='test_feature', technical_description='Test feature')
+    feature_series = pl.Series([1, 2, 3, 4, 5, 6])
+    target_series = pl.Series([0, 1, 2, 0, 1, 2])  # Numeric target with classes 0, 1, 2
+    
+    # Create calculator
+    calc = UnifiedRelationshipStatsCalculator(target_numeric_bins=3)
+    
+    # Test classification: should NOT re-bin the target
+    classification_stats = calc.calculate_from_series(feature, feature_series, target_series, classification_problem)
+    
+    # Test regression: should bin the target
+    regression_stats = calc.calculate_from_series(feature, feature_series, target_series, regression_problem)
+    
+    # Verify results
+    # For classification: classes should be ['0', '1', '2'] (original classes as strings)
+    expected_classification_classes = ('0', '1', '2')
+    assert classification_stats.classes == expected_classification_classes, \
+        f'Classification classes should be {expected_classification_classes}, got {classification_stats.classes}'
+    
+    # For regression: classes should be binned intervals (different from original values)
+    # The exact values depend on quantile binning, but should be different from ['0', '1', '2']
+    assert regression_stats.classes != expected_classification_classes, \
+        f'Regression classes should be binned (different from original), got {regression_stats.classes}'
+    
+    # Verify that classification preserves the class counts correctly
+    # We have 2 instances each of classes 0, 1, 2
+    expected_totals = (2, 2, 2)
+    assert classification_stats.totals_per_class == expected_totals, \
+        f'Expected totals {expected_totals}, got {classification_stats.totals_per_class}'
