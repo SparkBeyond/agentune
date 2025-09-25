@@ -66,7 +66,7 @@ class DataFormatter(ABC):
         ...
 
 
-@attrs.define
+@attrs.frozen
 class ConversationFormatter(DataFormatter):
     """Formatter for conversation data with specific column structure.
     

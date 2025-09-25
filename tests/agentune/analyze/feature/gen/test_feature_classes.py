@@ -7,6 +7,7 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
+from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.llm import LLMContext, LLMSpec
 from agentune.analyze.core.schema import Field, Schema
@@ -18,8 +19,12 @@ from agentune.analyze.feature.gen.insightful_text_generator.features import (
     InsightfulIntFeature,
     create_feature,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import DataFormatter
+from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
+    ConversationFormatter,
+    DataFormatter,
+)
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
+from agentune.analyze.join.conversation import ConversationJoinStrategy
 
 
 @frozen
@@ -110,6 +115,47 @@ class TestFeatureTypes:
         assert feature_dict[int_feature] == 'word_count'
         assert feature_dict[float_feature] == 'urgency_score'
         assert feature_dict[categorical_feature] == 'intent'
+
+        # Additionally ensure the production ConversationFormatter and a feature using it are hashable.
+        # Build a minimal conversations table schema
+        conv_schema = Schema(
+            cols=(
+                Field('opportunity_id', types.string),
+                Field('timestamp', types.timestamp),
+                Field('type', types.string),  # role column can be str or enum
+                Field('message', types.string),
+            )
+        )
+        conv_table = DuckdbTable(
+            name=DuckdbName(name='conversations', database='memory', schema='main'),
+            schema=conv_schema,
+        )
+
+        # Conversation join strategy with named params
+        join: ConversationJoinStrategy[str] = ConversationJoinStrategy(
+            name='conv',
+            table=conv_table,
+            main_table_id_column=Field('opportunity_id', types.string),
+            id_column=conv_schema['opportunity_id'],
+            timestamp_column=conv_schema['timestamp'],
+            role_column=conv_schema['type'],
+            content_column=conv_schema['message'],
+        )
+
+        # Real formatter hashability
+        conv_formatter = ConversationFormatter(name='conv_fmt', conversation_strategy=join)
+        hash(conv_formatter)  # should not raise
+
+        conv_query = Query(
+            name='conv_word_count',
+            query_text='How many messages are in the conversation?',
+            return_type=types.int32,
+        )
+        conv_feature = create_feature(conv_query, conv_formatter, real_llm_with_spec)
+        # Should be hashable and usable as a dict key
+        hash(conv_feature)
+        d = {conv_feature: conv_feature.name}
+        assert d[conv_feature] == 'conv_word_count'
 
     @pytest.mark.integration
     async def test_bool_feature_sentiment(self, formatter: DataFormatter, real_llm_with_spec: LLMWithSpec, conn: DuckDBPyConnection) -> None:
