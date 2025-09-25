@@ -29,12 +29,13 @@ def test_discover_problem_int_target(run_context: RunContext, conn: DuckDBPyConn
         'target': [int(t % 3) for t in range(1, 1000)],
     }))
 
-    def dotest(descrption: ProblemDescription, expected_classification: bool, max_classes: int = 20) -> None:
-        problem = problem_discovery.discover_problem(input_data, descrption, conn, max_classes)
+    def dotest(description: ProblemDescription, expected_classification: bool, max_classes: int = 20) -> None:
+        problem = problem_discovery.discover_problem(input_data, description, conn, max_classes)
+        problem_discovery.validate_input(input_data, problem, conn)
         if expected_classification:
-            assert problem == ClassificationProblem(descrption, Field('target', types.int64), (0, 1, 2))
+            assert problem == ClassificationProblem(description, Field('target', types.int64), (0, 1, 2))
         else:
-            assert problem == RegressionProblem(descrption, Field('target', types.int64))
+            assert problem == RegressionProblem(description, Field('target', types.int64))
 
     dotest(ProblemDescription('target'), True)
     dotest(ProblemDescription('target', problem_type='classification'), True)
@@ -56,9 +57,10 @@ def test_discover_problem_float_target(run_context: RunContext, conn: DuckDBPyCo
         'target': [float(t % 3 + 0.1) for t in range(1, 1000)],
     }))
 
-    def dotest(descrption: ProblemDescription) -> None:
-        problem = problem_discovery.discover_problem(input_data, descrption, conn, 20)
-        assert problem == RegressionProblem(descrption, Field('target', types.float64))
+    def dotest(description: ProblemDescription) -> None:
+        problem = problem_discovery.discover_problem(input_data, description, conn, 20)
+        problem_discovery.validate_input(input_data, problem, conn)
+        assert problem == RegressionProblem(description, Field('target', types.float64))
 
     dotest(ProblemDescription('target'))
     dotest(ProblemDescription('target', problem_type='regression'))
@@ -71,18 +73,22 @@ def test_discover_problem_float_target(run_context: RunContext, conn: DuckDBPyCo
 
 
 def test_discover_problem_str_target(run_context: RunContext, conn: DuckDBPyConnection) -> None:
+    # Use non-numeric string classes to ensure validation doesn't rely on float casting
+    labels = ('A', 'B', 'C')
+    num_labels = len(labels)
     input_data = input_data_from_df(run_context, pl.DataFrame({
         'x': [float(x % 10) for x in range(1, 1000)],
-        'target': [str(t % 3) for t in range(1, 1000)],
+        'target': [labels[t % num_labels] for t in range(1, 1000)],
     }))
 
-    def dotest(descrption: ProblemDescription, max_classes: int = 20) -> None:
-        problem = problem_discovery.discover_problem(input_data, descrption, conn, max_classes)
-        assert problem == ClassificationProblem(descrption, Field('target', types.string), ('0', '1', '2'))
+    def dotest(description: ProblemDescription, max_classes: int = 20) -> None:
+        problem = problem_discovery.discover_problem(input_data, description, conn, max_classes)
+        problem_discovery.validate_input(input_data, problem, conn)
+        assert problem == ClassificationProblem(description, Field('target', types.string), labels)
 
     dotest(ProblemDescription('target'))
     dotest(ProblemDescription('target', problem_type='classification'))
-    dotest(ProblemDescription('target', target_desired_outcome='1'))
+    dotest(ProblemDescription('target', target_desired_outcome='B'))
 
     with pytest.raises(ValueError, match='regression target must be numeric'):
         dotest(ProblemDescription('target', problem_type='regression'))

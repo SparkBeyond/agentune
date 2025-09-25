@@ -1,7 +1,7 @@
 import logging
 from typing import cast
 
-from duckdb import DuckDBPyConnection
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
@@ -135,10 +135,37 @@ def validate_input(data: FeatureSearchInputData, problem: Problem, conn: DuckDBP
         _validate_secondary_table(secondary_table_with_join_strategies.table, conn, problem.problem_description)
 
     target_name = problem.target_column.name
-    for name, source in [('feature search', data.feature_search.as_source()), ('feature evaluation', data.feature_eval), ('train', data.train), ('test', data.test)]:
-        source_rel = source.to_duckdb(conn)
-        expr = source_rel.filter(f'''"{target_name}" is null or "{target_name}" in ('nan'::float, 'inf'::float, '-inf'::float)''').aggregate('count(*)')
-        count = expr.fetchone()
+    target_is_float = problem.target_column.dtype.is_float()
+
+    def _raise_if_not_empty(rel: DuckDBPyRelation, where_sql: str, message: str) -> None:
+        """Raise ValueError(message) if any row matches where_sql in rel.
+
+        Ensures we handle fetchone() typing safely and avoids duplicating logic.
+        """
+        count = rel.filter(where_sql).aggregate('count(*)').fetchone()
         match count:
-            case (int(c),) if c > 0: raise ValueError(f'Target column may not contain missing values or non-finite float values ({name} dataset)')
-            case _: pass
+            case (int(c), ) if c > 0:
+                raise ValueError(message)
+            case _:
+                pass
+
+    for name, source in [
+        ('feature search', data.feature_search.as_source()),
+        ('feature evaluation', data.feature_eval),
+        ('train', data.train),
+        ('test', data.test),
+    ]:
+        source_rel = source.to_duckdb(conn)
+        if target_is_float:
+            _raise_if_not_empty(
+                source_rel,
+                f'''"{target_name}" is null or "{target_name}" in ('nan'::float, 'inf'::float, '-inf'::float)''',
+                f'Target column may not contain missing values or non-finite float values ({name} dataset)',
+            )
+        else:
+            # For non-floating targets (ints, strings, enums, bool), only nulls are invalid.
+            _raise_if_not_empty(
+                source_rel,
+                f'"{target_name}" is null',
+                f'Target column may not contain missing values ({name} dataset)',
+            )
