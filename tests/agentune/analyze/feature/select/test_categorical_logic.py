@@ -268,7 +268,8 @@ def test_categorical_selection_regression(conn: duckdb.DuckDBPyConnection) -> No
     selected = selector.select_features(features, source, problem, conn)
 
     selected_names = [f.name for f in selected]
-    assert selected_names == ['good_cat', 'good_num']
+    # Features should be returned in selection order (good_num selected first due to strong linear relationship)
+    assert selected_names == ['good_num', 'good_cat']
 
     fi = selector.final_importances_
     assert fi is not None

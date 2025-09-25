@@ -92,14 +92,15 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             return []
 
         selected_feature_names, feature_scores = self._select_best_features(feature_values, target, baseline_stats)
-        selected_features = [f for f in features if f.name in set(selected_feature_names)]
+        
+        # Return features in selection order (not importance order)
+        feature_by_name = {f.name: f for f in features}
+        selected_features = [feature_by_name[name] for name in selected_feature_names]
 
-        # Sort by using lambda to ensure stable sort by name for equal importances
-        sorted_importances = sorted(selected_feature_names, key=lambda name: (feature_scores[name], name), reverse=True)
-
+        # Store final importances in selection order to match returned features
         self.final_importances_ = {
-            'feature': sorted_importances,
-            'importance': [feature_scores[name] for name in sorted_importances]
+            'feature': selected_feature_names,  # Already in selection order
+            'importance': feature_scores
         }
 
         return selected_features
@@ -202,11 +203,11 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         x = values[:, None] if values.ndim == 1 else values
         return np.repeat(x, n_targets, axis=1) if x.shape[1] == 1 else x
 
-    def _select_best_features(self, feature_values: dict[str, np.ndarray], target: np.ndarray, baseline_stats: TargetStats) -> tuple[list[str], dict[str, float]]:
+    def _select_best_features(self, feature_values: dict[str, np.ndarray], target: np.ndarray, baseline_stats: TargetStats) -> tuple[list[str], list[float]]:
         """Two-phase feature selection: single feature scoring, then pairwise marginalization."""
         remaining_feature_names = list(feature_values.keys())
         selected_feature_names: list[str] = []
-        feature_scores: dict[str, float] = {}
+        feature_scores: list[float] = []
 
         # Precompute per-feature statistics once for reuse in scoring (local per-run cache)
         stats_by_name: dict[str, FeatureTargetStats] = {
@@ -220,7 +221,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             candidate_marginal_scores[f_name] = score
         if not remaining_feature_names:
             self.final_importances_ = {'feature': [], 'importance': []}
-            return [], {}
+            return [], []
 
         # Filter out features that don't meet the threshold (they can never improve)
         viable_features = [
@@ -230,14 +231,14 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
 
         if not viable_features:
             # No features meet the threshold, return empty selection
-            return [], {}
+            return [], []
 
         # Select best first feature from viable candidates
         best_first_feature = max(viable_features, key=lambda name: (candidate_marginal_scores[name], name))
         best_first_score = candidate_marginal_scores[best_first_feature]
 
         selected_feature_names.append(best_first_feature)
-        feature_scores[best_first_feature] = best_first_score
+        feature_scores.append(best_first_score)
         viable_features.remove(best_first_feature)
 
         # Phase 2: iteratively add features using pairwise scoring
@@ -287,7 +288,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             best_score = candidate_marginal_scores[best_feature]
 
             selected_feature_names.append(best_feature)
-            feature_scores[best_feature] = best_score
+            feature_scores.append(best_score)
             viable_features.remove(best_feature)
 
         return selected_feature_names, feature_scores
