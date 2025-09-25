@@ -15,13 +15,11 @@ from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.base import CategoricalFeature
 from agentune.analyze.feature.gen.insightful_text_generator.features import create_feature
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
-    ConversationFormatter,
-)
 from agentune.analyze.feature.gen.insightful_text_generator.insightful_text_generator import (
     ConversationQueryFeatureGenerator,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
+from agentune.analyze.feature.problem import ClassificationProblem, ProblemDescription
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.join.conversation import ConversationJoinStrategy
 
@@ -109,10 +107,43 @@ async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSp
     return llm_with_spec
 
 
+@pytest.fixture
+def problem(test_dataset_with_strategy: tuple[Dataset, str, TablesWithJoinStrategies]) -> ClassificationProblem:
+    """Create a Problem fixture for testing."""
+    main_dataset, target_col, _ = test_dataset_with_strategy
+    
+    # Get the target field from the dataset
+    target_field = main_dataset.schema[target_col]
+    
+    # Get unique classes from the target column
+    unique_values = main_dataset.data.get_column(target_col).unique().to_list()
+    classes = tuple(sorted(unique_values))
+    
+    # Create problem description
+    problem_description = ProblemDescription(
+        target_column=target_col,
+        problem_type='classification',
+        target_desired_outcome='resolved',
+        name='Customer Support Resolution Prediction',
+        description='Predict whether customer support conversations will be resolved successfully',
+        target_description='Whether the conversation resulted in a resolved outcome',
+        business_domain='customer support',
+        comments='Generated for testing the conversation feature generator'
+    )
+    
+    # Create classification problem
+    return ClassificationProblem(
+        problem_description=problem_description,
+        target_column=target_field,
+        classes=classes
+    )
+
+
 @pytest.mark.integration
 async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tuple[Dataset, str, TablesWithJoinStrategies],
                                                  conn: DuckDBPyConnection,
-                                                 real_llm_with_spec: LLMWithSpec) -> None:
+                                                 real_llm_with_spec: LLMWithSpec,
+                                                 problem: ClassificationProblem) -> None:
     """Test the complete end-to-end pipeline with real LLM."""
     main_dataset, target_col, strategies = test_dataset_with_strategy
     random_seed = 42  # Use a fixed seed for reproducibility
@@ -122,24 +153,19 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         num_features_to_generate=5,
         num_samples_for_generation=10,
         num_samples_for_enrichment=5,
-        field_descriptions='id: unique identifier, outcome: resolution status',
-        what_is_an_instance='a customer support conversation',
-        instance_description='Each instance represents a complete customer support conversation with multiple messages between customer and agent',
-        target_value='resolved',
         query_enrich_model=real_llm_with_spec,
         random_seed=random_seed
     )
 
     # imitate the feature search
-    target_field = main_dataset.schema[target_col]
     conversation_strategies = feature_generator.find_conversation_strategies(strategies)
 
     for conversation_strategy in conversation_strategies:
         # 1. Create a query generator for the conversation strategy
-        query_generator = feature_generator.create_query_generator(conversation_strategy, target_field)
+        query_generator = feature_generator.create_query_generator(conversation_strategy, problem)
 
         # 2. Generate queries from the conversation data
-        queries = await query_generator.agenerate_queries(main_dataset, conn, random_seed=feature_generator.random_seed)
+        queries = await query_generator.agenerate_queries(main_dataset, problem, conn, random_seed=feature_generator.random_seed)
 
         # Validate result
         assert isinstance(queries, list)
@@ -162,12 +188,9 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
             logger.info(f'Generated queries: {query.name} - {query.query_text}')
 
         # 3. Test enrichment part
-        sampler = feature_generator._get_sampler(target_field)
+        sampler = feature_generator._get_sampler(problem)
         sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
-        enrichment_formatter = ConversationFormatter(
-            name=f'conversation_formatter_{conversation_strategy.name}',
-            conversation_strategy=conversation_strategy,
-        )
+        enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, include_target=False)
         enriched_output = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
         
         # Validate enriched output
@@ -215,7 +238,6 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         # 5. Test feature creation and evaluation
         features = [create_feature(
             query=query,
-            instance_description=feature_generator.instance_description,
             formatter=enrichment_formatter,
             model=real_llm_with_spec)
             for query in updated_queries]
@@ -248,7 +270,11 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
                     assert not math.isinf(float(result)), f'Feature {feature.name} returned infinite value'
                 elif isinstance(feature, CategoricalFeature):
                     # For categorical/enum types, check that the result is one of the valid categories
-                    assert result in feature.categories or result == CategoricalFeature.other_category, f'Feature {feature.name} returned "{result}" which is not in valid categories: {feature.categories}'
+                    valid_categories = [*list(feature.categories), CategoricalFeature.other_category]
+                    assert result in valid_categories, (
+                        f'Feature {feature.name} returned "{result}" which is not in valid categories: '
+                        f'{feature.categories}'
+                    )
                 
                 logger.info(f'Feature {feature.name} evaluation successful: {result} (type: {type(result).__name__})')
             

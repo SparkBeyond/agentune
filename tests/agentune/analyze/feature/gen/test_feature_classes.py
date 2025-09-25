@@ -30,6 +30,7 @@ class SimpleFormatter(DataFormatter):
         Field(name='message', dtype=types.string),))
     secondary_tables = ()
     join_strategies = ()
+    description = 'customer message'
 
     async def aformat_batch(self, input: Dataset, conn: DuckDBPyConnection) -> pl.Series:  # noqa: ARG002
         """Format data as readable text."""
@@ -69,28 +70,28 @@ class TestFeatureTypes:
             query_text='Is this customer message positive?',
             return_type=types.boolean
         )
-        bool_feature = create_feature(bool_query, 'customer message', formatter, real_llm_with_spec)
+        bool_feature = create_feature(bool_query, formatter, real_llm_with_spec)
         
         int_query = Query(
             name='word_count',
             query_text='How many words are in this customer message?',
             return_type=types.int32
         )
-        int_feature = create_feature(int_query, 'customer message', formatter, real_llm_with_spec)
+        int_feature = create_feature(int_query, formatter, real_llm_with_spec)
         
         float_query = Query(
             name='urgency_score',
             query_text='Rate the urgency of this customer message from 0.0 to 1.0',
             return_type=types.float64
         )
-        float_feature = create_feature(float_query, 'customer message', formatter, real_llm_with_spec)
+        float_feature = create_feature(float_query, formatter, real_llm_with_spec)
         
         categorical_query = Query(
             name='intent',
             query_text='What is the intent? Choose from: question, complaint, compliment, request',
             return_type=types.EnumDtype('question', 'complaint', 'compliment', 'request')
         )
-        categorical_feature = create_feature(categorical_query, 'customer message', formatter, real_llm_with_spec)
+        categorical_feature = create_feature(categorical_query, formatter, real_llm_with_spec)
         
         # Test that features can be hashed
         features = [bool_feature, int_feature, float_feature, categorical_feature]
@@ -119,7 +120,7 @@ class TestFeatureTypes:
             return_type=types.boolean
         )
         
-        feature = create_feature(query, 'customer message', formatter, real_llm_with_spec)
+        feature = create_feature(query, formatter, real_llm_with_spec)
         
         # Test feature was created correctly
         assert isinstance(feature, InsightfulBoolFeature)
@@ -144,16 +145,16 @@ class TestFeatureTypes:
             return_type=types.int32
         )
         
-        feature = create_feature(query, 'customer message', formatter, real_llm_with_spec)
+        feature = create_feature(query, formatter, real_llm_with_spec)
         
         # Test feature was created correctly
         assert isinstance(feature, InsightfulIntFeature)
         assert feature.name == 'word_count'
         
         # Test word counting
-        result = await feature.aevaluate((1001, 'Help me please'),  conn)
+        result = await feature.aevaluate((1001, 'Can you help me please?'),  conn)
         assert isinstance(result, int)
-        assert result == 3
+        assert result == 5
 
     @pytest.mark.integration
     async def test_float_feature_urgency(self, formatter: DataFormatter, real_llm_with_spec: LLMWithSpec, conn: DuckDBPyConnection) -> None:
@@ -164,7 +165,7 @@ class TestFeatureTypes:
             return_type=types.float64
         )
         
-        feature = create_feature(query, 'customer message', formatter, real_llm_with_spec)
+        feature = create_feature(query, formatter, real_llm_with_spec)
         
         # Test feature was created correctly
         assert isinstance(feature, InsightfulFloatFeature)
@@ -190,7 +191,7 @@ class TestFeatureTypes:
             return_type=types.EnumDtype(*categories)
         )
         
-        feature = create_feature(query, 'customer message', formatter, real_llm_with_spec)
+        feature = create_feature(query, formatter, real_llm_with_spec)
         
         # Test feature was created correctly
         assert isinstance(feature, InsightfulCategoricalFeature)

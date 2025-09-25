@@ -4,29 +4,26 @@
 from agentune.analyze.core import types
 from agentune.analyze.feature.base import CategoricalFeature
 from agentune.analyze.feature.gen.insightful_text_generator.schema import PARSER_OUT_FIELD
+from agentune.analyze.feature.problem import Problem, RegressionDirection, RegressionProblem
 
 QUESTIONNAIRE_PROMPT = '''
-Below are a set of {instance_full_description}.
+{business_domain_expertise}{problem_context}
+Below are a set of {instance_description}.
 
-We want to understand what is special about those with {target} = {desired_target_value} and what is special about those with {target} != {desired_target_value}.
-For this we want to prepare a questionnaire that we will run per each conversation. Then we will give our data scientists department to analyze the results.
+{comparison_description}
+For this we want to prepare a questionnaire that we will run per each {instance_type}. Then we will give our data scientists department to analyze the results.
 
-For each {instance} we have the following fields (some may be omitted):
-{field_descriptions}.
+We will give you sample {instance_type} examples with various {target} values and then the requested output format
 
-We will give you sample conversations with various status values and then the requested output format
-
-###### {instance} examples ###
+###### {instance_type} examples ###
 {examples}
 
 ###### output format ######
-Please prepare a questionnaire of up to {n_queries} questions that can be applied to
-{instance}.
-We will then give our data scientists to analyze the results in order to better understand
-what characterizes the {desired_target_value} cases.
+Please prepare a questionnaire of up to {n_queries} questions that can be applied to {instance_type}.
+{goal_description}
 
 Focus of the Questions:
-Focus on technical and process-related aspects of the {instance} (e.g., in sales, product discussed, customer intent, objections raised, assistance steps provided).
+Focus on technical and process-related aspects of the {instance_type} (e.g., in sales, product discussed, customer intent, objections raised, assistance steps provided).
 Avoid interpersonal or stylistic questions (e.g., tone or politeness).
 
 Aim for short, structured answers such as:
@@ -36,7 +33,7 @@ Aim for short, structured answers such as:
 * Short texts (e.g., what is the product name, what is the customer ask)
 
 End Goal:
-We will apply these questions automatically to thousands of {instance_full_description}.
+We will apply these questions automatically to thousands of {instance_description}.
 The structured output will be used by the Data Science team to analyze and improve assistant behavior.
 
 
@@ -60,33 +57,68 @@ The json code block should start with three backticks and end with three backtic
 
 def create_questionnaire_prompt(
     examples: str,
-    instance: str,
-    instance_full_description: str,
-    target: str,
-    field_descriptions: str,
-    desired_target_value: str,
+    problem: Problem,
+    instance_type: str,
+    instance_description: str,
     n_queries: str
 ) -> str:
     """Create a formatted questionnaire prompt for LLM analysis.
     
     Args:
         examples: Formatted sample data
-        instance: What each data point represents (e.g., "conversation")
-        instance_full_description: Full description (e.g., "conversations between customer and agent")
-        target: Target variable name to analyze
-        field_descriptions: Description of available data fields
-        desired_target_value: The target value we want to characterize
+        problem: Problem object containing target, business domain, and descriptions
+        instance_type: Type of the instance being analyzed (e.g. "conversation")
+        instance_description: Description of the instance being analyzed (recommended: DataFormatter.description)
         n_queries: Number of queries to generate
         
     Returns:
         Formatted prompt string ready for LLM
     """
+    # Build optional context sections
+    business_domain_expertise = ''
+    if problem.problem_description.business_domain:
+        business_domain_expertise = f'You are an expert in {problem.problem_description.business_domain}.\n\n'
+    
+    problem_context = ''
+    context_parts = []
+    
+    if problem.problem_description.name:
+        context_parts.append(f'Problem: {problem.problem_description.name}')
+    
+    if problem.problem_description.description:
+        context_parts.append(f'Description: {problem.problem_description.description}')
+    
+    if context_parts:
+        problem_context = '\n'.join(context_parts) + '\n'
+
+    if not problem.problem_description.target_desired_outcome:
+        raise ValueError('Problem description must include target_desired_outcome.')
+
+    # Create different descriptions for regression vs classification
+    target_name = problem.target_column.name
+    
+    if isinstance(problem, RegressionProblem):
+        # For regression problems, target_desired_outcome is RegressionDirection (up/down)
+        direction = 'high' if problem.target_desired_outcome == RegressionDirection.up else 'low'
+        other_direction = 'low' if direction == 'high' else 'high'
+        
+        comparison_description = f'We want to understand what distinguishes cases with {direction} {target_name} values from cases with {other_direction} {target_name} values.'
+        goal_description = f'We will then give our data scientists to analyze the results in order to better understand what leads to {direction}er {target_name}.'
+    else:
+        # For classification problems, target_desired_outcome is a specific class value
+        desired_value = problem.problem_description.target_desired_outcome
+        comparison_description = (f'We want to understand what is special about those with {target_name} = {desired_value} '
+                                  f'and what is special about those with {target_name} != {desired_value}.')
+        goal_description = f'We will then give our data scientists to analyze the results in order to better understand what characterizes the {desired_value} cases.'
+
     return QUESTIONNAIRE_PROMPT.format(
-        instance_full_description=instance_full_description,
-        instance=instance,
-        target=target,
-        field_descriptions=field_descriptions,
-        desired_target_value=desired_target_value,
+        business_domain_expertise=business_domain_expertise,
+        problem_context=problem_context,
+        instance_type=instance_type,
+        instance_description=instance_description,
+        target=target_name,
+        comparison_description=comparison_description,
+        goal_description=goal_description,
         n_queries=n_queries,
         examples=examples
     )

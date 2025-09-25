@@ -13,7 +13,6 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
 from agentune.analyze.core.dataset import Dataset
-from agentune.analyze.core.schema import Field
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.gen.insightful_text_generator.dedup.base import (
     QueryDeduplicator,
@@ -32,6 +31,7 @@ from agentune.analyze.feature.gen.insightful_text_generator.util import (
     achat_raw,
     extract_json_from_response,
 )
+from agentune.analyze.feature.problem import Problem
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class QueryGenerator(ABC):
     num_features_to_generate: int
     
     @abstractmethod
-    async def generate_prompts(self, sampled_data: Dataset, conn: DuckDBPyConnection) -> list[str]:
+    async def generate_prompts(self, sampled_data: Dataset, problem: Problem, conn: DuckDBPyConnection) -> list[str]:
         """Convert sampled data into prompts for the LLM."""
         ...
 
@@ -94,13 +94,13 @@ class QueryGenerator(ABC):
         """
         return queries[:self.num_features_to_generate]
 
-    async def agenerate_queries(self, input_data: Dataset, conn: DuckDBPyConnection, random_seed: int | None) -> list[Query]:
+    async def agenerate_queries(self, input_data: Dataset, problem: Problem, conn: DuckDBPyConnection, random_seed: int | None) -> list[Query]:
         """Generate a batch of feature queries from input conversation data."""
         # 1. Sample representative data for examples
         sampled_data = self.sampler.sample(input_data, self.sample_size, random_seed=random_seed)
 
         # 2. Create prompts from the sampled data
-        prompts = await self.generate_prompts(sampled_data, conn)
+        prompts = await self.generate_prompts(sampled_data, problem, conn)
 
         # 3. Call the LLM with the prompts to generate raw query text
         raw_response = await asyncio.gather(*[achat_raw(self.model, prompt) for prompt in prompts])
@@ -122,32 +122,23 @@ class QueryGenerator(ABC):
 class ConversationQueryGenerator(QueryGenerator):
     """Concrete implementation for generating feature queries from conversation data."""
     formatter: DataFormatter
-    
-    target_field: Field
-    field_descriptions: str  # Description of available fields
-    what_is_an_instance: str  # What each data point represents
-    instance_description: str  # Full description for prompts
-    target_value: str  # The target value we want to characterize
 
-    async def generate_prompts(self, sampled_data: Dataset, conn: DuckDBPyConnection) -> list[str]:
+    async def generate_prompts(self, sampled_data: Dataset, problem: Problem, conn: DuckDBPyConnection) -> list[str]:
         """Convert sampled conversation data into parameters for the prompt template."""
+        if not self.formatter.description:
+            raise ValueError('DataFormatter must have a description for ConversationQueryGenerator.')
         # Get formatted examples from the sampled data using the formatter column name
-
-        # 2. format the sampled data into examples
         formatted_examples = await self.formatter.aformat_batch(sampled_data, conn)
 
         examples_str = '\n\n'.join(formatted_examples.to_list())
 
-        params = {
-            'examples': examples_str,
-            'instance': self.what_is_an_instance,
-            'instance_full_description': self.instance_description,
-            'target': self.target_field.name,
-            'field_descriptions': self.field_descriptions,
-            'desired_target_value': self.target_value,
-            'n_queries': str(self.num_features_to_generate),
-        }
-        prompt = create_questionnaire_prompt(**params)
+        prompt = create_questionnaire_prompt(
+            examples=examples_str,
+            problem=problem,
+            instance_type='conversation',
+            instance_description=self.formatter.description,
+            n_queries=str(self.num_features_to_generate)
+        )
         return [prompt]
 
 

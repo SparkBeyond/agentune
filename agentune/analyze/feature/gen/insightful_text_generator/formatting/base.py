@@ -30,6 +30,12 @@ class DataFormatter(ABC):
 
     @property
     @abstractmethod
+    def description(self) -> str | None:
+        """Description of the results produced by the formatter."""
+        ...
+
+    @property
+    @abstractmethod
     def params(self) -> Schema:
         """Columns of the main table used by the formatter."""
         ...
@@ -71,6 +77,14 @@ class ConversationFormatter(DataFormatter):
     """
     conversation_strategy: ConversationJoinStrategy
     params_to_print: tuple[Field, ...] = attrs.field(factory=tuple)  # additional fields from main table to include in formatting
+
+    @property
+    def description(self) -> str | None:
+        """Description of the formatter."""
+        description = f'Full conversation transcription for {self.conversation_strategy.name}'
+        if self.params_to_print:
+            description += f", including fields: {', '.join(field.name for field in self.params_to_print)}"
+        return description
 
     @property
     def params(self) -> Schema:

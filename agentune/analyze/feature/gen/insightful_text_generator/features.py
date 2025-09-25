@@ -131,7 +131,7 @@ class InsightfulCategoricalFeature(InsightfulTextFeature[str], CategoricalFeatur
         return StrResponse
 
 
-def create_feature(query: Query, instance_description: str, formatter: DataFormatter, model: LLMWithSpec) -> Feature:
+def create_feature(query: Query, formatter: DataFormatter, model: LLMWithSpec) -> Feature:
     """Create an insightful text feature based on the query definition."""
     dtype_to_class = {
         types.boolean: InsightfulBoolFeature,
@@ -142,7 +142,7 @@ def create_feature(query: Query, instance_description: str, formatter: DataForma
     output_instructions = get_output_instructions(query.return_type)
 
     prompt_parameters = {
-        'instance_description': instance_description,
+        'instance_description': formatter.description,
         'query_text': query.query_text,
         'output_instructions': output_instructions
     }

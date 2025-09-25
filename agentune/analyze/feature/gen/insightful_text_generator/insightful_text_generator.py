@@ -8,7 +8,6 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
 from agentune.analyze.core.dataset import Dataset
-from agentune.analyze.core.schema import Field
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.gen.base import FeatureGenerator, GeneratedFeature
 from agentune.analyze.feature.gen.insightful_text_generator.dedup.base import (
@@ -31,6 +30,10 @@ from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import
     DataSampler,
     RandomSampler,
 )
+from agentune.analyze.feature.gen.insightful_text_generator.sampling.samplers import (
+    BalancedClassSampler,
+    ProportionalNumericSampler,
+)
 from agentune.analyze.feature.gen.insightful_text_generator.schema import PARSER_OUT_FIELD, Query
 from agentune.analyze.feature.gen.insightful_text_generator.type_detector import (
     cast_to_categorical,
@@ -40,7 +43,7 @@ from agentune.analyze.feature.gen.insightful_text_generator.util import (
     execute_llm_caching_aware_columnar,
     parse_json_response_field,
 )
-from agentune.analyze.feature.problem import Problem
+from agentune.analyze.feature.problem import Classification, Problem, Regression
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.join.conversation import ConversationJoinStrategy
 
@@ -54,26 +57,30 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
     num_samples_for_generation: int
     num_features_to_generate: int
     
-    field_descriptions: str  # Description of available fields
-    what_is_an_instance: str  # What each data point represents
-    instance_description: str  # Full description for prompts
-    target_value: str  # The target value we want to characterize
-
     query_enrich_model: LLMWithSpec
     num_samples_for_enrichment: int
     random_seed: int | None = None
     max_categorical: int = 9  # Max unique values for a categorical field
     max_empty_percentage: float = 0.5  # Max percentage of empty/None values allowed
     
-    def _get_sampler(self, target_field: Field) -> DataSampler:
-        # TODO: Implement logic to choose the appropriate sampler based on target field type
-        if target_field.dtype.is_numeric():
-            return RandomSampler()  # Replace with appropriate numeric sampler
+    def _get_sampler(self, problem: Problem) -> DataSampler:
+        if problem.target_kind == Classification:
+            return BalancedClassSampler(target_field=problem.target_column)
+        if problem.target_kind == Regression:
+            return ProportionalNumericSampler(target_field=problem.target_column, num_bins=3)
         return RandomSampler()
     
     def _get_deduplicator(self) -> QueryDeduplicator:
         # TODO: upgrade to a more sophisticated deduplicator
         return SimpleDeduplicator()
+    
+    def _get_formatter(self, conversation_strategy: ConversationJoinStrategy, problem: Problem, include_target: bool) -> ConversationFormatter:
+        params_to_print = (problem.target_column,) if include_target else ()
+        return ConversationFormatter(
+            name=f'conversation_formatter_{conversation_strategy.name}',
+            conversation_strategy=conversation_strategy,
+            params_to_print=params_to_print
+        )
 
     def find_conversation_strategies(self, join_strategies: TablesWithJoinStrategies) -> list[ConversationJoinStrategy]:
         return [
@@ -83,40 +90,34 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             if isinstance(strategy, ConversationJoinStrategy)
         ]
 
-    def create_query_generator(self, conversation_strategy: ConversationJoinStrategy, target_field: Field) -> ConversationQueryGenerator:
+    def create_query_generator(self, conversation_strategy: ConversationJoinStrategy, problem: Problem) -> ConversationQueryGenerator:
         """Create a ConversationQueryGenerator for the given conversation strategy."""
-        sampler = self._get_sampler(target_field)
+        sampler = self._get_sampler(problem)
         deduplicator = self._get_deduplicator()
+        formatter = self._get_formatter(conversation_strategy, problem, include_target=True)
         return ConversationQueryGenerator(
             model=self.query_generator_model,
             sampler=sampler,
             sample_size=self.num_samples_for_generation,
             deduplicator=deduplicator,
             num_features_to_generate=self.num_features_to_generate,
-            formatter=ConversationFormatter(
-                name=f'conversation_formatter_{conversation_strategy.name}',
-                conversation_strategy=conversation_strategy,
-                params_to_print=(target_field,)
-            ),
-            target_field=target_field,
-            field_descriptions=self.field_descriptions,
-            what_is_an_instance=self.what_is_an_instance,
-            instance_description=self.instance_description,
-            target_value=self.target_value
+            formatter=formatter
         )
 
-    async def enrich_queries(self, queries: list[Query], enrichment_formatter: ConversationFormatter,
+    async def enrich_queries(self, queries: list[Query], enrichment_formatter: ConversationFormatter, 
                              input_data: Dataset, conn: DuckDBPyConnection) -> pl.DataFrame:
         """Enrich a subset of queries with additional conversation information using parallel LLM calls.
         Returns a DataFrame containing the enriched query results
         """
+        if not enrichment_formatter.description:
+            raise ValueError('DataFormatter must have a description for ConversationQueryGenerator.')
         # Format the sampled data for enrichment
         formatted_examples = await enrichment_formatter.aformat_batch(input_data, conn)
 
         # Generate prompts for enrichment (columnar structure)
         prompt_columns = [
             [create_enrich_conversation_prompt(
-                instance_description=self.instance_description,
+                instance_description=enrichment_formatter.description,
                 queries_str=f'{query.name}: {query.query_text}',
                 instance=row
             ) for row in formatted_examples]
@@ -196,23 +197,19 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
 
     async def agenerate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
                         conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature]:
-        target_field = problem.target_column
         conversation_strategies = self.find_conversation_strategies(join_strategies)
 
         for conversation_strategy in conversation_strategies:
             # 1. Create a query generator for the conversation
-            query_generator = self.create_query_generator(conversation_strategy, target_field)
+            query_generator = self.create_query_generator(conversation_strategy, problem)
 
             # 2. Generate queries from the conversation data
-            query_batch = await query_generator.agenerate_queries(feature_search, conn, self.random_seed)
+            query_batch = await query_generator.agenerate_queries(feature_search, problem, conn, self.random_seed)
 
             # 3. Enrich the queries with additional conversation information
-            sampler = self._get_sampler(target_field)
+            sampler = self._get_sampler(problem)
             sampled_data = sampler.sample(feature_search, self.num_samples_for_enrichment, self.random_seed)
-            enrichment_formatter = ConversationFormatter(
-                name=f'conversation_formatter_{conversation_strategy.table.name}',
-                conversation_strategy=conversation_strategy
-            )
+            enrichment_formatter = self._get_formatter(conversation_strategy, problem, include_target=False)
             enriched_output = await self.enrich_queries(query_batch, enrichment_formatter, sampled_data, conn)
 
             # 4. Determine the data types for the enriched queries
@@ -221,7 +218,6 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             # 5. Create Features from the enriched queries
             features = [create_feature(
                 query=query,
-                instance_description=self.instance_description,
                 formatter=enrichment_formatter,
                 model=self.query_enrich_model)
                 for query in updated_queries]
