@@ -14,7 +14,7 @@ from agentune.analyze.feature.stats.base import (
 
 
 @frozen
-class NumericRegressionFeatureStats(FeatureStats):
+class NumericFeatureStats(FeatureStats):
     """Enhanced feature statistics for numeric features in regression problems."""
     
     # Standard histogram representation (like numpy.histogram)

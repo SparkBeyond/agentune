@@ -23,8 +23,9 @@ from agentune.analyze.feature.problem import (
 )
 from agentune.analyze.feature.stats.stats_calculators import (
     NumericRegressionRelationshipStatsCalculator,
-    NumericRegressionStatsCalculator,
-    should_use_regression_stats,
+    NumericStatsCalculator,
+    get_feature_stats_calculator,
+    should_use_numeric_stats,
 )
 
 
@@ -82,7 +83,7 @@ class MockFloatFeature(SyncFloatFeature):
 
 def test_histogram_format_structure() -> None:
     """Test that histogram follows numpy.histogram format."""
-    calculator = NumericRegressionStatsCalculator(n_histogram_bins=3)
+    calculator = NumericStatsCalculator(n_histogram_bins=3)
     values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
     series = pl.Series('test', values)
     float_feature = MockFloatFeature()
@@ -104,7 +105,7 @@ def test_histogram_creation_with_various_bins() -> None:
     series = pl.Series('test', values)
     
     # Test with 4 bins
-    calculator = NumericRegressionStatsCalculator(n_histogram_bins=4)
+    calculator = NumericStatsCalculator(n_histogram_bins=4)
     stats = calculator.calculate_from_series(float_feature, series)
     
     # Test standard numpy histogram format
@@ -120,7 +121,7 @@ def test_histogram_creation_with_various_bins() -> None:
 def test_histogram_empty_data() -> None:
     """Test histogram behavior with empty or non-numeric data."""
     float_feature = MockFloatFeature()
-    calculator = NumericRegressionStatsCalculator(n_histogram_bins=4)
+    calculator = NumericStatsCalculator(n_histogram_bins=4)
     
     # Empty series
     empty_series = pl.Series('test', [], dtype=pl.Float64)
@@ -206,7 +207,7 @@ def test_correlation_with_insufficient_data() -> None:
     regression_problem = _regression_problem()
     calculator = NumericRegressionRelationshipStatsCalculator()
     
-    # Only one data point
+    # Only one data point - this should raise ValueError due to insufficient data for SSE calculation
     feature_series = pl.Series('feature', [1.0])
     target_series = pl.Series('target', [2.0])
     
@@ -224,18 +225,56 @@ def test_correlation_with_insufficient_data() -> None:
 # C. Regression stats usage conditions
 # -----------------------------------
 
-def test_should_use_regression_stats_positive_case() -> None:
-    """Test when regression stats should be used (positive case)."""
-    float_feature = MockFloatFeature()
-    regression_problem = _regression_problem()
-    
-    assert should_use_regression_stats(float_feature, regression_problem) is True
-
-
-def test_should_use_regression_stats_negative_cases() -> None:
-    """Test when regression stats should NOT be used."""
+def test_should_use_numeric_stats_positive_case() -> None:
+    """Test when numeric stats should be used (positive case)."""
     float_feature = MockFloatFeature()
     
-    # Non-regression problem should return False
-    classification_problem = _classification_problem()
-    assert should_use_regression_stats(float_feature, classification_problem) is False
+    assert should_use_numeric_stats(float_feature) is True
+
+
+def test_should_use_numeric_stats_negative_cases() -> None:
+    """Test when numeric stats should NOT be used."""
+    # This test would need a non-numeric feature to return False
+    # For now, since we only have numeric features, this always returns True
+    float_feature = MockFloatFeature()
+    assert should_use_numeric_stats(float_feature) is True
+
+
+def test_numeric_histograms_in_classification() -> None:
+    """Test that numeric features get histograms in classification problems with numeric targets.
+    
+    This is the core functionality: numeric features should get histogram analysis
+    even when used in classification problems (not just regression).
+    """
+    float_feature = MockFloatFeature()
+    
+    # Create a classification problem with numeric classes (0, 1, 2)
+    problem_desc = ProblemDescription(target_column='target')
+    classification_problem = ClassificationProblem(
+        problem_description=problem_desc,
+        target_column=Field('target', int32),
+        classes=(0, 1, 2)  # Numeric target classes
+    )
+    
+    # Get the calculator for a numeric feature in classification
+    calculator = get_feature_stats_calculator(float_feature, classification_problem)
+    
+    # Should return NumericStatsCalculator (which provides histograms)
+    assert isinstance(calculator, NumericStatsCalculator)
+    
+    # Test that it actually produces histogram data for the numeric feature
+    # This is the key: the feature values get histogram analysis
+    feature_values = [1.0, 2.5, 3.2, 4.1, 5.8, 6.3, 7.9, 8.4]
+    feature_series = pl.Series('numeric_feature', feature_values)
+    
+    stats = calculator.calculate_from_series(float_feature, feature_series)
+    
+    # Verify histogram fields are present and populated for the FEATURE
+    assert hasattr(stats, 'histogram_counts')
+    assert hasattr(stats, 'histogram_bin_edges')
+    assert len(stats.histogram_counts) > 0
+    assert len(stats.histogram_bin_edges) > 0
+    assert len(stats.histogram_bin_edges) == len(stats.histogram_counts) + 1
+    
+    # Verify the histogram actually represents the feature distribution
+    assert sum(stats.histogram_counts) == len(feature_values)

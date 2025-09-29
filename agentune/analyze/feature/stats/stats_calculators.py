@@ -25,7 +25,7 @@ from agentune.analyze.feature.stats.base import (
 
 # Import regression stats classes from regression_stats module
 from agentune.analyze.feature.stats.regression_stats import (
-    NumericRegressionFeatureStats,
+    NumericFeatureStats,
     NumericRegressionRelationshipStats,
 )
 from agentune.analyze.util.feature_sse_reduction import calculate_sse_reduction
@@ -330,11 +330,11 @@ class UnifiedRelationshipStatsCalculator(SyncRelationshipStatsCalculator):
 
 
 # ---------------------------------------------------------------------------
-# Regression-specific calculators
+# Numeric feature calculators
 # ---------------------------------------------------------------------------
 
-class NumericRegressionStatsCalculator(UnifiedStatsCalculator):
-    """Calculator for enhanced numeric feature statistics in regression problems."""
+class NumericStatsCalculator(UnifiedStatsCalculator):
+    """Calculator for enhanced numeric feature statistics."""
     
     def __init__(self, n_histogram_bins: int = 10, numeric_feature_bins: int = 5):
         """Initialize the calculator.
@@ -347,7 +347,7 @@ class NumericRegressionStatsCalculator(UnifiedStatsCalculator):
         self.n_histogram_bins = n_histogram_bins
     
     @override
-    def calculate_from_series(self, feature: Feature, series: pl.Series) -> NumericRegressionFeatureStats:
+    def calculate_from_series(self, feature: Feature, series: pl.Series) -> NumericFeatureStats:
         """Calculate enhanced feature statistics for numeric features."""
         # Get base statistics using parent class
         base_stats = super().calculate_from_series(feature, series)
@@ -355,7 +355,7 @@ class NumericRegressionStatsCalculator(UnifiedStatsCalculator):
         
         # Calculate histogram for numeric features
         counts, bin_edges = self._create_histogram(values)
-        return NumericRegressionFeatureStats(
+        return NumericFeatureStats(
             n_total=base_stats.n_total,
             n_missing=base_stats.n_missing,
             categories=base_stats.categories,
@@ -431,38 +431,33 @@ class NumericRegressionRelationshipStatsCalculator(UnifiedRelationshipStatsCalcu
         )
 
 
-def should_use_regression_stats(feature: Feature, problem: Problem) -> bool:
-    """Determine if regression statistics should be used for a feature-problem combination.
+def should_use_numeric_stats(feature: Feature) -> bool:
+    """Determine if numeric statistics should be used for a feature.
     
     Args:
         feature: The feature to analyze
-        problem: The problem definition
         
     Returns:
-        True if both feature and target are numeric and it's a regression problem
+        True if the feature is numeric
     """
-    return (
-        feature.is_numeric() and 
-        isinstance(problem, RegressionProblem) and
-        problem.target_column.dtype.is_numeric()
-    )
+    return feature.is_numeric()
 
 
 # ---------------------------------------------------------------------------
 # Factory functions for selecting appropriate calculators
 # ---------------------------------------------------------------------------
 
-def get_feature_stats_calculator(feature: Feature, problem: Problem) -> SyncFeatureStatsCalculator:
-    """Factory function to get the appropriate feature stats calculator based on feature and problem type."""
-    if should_use_regression_stats(feature, problem):
-        return NumericRegressionStatsCalculator()
+def get_feature_stats_calculator(feature: Feature, problem: Problem) -> SyncFeatureStatsCalculator:  # noqa: ARG001
+    """Factory function to get the appropriate feature stats calculator based on feature type."""
+    if should_use_numeric_stats(feature):
+        return NumericStatsCalculator()
     else:
         return UnifiedStatsCalculator()
 
 
 def get_relationship_stats_calculator(feature: Feature, problem: Problem) -> SyncRelationshipStatsCalculator:
     """Factory function to get the appropriate relationship stats calculator based on feature and problem type."""
-    if should_use_regression_stats(feature, problem):
+    if should_use_numeric_stats(feature) and isinstance(problem, RegressionProblem) and problem.target_column.dtype.is_numeric():
         return NumericRegressionRelationshipStatsCalculator()
     else:
         return UnifiedRelationshipStatsCalculator()
