@@ -149,10 +149,10 @@ def create_feature(query: Query, formatter: DataFormatter, model: LLMWithSpec) -
     
     # Create technical description based on the feature type and query
     technical_description = (
-        f'LLM-generated feature using {model.spec.model_name} model. '
-        f'Uses formatter "{formatter.name}" to prepare data context. '
-        f'Evaluates query: "{query.query_text}" '
-        f'with expected return type: {query.return_type}.'
+        f'Input: {formatter.description}\n'
+        f'Query: "{query.query_text}"\n'
+        f'Output Type: {query.return_type}\n'
+        f'Uses LLM: {model.spec.model_name}'
     )
     
     # Common parameters for all feature types
