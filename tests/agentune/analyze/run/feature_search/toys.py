@@ -54,7 +54,7 @@ class ToySyncFeature(SyncFloatFeature):
     description: str
     technical_description: str
 
-# Redeclare attributes with defaults
+    # Redeclare attributes with defaults
     default_for_missing: float = 0.0
     default_for_nan: float = 0.0
     default_for_infinity: float = 0.0
@@ -134,7 +134,7 @@ class ToySyncFeatureGenerator(SyncFeatureGenerator):
             for col2 in feature_search.schema.cols:
                 if problem.target_column.name not in (col1.name, col2.name) and \
                         col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
-                    feature = ToySyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}',
+                    feature = ToySyncFeature(col1.name, col2.name, f'Sync {col1.name} + {col2.name}',
                                              f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
                     yield GeneratedFeature(feature, False)
 
@@ -147,7 +147,7 @@ class ToyAsyncFeatureGenerator(FeatureGenerator):
                 if problem.target_column.name not in (col1.name, col2.name) and \
                         col1 != col2 and col1.dtype == types.float64 and col2.dtype == types.float64:
                     await asyncio.sleep(0)
-                    feature = ToyAsyncFeature(col1.name, col2.name, f'{col1.name} + {col2.name}',
+                    feature = ToyAsyncFeature(col1.name, col2.name, f'Async {col1.name} + {col2.name}',
                                               f'Adds {col1.name} and {col2.name}', f'{col1.name} + {col2.name}')
                     yield GeneratedFeature(feature, False)
 

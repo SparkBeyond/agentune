@@ -37,11 +37,12 @@ Note that we do NOT use the experimental polars streaming mode, and we do not us
 
 ### attrs and cattrs
 
-We use attrs to define dataclasses - that is, classes primarily representing data - and cattrs to serialize ('structure') them.
-Dataclasses are immutable (i.e. use `@frozen` not `@define`) by default.
+We use attrs to define dataclasses - that is, classes primarily representing data. Dataclasses are immutable (i.e. use `@frozen` not `@define`) by default.
 
 Use of attrs is mandatory for dataclasses. It is optional (but widespread) for classes where it merely provides a more convenient syntax and
 saves boilerplate. Make sure to pass `eq=False` and/or `hash=False` where appropriate.
+
+We use cattrs to serialize (aka un/structure) attrs dataclass instances; see [serialization.md]() for more details.
 
 ## Types and schemas
 
@@ -72,7 +73,6 @@ and having all other code work with the interface and not assume on a particular
 
 It is expected that the user (or another library) can introduce a new implementation of any interface. 
 To this end, interfaces must be fully documented, so that it is possible to tell whether a new implementation is valid or not.
-If instances of the API are meant to be serialized, see [serialization.md]() for details on supporting new implementations.
 
 Some interfaces can have sync and async implementation variants (see [threading.md]()). 
 

@@ -98,7 +98,10 @@ class InsightfulTextFeature[T](LlmFeature[T]):
 @frozen
 class InsightfulBoolFeature(InsightfulTextFeature[bool], BoolFeature):
     """Boolean insightful text feature."""
-    
+
+    # Redeclare with concrete types to work around attrs issue
+    default_for_missing: bool
+
     @property
     def parser_model(self) -> type[BaseModel]:
         return BoolResponse
@@ -107,7 +110,10 @@ class InsightfulBoolFeature(InsightfulTextFeature[bool], BoolFeature):
 @frozen
 class InsightfulIntFeature(InsightfulTextFeature[int], IntFeature):
     """Integer insightful text feature."""
-    
+
+    # Redeclare with concrete types to work around attrs issue
+    default_for_missing: int
+
     @property
     def parser_model(self) -> type[BaseModel]:
         return IntResponse
@@ -116,7 +122,10 @@ class InsightfulIntFeature(InsightfulTextFeature[int], IntFeature):
 @frozen
 class InsightfulFloatFeature(InsightfulTextFeature[float], FloatFeature):
     """Float insightful text feature."""
-    
+
+    # Redeclare with concrete types to work around attrs issue
+    default_for_missing: float
+
     @property
     def parser_model(self) -> type[BaseModel]:
         return FloatResponse
@@ -125,7 +134,10 @@ class InsightfulFloatFeature(InsightfulTextFeature[float], FloatFeature):
 @frozen
 class InsightfulCategoricalFeature(InsightfulTextFeature[str], CategoricalFeature):
     """Categorical insightful text feature."""
-    
+
+    # Redeclare with concrete types to work around attrs issue
+    default_for_missing: str
+
     @property
     def parser_model(self) -> type[BaseModel]:
         return StrResponse
@@ -133,7 +145,7 @@ class InsightfulCategoricalFeature(InsightfulTextFeature[str], CategoricalFeatur
 
 def create_feature(query: Query, formatter: DataFormatter, model: LLMWithSpec) -> Feature:
     """Create an insightful text feature based on the query definition."""
-    dtype_to_class = {
+    dtype_to_class: dict[types.Dtype, type] = {
         types.boolean: InsightfulBoolFeature,
         types.int32: InsightfulIntFeature,
         types.float64: InsightfulFloatFeature

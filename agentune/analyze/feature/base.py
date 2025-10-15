@@ -17,6 +17,7 @@ from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.feature.eval.limits import amap_gather_with_limit
 from agentune.analyze.join.base import JoinStrategy
+from agentune.analyze.util.cattrutil import UseTypeTag
 
 
 # Feature ABCs set slots=False to allow diamond inheritance from e.g. IntFeature + LlmFeature;
@@ -24,7 +25,7 @@ from agentune.analyze.join.base import JoinStrategy
 # To be able to override abstract properties with attrs attributes, you need to make your final
 # class a slots class (i.e. @frozen without slots=False).
 @define(slots=False)
-class Feature[T](ABC):
+class Feature[T](ABC, UseTypeTag):
     """A feature calculates a value that can be used to predict the target in a dataset.
 
     Handling errors, missing values, and non-finite float values in feature outputs:
@@ -218,6 +219,8 @@ class IntFeature(NumericFeature[int]):
 
 @define(slots=False)
 class FloatFeature(NumericFeature[float]):
+    # Redeclare with concrete types to work around attrs issue
+    default_for_missing: float
     default_for_nan: float
     default_for_infinity: float
     default_for_neg_infinity: float

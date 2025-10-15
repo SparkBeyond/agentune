@@ -9,9 +9,10 @@ from frozendict import frozendict
 
 from agentune.analyze.core.database import DuckdbIndex, DuckdbName, DuckdbTable
 from agentune.analyze.util.attrutil import frozendict_converter
+from agentune.analyze.util.cattrutil import UseTypeTag
 
 
-class JoinStrategy(ABC):
+class JoinStrategy(ABC, UseTypeTag):
     """A way to query data from particular DB tables, e.g. joining a secondary table using a particular column.
 
     Specific strategies are defined by subclasses.

@@ -16,10 +16,11 @@ from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.join.conversation import ConversationJoinStrategy
+from agentune.analyze.util.cattrutil import UseTypeTag
 
 
 @attrs.define
-class DataFormatter(ABC):
+class DataFormatter(ABC, UseTypeTag):
     """Abstract base class for data formatting strategies.
     
     Similar to Feature, this defines what data the formatter needs and provides

@@ -105,7 +105,7 @@ class ClassificationProblem(Problem):
         if self.problem_description.problem_type == 'regression':
             raise ValueError('Mismatch with problem_description: problem type')
         if isinstance(self.problem_description.target_desired_outcome, RegressionDirection):
-            raise ValueError('RegressionDirection.up/down cannot be used with classification problem') # noqa: TRY004
+            raise ValueError('RegressionDirection.up/down cannot be used with classification problem')
 
         if len(self.classes) < 2: # noqa: PLR2004
             raise ValueError('Classification problem must have at least 2 classes.')

@@ -1,116 +1,167 @@
+from __future__ import annotations
+
+import logging
+import threading
 import typing
+import weakref
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from typing import Any
 
-import cattrs
-import cattrs.dispatch
-import cattrs.strategies
-from cattr import Converter
+from cattrs import Converter
+from cattrs.dispatch import StructureHook, UnstructureHook
+
+_logger = logging.getLogger(__name__)
 
 
-# From cattrs.strategies._subclasses; copied here because it's private and small
-def _make_subclasses_tree(cl: type) -> list[type]:
-    cls_origin = typing.get_origin(cl) or cl
-    return [cl] + [
-        sscl
-        for scl in cls_origin.__subclasses__()
-        for sscl in _make_subclasses_tree(scl)
-    ]
+class UseTypeTag:
+    """Marker base class for serializable class hierarchies.
 
+    Subclasses are unstructured with a `_type` field containing the class name.
 
-def configure_lazy_include_subclasses[T](base: type[T], converter: cattrs.Converter, 
-                                         tag_generator: Callable[[type[T]], str], tag_name: str) -> None:
-    """Like cattrs.strategies.include_subclasses(), but takes effect on the first un/structure operation, 
-    allowing subclasses to be loaded (and added to the parent's __subclasses__) first, including in other modules.
+    Structuring will take into account the subclasses defined at that time; it cannot locate and import the right module
+    that defines a not-yet-loaded subclass.
 
-    The parameters and semantics are otherwise the same as for include_subclasses().
+    Usage:
+        @attrs.define
+        class Parent(SerializeHierarchy):
+            pass
 
-    This can be extended to support the loading and unloading of subclasses even after the first un/structure operation,
-    although that would be a little slower.
+        @attrs.define
+        class Child1(Parent):
+            field1: str
+
+        @attrs.define
+        class Child2(Parent):
+            field2: int
+
+        # Child1 instances serialize as: {"_type": "Child1", "field1": "value"}
+        # Child2 instances serialize as: {"_type": "Child2", "field2": 42}
     """
-    def tag_generator_wrapper(cl: type[T]) -> str:
-        if issubclass(cl, OverrideTypeTag):
-            return cl.type_tag()
-        return tag_generator(cl)
+    '''Marker class which enables the include_subclasses_by_name strategy for its descendants.
 
-    # Can't wrap include_subclasses() in a hook factory, that results in an infinite recursion, so we roll our own.
-    # This is much simpler than the implementation of include_subclasses() because we don't support the overrides parameter.
-
-    # Only configure once, in structure or unstructure hook, whichever is called first. 
-    # This is more efficient than @cache.
-    cached_tag_to_type: dict[str, type[T]] | None = None
-    cached_tag_to_unstructure_hook: dict[str, Callable[[T], dict[str, Any]]] | None = None
+    Descendants will be un/structured as dicts with an extra field '_type' containing the result of `_type_tag()`,
+    by default the class name.
     
-    def tag_to_type() -> dict[str, type[T]]:
-        nonlocal cached_tag_to_type
-        if cached_tag_to_type is None:
-            cached_tag_to_type = {tag_generator_wrapper(cl): cl for cl in _make_subclasses_tree(base)}
-        return cached_tag_to_type # TODO replace with @cached?
-    
-    def tag_to_unstructure_hook() -> dict[str, Callable[[T], dict[str, Any]]]:
-        nonlocal cached_tag_to_unstructure_hook
-        if cached_tag_to_unstructure_hook is None:
-            cached_tag_to_unstructure_hook = {
-                tag_generator_wrapper(cl): converter.gen_unstructure_attrs_fromdict(cl) # Despite name, works for non-attrs classes too
-                for cl in _make_subclasses_tree(base) if cl is not base}
-        return cached_tag_to_unstructure_hook # replace with @cached?
+    '''
+    @classmethod
+    def _type_tag(cls) -> str:
+        return cls.__name__
 
-    # Structure hook registered only for Base itself; explicitly structuring a subclass works with the default behavior,
-    # which means it does not require a type tag and ignores it if it is present, even if the tag has the wrong value.
-    @converter.register_structure_hook_factory(lambda c: c is base)
-    def _structure_hook(_: type) -> cattrs.dispatch.StructureHook:
-        def hook(val: dict[str, Any], cl: type) -> T:
-            try:
-                tag = val[tag_name]
-            except KeyError as e:
-                raise KeyError(f'Type tag {tag_name} not found in {val}') from e
-            try:
-                subtype = tag_to_type()[tag]
-            except KeyError as e:
-                raise KeyError(f'Unexpected type tag {tag} for subclass of {cl}') from e
-            return converter.structure(val, subtype)
-        return hook
-    
-    # Unstructure hook registered for Base and all subclasses; even when expicitly unstructuring a subclass we want to write the tag.
-    @converter.register_unstructure_hook_factory(lambda c: issubclass(c, base)) 
-    def _unstructure_hook(_target_type: type[T], _base_converter: Converter) -> cattrs.dispatch.UnstructureHook:
-        def hook(val: T) -> dict[str, Any]:
-            tag = tag_generator_wrapper(type(val))
-            base_hook = tag_to_unstructure_hook()[tag]
-            base_dict = base_hook(val)
-            if tag_name in base_dict and base_dict[tag_name] != tag:
-                raise ValueError(f'Subclass of {_target_type} tagged {tag} already has attribute named {tag_name} with value {base_dict[tag_name]}')
-            return base_hook(val) | {tag_name: tag}
-        return hook
+    # class vars
+    _subclass_by_tag_cache_lock = threading.Lock()
+    _subclass_by_tag_cache = weakref.WeakKeyDictionary[type['UseTypeTag'], weakref.WeakValueDictionary[str, type['UseTypeTag']]]()
 
-def lazy_include_subclasses[T](converter: cattrs.Converter, tag_generator: Callable[[type[T]], str],
-                               tag_name: str = 'type_tag') -> Callable[[type[T]], type[T]]:
-    def decorator(base: type[T]) -> type[T]:
-        configure_lazy_include_subclasses(base, converter, tag_generator, tag_name)
-        return base
-    return decorator
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        with UseTypeTag._subclass_by_tag_cache_lock:
+            UseTypeTag._subclass_by_tag_cache.clear()
+        super().__init_subclass__(**kwargs)
 
-type SameTypeConverter[T] = Callable[[type[T]], type[T]]
+
+def register_use_type_tag(converter: Converter, tag_name: str = '_type') -> None:
+    def unstructure_factory(_cl: type[UseTypeTag], converter: Converter) -> UnstructureHook:
+        def unstructure_hook(obj: UseTypeTag) -> dict[str, Any]:
+            prev = converter.gen_unstructure_attrs_fromdict(type(obj))
+            dct = prev(obj)
+            dct[tag_name] = obj._type_tag()
+            return dct
+        return unstructure_hook
+
+    def check_subclass(cl: type) -> bool:
+        return issubclass(typing.get_origin(cl) or cl, UseTypeTag)
+
+    converter.register_unstructure_hook_factory(check_subclass, unstructure_factory)
+
+    def structure_factory(cl: type[UseTypeTag], converter: Converter) -> StructureHook:
+        def structure_hook(dct: dict[str, Any], target_type: type[UseTypeTag]) -> UseTypeTag:
+            tag = dct.pop(tag_name, None)
+            if tag is None:
+                raise ValueError(f'Missing type tag field {tag_name} to structure {target_type.__name__}')
+            if not isinstance(tag, str):
+                raise ValueError(f'{tag_name} type tag field must be a string but found {type(tag)}: {tag}')
+
+            with UseTypeTag._subclass_by_tag_cache_lock:
+                class_by_tag = UseTypeTag._subclass_by_tag_cache.get(cl)
+                if class_by_tag is None:
+                    subclasses = [typing.get_origin(sub) or sub for sub in _make_subclasses_tree(cl)]
+                    concrete_classes = [cl for cl in subclasses if not _is_abstract(cl)]
+                    class_by_tag = weakref.WeakValueDictionary(_deduplicate_class_by_tag(concrete_classes))
+                    UseTypeTag._subclass_by_tag_cache[cl] = class_by_tag
+
+            real_cl = class_by_tag.get(tag)
+            if real_cl is None:
+                raise ValueError(f'Unfamiliar type tag value {tag} for subtype of {target_type.__name__}; '
+                                 f'did you forget to import a module?')
+
+            return converter.structure_attrs_fromdict(dct, real_cl)
+
+        return structure_hook
+
+    converter.register_structure_hook_factory(check_subclass, structure_factory)
+
 
 
 class OverrideTypeTag(ABC):
     """Extend this class to override the type tag (discriminator value) used when de/structuring instances.
 
-    This affects lazy_include_subclasses_by_name(), not any of the other methods in this module.
+    This affects lazy_include_subclasses_by_name(), not any of the other methods in this module or any standard
+    cattr strategies.
 
-    It applies to any class that extends this class, so you should return the right value for your subclasses
-    (unless they override this method again).
+    It applies to any class that extends this class, so you have to either return the right value for your subclasses
+    or override this method again in every sublass.
     """
     @classmethod
     @abstractmethod
-    def type_tag(cls) -> str: ...
+    def _type_tag(cls) -> str: ...
 
-def lazy_include_subclasses_by_name(converter: cattrs.Converter, 
-                                    tag_name: str = 'type_tag') -> SameTypeConverter:
-    def tag_generator(cl: type) -> str:
-        if issubclass(cl, OverrideTypeTag):
-            return cl.type_tag()
-        return cl.__name__
-    return lazy_include_subclasses(converter, tag_generator, tag_name)
+def _tag_generator(cl: type) -> str:
+    real_cl: type = typing.get_origin(cl) or cl # If cl is Foo[T] or even Foo[str] we need it to be plain Foo
+    if issubclass(real_cl, OverrideTypeTag):
+        return real_cl._type_tag()
+    return real_cl.__name__
 
+# Copy of private functions from cattrs.strategies
+# with set() applied to fix python-attrs/cattrs#682
+def _make_subclasses_tree[T](cl: type[T]) -> list[type[T]]:
+    cls_origin = typing.get_origin(cl) or cl
+    return list(set([cl] + [
+        sscl
+        for scl in cls_origin.__subclasses__()
+        for sscl in _make_subclasses_tree(scl)
+    ]))
+
+def _is_abstract(cl: type) -> bool:
+    if not issubclass(cl, ABC):
+        return False
+    return len(cl.__abstractmethods__) > 0
+
+def _deduplicate_class_by_tag(classes: list[type]) -> dict[str, type]:
+    """Match pairs of original+attrs classes and remove the original class; return a mapping of type tags to classes.
+
+    When attrs creates a slots class, it replaces the original class, but both classes exist in memory
+    (until GC) and in __subclasses__. We want to match such pairs and return from each pair only the final (attrs-created)
+    class, and also return any unmatched classes (which might be non-attrs or non-slots classes).
+
+    The matching is done naively, by name; this is not correct in the general case but it's good enough
+    for our use case since we use the name to identify classes anyway.
+    """
+    # attrs.has returns True for subclasses of an (unrelated) parent attrs class; the initial subclass is already an attrs class
+    # and not only the final attrs-processed subclass.
+    # To distinguish the two, we need to check if __attrs_attrs__ is defined on this exact class and not some parent.
+    def is_really_attrs_class(cl: type) -> bool:
+        return '__attrs_attrs__' in vars(cl)
+
+    result: dict[str, type] = {}
+    for cl in classes:
+        tag = _tag_generator(cl)
+        if tag in result:
+            existing = result[tag]
+            if existing is not cl:
+                if is_really_attrs_class(existing) and not is_really_attrs_class(cl):
+                    pass
+                elif is_really_attrs_class(cl) and not is_really_attrs_class(existing):
+                    result[tag] = cl
+                else:
+                    raise ValueError(f'Duplicate type tag {tag} for classes {cl} and {existing}')
+        else:
+            result[tag] = cl
+    return result

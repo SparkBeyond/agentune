@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, cast, override
 
-import cattrs
+import cattrs.strategies
 import duckdb
 from attr import define
 from attrs import field, frozen
@@ -20,6 +20,7 @@ from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.util.attrutil import frozendict_converter
+from agentune.analyze.util.cattrutil import UseTypeTag
 from agentune.analyze.util.duckdbutil import transaction_scope
 
 if TYPE_CHECKING:
@@ -130,7 +131,8 @@ class DuckdbTable:
         return cast(tuple[bool], conn.fetchone())[0]
 
 
-class DuckdbIndex(ABC): 
+@frozen
+class DuckdbIndex(ABC, UseTypeTag):
     """A table index definition.
     
     Make sure to read https://duckdb.org/docs/stable/sql/indexes.html before using.
@@ -199,8 +201,6 @@ class ArtIndex(DuckdbIndex):
             ArtIndex(DuckdbName.qualify(result[0].strip('"'), conn), tuple(col.strip('"') for col in result[1]))
             for result in results
         )
-
-
 
 class DuckdbDatabase(ABC):
     @property

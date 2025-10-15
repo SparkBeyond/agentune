@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import override
+from functools import partial
+from typing import Any, override
 
+import cattrs.strategies
 import duckdb
 import duckdb.typing as ddt
 import polars as pl
@@ -11,7 +14,7 @@ import polars.datatypes
 import pyarrow as pa
 from attrs import field, frozen
 
-from agentune.analyze.core import setup
+from agentune.analyze.core import sercontext, setup
 
 # We define these types instead of using pl.Field and pl.Schema because we might want to support e.g. semantic types in the future.
 
@@ -19,7 +22,7 @@ from agentune.analyze.core import setup
 type PolarsDataType = pl.DataType | polars.datatypes.DataTypeClass
 
 @frozen
-class Dtype:
+class Dtype(ABC):
     name: str
     duckdb_type: ddt.DuckDBPyType = field(eq=False, hash=False)
     polars_type: PolarsDataType = field(eq=False, hash=False)
@@ -64,26 +67,38 @@ class Dtype:
     def is_enum(self) -> bool:
         return False
 
-boolean = Dtype('bool', ddt.BOOLEAN, pl.Boolean)
+    @abstractmethod
+    def _to_ser_dtype(self) -> _SerDtype: ...
 
-int8 = Dtype('int8', ddt.TINYINT, pl.Int8)
-int16 = Dtype('int16', ddt.SMALLINT, pl.Int16)
-int32 = Dtype('int32', ddt.INTEGER, pl.Int32)
-int64 = Dtype('int64', ddt.BIGINT, pl.Int64)
+@frozen
+class SimpleDtype(Dtype):
+    """A Dtype that can be reconstructed from its string name, listed in _simple_dtypes."""
 
-uint8 = Dtype('uint8', ddt.UTINYINT, pl.UInt8)
-uint16 = Dtype('uint16', ddt.USMALLINT, pl.UInt16)
-uint32 = Dtype('uint32', ddt.UINTEGER, pl.UInt32)
-uint64 = Dtype('uint64', ddt.UBIGINT, pl.UInt64)
+    @override
+    def _to_ser_dtype(self) -> _SerDtype:
+        return _SimpleSerDtype(self.name)
 
-float32 = Dtype('float32', ddt.FLOAT, pl.Float32)
-float64 = Dtype('float64', ddt.DOUBLE, pl.Float64)
 
-string = Dtype('str', ddt.VARCHAR, pl.String)
-json_dtype = Dtype('json', duckdb.dtype('JSON'), pl.String)
-uuid_dtype = Dtype('uuid', ddt.UUID, pl.String)
+boolean = SimpleDtype('bool', ddt.BOOLEAN, pl.Boolean)
 
-# Call setup to install the duckdb 'spatial' extension, otherwise the call to duckdb.dtype() will fail.
+int8 = SimpleDtype('int8', ddt.TINYINT, pl.Int8)
+int16 = SimpleDtype('int16', ddt.SMALLINT, pl.Int16)
+int32 = SimpleDtype('int32', ddt.INTEGER, pl.Int32)
+int64 = SimpleDtype('int64', ddt.BIGINT, pl.Int64)
+
+uint8 = SimpleDtype('uint8', ddt.UTINYINT, pl.UInt8)
+uint16 = SimpleDtype('uint16', ddt.USMALLINT, pl.UInt16)
+uint32 = SimpleDtype('uint32', ddt.UINTEGER, pl.UInt32)
+uint64 = SimpleDtype('uint64', ddt.UBIGINT, pl.UInt64)
+
+float32 = SimpleDtype('float32', ddt.FLOAT, pl.Float32)
+float64 = SimpleDtype('float64', ddt.DOUBLE, pl.Float64)
+
+string = SimpleDtype('str', ddt.VARCHAR, pl.String)
+json_dtype = SimpleDtype('json', duckdb.dtype('JSON'), pl.String)
+uuid_dtype = SimpleDtype('uuid', ddt.UUID, pl.String)
+
+# Call setup to install the duckdb 'spatial' extension, otherwise the call to duckdb.SimpleDtype() will fail.
 setup.setup()
 
 # We use the point_2d type, not the general purpose GEOMETRY type, so we can identify such columns, and so that we can
@@ -100,16 +115,16 @@ setup.setup()
 # emits a custom scalar type Point (e.g. a namedtuple), and that includes basic functions like distance.
 # 
 # There are two prospective Polars geospatial extensions: st_polars and geopolars.
-# st_polars requires using GEOMETRY and has a heavy-ish additional dependency, so I'm skipping it for now.
+# st_polars require using GEOMETRY and has a heavy-ish additional dependency, so I'm skipping it for now.
 # Geopolars is in alpha, and is blocked on Polars adding support for Arrow extension types (which will unblock many things).
 # Point types are currently disabled / unsupported
-# point = Dtype('point', duckdb.dtype('POINT_2D'), pl.Struct([pl.Field('x', pl.Float64), pl.Field('y', pl.Float64)]))
+# point = SimpleDtype('point', duckdb.SimpleDtype('POINT_2D'), pl.Struct([pl.Field('x', pl.Float64), pl.Field('y', pl.Float64)]))
 
-date_dtype = Dtype('date', ddt.DATE, pl.Date)
-time_dtype = Dtype('time', ddt.TIME, pl.Time)
+date_dtype = SimpleDtype('date', ddt.DATE, pl.Date)
+time_dtype = SimpleDtype('time', ddt.TIME, pl.Time)
 
 # TODO confirm standardization on ms precision
-timestamp = Dtype('timestamp', ddt.TIMESTAMP_MS, pl.Datetime('ms'))
+timestamp = SimpleDtype('timestamp', ddt.TIMESTAMP_MS, pl.Datetime('ms'))
 
 @frozen(init=False)
 class EnumDtype(Dtype):
@@ -134,6 +149,11 @@ class EnumDtype(Dtype):
     def is_enum(self) -> bool:
         return True
 
+    @override
+    def _to_ser_dtype(self) -> _SerDtype:
+        return _EnumSerDtype(self.values)
+
+
 @frozen(init=False)
 class ListDtype(Dtype):
     inner: Dtype
@@ -145,6 +165,11 @@ class ListDtype(Dtype):
             pl.List(inner.polars_type),
             inner
         )
+
+    @override
+    def _to_ser_dtype(self) -> _SerDtype:
+        return _ListSerDtype(self.inner._to_ser_dtype())
+
 
 @frozen(init=False)
 class ArrayDtype(Dtype):
@@ -160,6 +185,10 @@ class ArrayDtype(Dtype):
             size
         )
 
+    @override
+    def _to_ser_dtype(self) -> _SerDtype:
+        return _ArraySerDtype(self.inner._to_ser_dtype(), self.size)
+
 @frozen(init=False)
 class StructDtype(Dtype):
     fields: tuple[tuple[str, Dtype], ...]
@@ -172,11 +201,16 @@ class StructDtype(Dtype):
             fields
         )
 
+    @override
+    def _to_ser_dtype(self) -> _SerDtype:
+        return _StructSerDtype(tuple((name, dt._to_ser_dtype()) for name, dt in self.fields))
+
 _simple_dtypes = [boolean, int8, int16, int32, int64, uint8, uint16, uint32, uint64, float32, float64, string, json_dtype, uuid_dtype, date_dtype, time_dtype, timestamp] # , point]
 _simple_dtype_by_polars_type = {dtype.polars_type: dtype for dtype in _simple_dtypes
                                 if dtype is not json_dtype and dtype is not uuid_dtype} # those are erased to string
 _simple_dtype_by_duckdb_type_str = {str(dtype.duckdb_type): dtype for dtype in _simple_dtypes}
 _simple_dtype_by_duckdb_type_str[str(ddt.TIMESTAMP)] = timestamp # alias for TIMESTAMP_MS
+_simple_dtype_by_name = {dtype.name: dtype for dtype in _simple_dtypes}
 
 def dtype_from_polars(pltype: PolarsDataType) -> Dtype:
     if pltype in _simple_dtype_by_polars_type:
@@ -220,3 +254,63 @@ def python_type_from_duckdb(dtype: Dtype) -> type:
     if dtype == uuid_dtype:
         return uuid.UUID # Unlike the Polars type, which is erased to str
     return dtype.polars_type.to_python()
+
+# We need these because Dtype cannot be automatically serialized; Polars and duckdb dtypes are not serializable
+# but also, we don't need to serialize them, we just need to tell cattrs that simple dtypes can be looked up by name.
+
+@frozen
+class _SerDtype(ABC):
+    """Automatically serializable equivalent of Dtype."""
+
+    @abstractmethod
+    def to_dtype(self) -> Dtype: ...
+
+@frozen
+class _SimpleSerDtype(_SerDtype):
+    name: str
+
+    def to_dtype(self) -> Dtype:
+        return _simple_dtype_by_name[self.name]
+
+
+@frozen
+class _EnumSerDtype(_SerDtype):
+    values: tuple[str, ...]
+
+    def to_dtype(self) -> Dtype:
+        return EnumDtype(*self.values)
+
+@frozen
+class _ListSerDtype(_SerDtype):
+    inner: _SerDtype
+
+    def to_dtype(self) -> Dtype:
+        return ListDtype(self.inner.to_dtype())
+
+@frozen
+class _ArraySerDtype(_SerDtype):
+    inner: _SerDtype
+    size: int
+
+    def to_dtype(self) -> Dtype:
+        return ArrayDtype(self.inner.to_dtype(), self.size)
+
+@frozen
+class _StructSerDtype(_SerDtype):
+    fields: tuple[tuple[str, _SerDtype], ...]
+
+    def to_dtype(self) -> Dtype:
+        return StructDtype(*tuple((name, dt.to_dtype()) for name, dt in self.fields))
+
+cattrs.strategies.include_subclasses(_SerDtype, sercontext.converter_for_hook_registration,
+                                     union_strategy=partial(cattrs.strategies.configure_tagged_union,
+                                                            tag_generator=lambda cls: cls.__name__.removeprefix('_').removesuffix('SerDtype').lower()))
+
+@sercontext.converter_for_hook_registration.register_unstructure_hook
+def _unstructure_dtype(dtype: Dtype) -> Any:
+    return sercontext.converter_for_hook_registration.unstructure(dtype._to_ser_dtype())
+
+@sercontext.converter_for_hook_registration.register_structure_hook
+def _structure_dtype(d: dict[str, Any], _: type[Dtype]) -> Dtype:
+    return sercontext.converter_for_hook_registration.structure(d, _SerDtype).to_dtype() # type: ignore[type-abstract]
+

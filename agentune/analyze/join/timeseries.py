@@ -64,7 +64,7 @@ class TimeSeries:
         if window.sample_maxsize is not None:
             new_df = new_df.sample(n=window.sample_maxsize, seed=42)
         return TimeSeries(Dataset(self.dataset.schema, new_df), self.date_col_name)
-        
+
 
 @frozen
 class KtsJoinStrategy[K](JoinStrategy):
@@ -74,7 +74,7 @@ class KtsJoinStrategy[K](JoinStrategy):
     table: DuckdbTable
     key_col: Field
     date_col: Field # Should be of type timestamp
-    value_cols: Sequence[Field] # can be used to restrict the available value columns from what's in the table
+    value_cols: tuple[Field, ...] # can be used to restrict the available value columns from what's in the table
 
     @staticmethod
     def on_table(name: str, table: DuckdbTable, key_col: str, date_col: str, *value_cols: str) -> KtsJoinStrategy[K]:

@@ -1,6 +1,6 @@
 """The core APIs and functionality used by all of agentune.
 
-Module separation (avioding circular imports):
+Module separation (avoiding circular imports):
 
 - setup: functions to initialize the library; everything else can depend on it.
 - types: class Dtype; definition and translation between duckdb and polars; everything that comes after this can depend on it.
@@ -16,14 +16,6 @@ Module separation (avioding circular imports):
               (Future custom hooks will also be registered here.)
               Depends on llm.
 """
-
-# Register hooks after loading modules in the correct order, to avoid a circular import.
-from agentune.analyze.util import cattrutil
-
-from . import llm, sercontext  # noqa: F401 unused imports
-
-cattrutil.configure_lazy_include_subclasses # noqa: B018 useless expression
-
 default_duckdb_batch_size = 10000
 '''Used as a default value in function signatures.
 
