@@ -53,19 +53,23 @@ class SplitDuckdbTable:
 
     def train(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_train_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_train_col_name}"'),
+                                       allow_cheap_size=True)
 
     def test(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE NOT "{self.is_train_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE NOT "{self.is_train_col_name}"'),
+                                       allow_cheap_size=True)
 
     def feature_search(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_feature_search_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_feature_search_col_name}"'),
+                                       allow_cheap_size=True)
 
     def feature_eval(self) -> DatasetSource:
         return DatasetSourceFromDuckdb(self.schema_without_split_columns,
-                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_feature_eval_col_name}"'))
+                                       lambda conn: conn.sql(f'SELECT {self._select_orig_col_names} FROM {self.table.name} WHERE "{self.is_feature_eval_col_name}"'),
+                                       allow_cheap_size=True)
 
     def drop_split_columns(self, conn: DuckDBPyConnection) -> None:
         with transaction_scope(conn):

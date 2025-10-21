@@ -10,6 +10,7 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.feature.base import Feature
+from agentune.analyze.progress.base import ProgressStage
 from agentune.analyze.util.polarutil import series_field
 
 
@@ -37,12 +38,14 @@ class FeatureEvaluator(ABC):
         ...
 
     @abstractmethod
-    async def aevaluate(self, dataset: Dataset,
-                        conn: DuckDBPyConnection) -> Dataset:
+    async def aevaluate(self, dataset: Dataset, conn: DuckDBPyConnection,
+                        cells_progress: ProgressStage | None = None) -> Dataset:
         """Args:
             dataset: includes all columns needed by all the features. Any additional columns must be ignored by the implementation.
             conn: makes available contains data declared in `secondary_tables` or `join_strategies`.
                   Any additional tables or columns must be ignored by the implementation.
+            cells_progress: will be used to increment the count of cells (i.e. rows*features) evaluated.
+                            If not given, a new stage will be created for the duration of the call.
 
         Returns:
             A dataset with a column per feature, named with the feature's name.
@@ -51,16 +54,16 @@ class FeatureEvaluator(ABC):
 
 class SyncFeatureEvaluator(FeatureEvaluator):
     @abstractmethod
-    def evaluate(self, dataset: Dataset,
-                 conn: DuckDBPyConnection) -> Dataset:
+    def evaluate(self, dataset: Dataset, conn: DuckDBPyConnection,
+                 cells_progress: ProgressStage | None = None) -> Dataset:
         """See FeatureEvaluator.aevaluate for details."""
         ...
 
     @override
-    async def aevaluate(self, dataset: Dataset,
-                        conn: DuckDBPyConnection) -> Dataset:
+    async def aevaluate(self, dataset: Dataset, conn: DuckDBPyConnection,
+                        cells_progress: ProgressStage | None = None) -> Dataset:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), cursor)
+            return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), cursor, cells_progress)
 
 # The following classes make up the API of EfficientEvaluator (which comes last)
 

@@ -30,6 +30,10 @@ class DuckdbTableSource(DatasetSource):
     table: DuckdbTable
     batch_size: int = default_duckdb_batch_size
 
+    @override
+    def cheap_size(self, conn: DuckDBPyConnection) -> int | None:
+        return len(self.to_duckdb(conn))
+
     @property
     @override
     def schema(self) -> Schema:
@@ -73,6 +77,12 @@ class DatasetSourceFromDuckdb(DatasetSource):
     schema: Schema
     _opener: DuckdbDatasetOpener
     batch_size: int = default_duckdb_batch_size
+    allow_cheap_size: bool = False
+
+    def cheap_size(self, conn: DuckDBPyConnection) -> int | None:
+        if not self.allow_cheap_size:
+            return None
+        return len(self._opener(conn))
 
     @override 
     def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:

@@ -251,3 +251,8 @@ def test_temp_schema(tmp_path: Path) -> None:
         tables = conn.execute(f"select table_name from duckdb_tables() where schema_name='{temp_schema_name}'").fetchall()
         assert tables == [], 'Tables in the temp schema were dropped on startup'
 
+def test_cheap_size(conn: DuckDBPyConnection) -> None:
+    conn.execute('CREATE TABLE tab (a INT)')
+    conn.execute('INSERT INTO tab(a) VALUES (1), (2), (3)')
+    source = DuckdbTable.from_duckdb('tab', conn).as_source(1)
+    assert source.cheap_size(conn) == 3

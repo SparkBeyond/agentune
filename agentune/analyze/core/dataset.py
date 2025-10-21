@@ -131,6 +131,13 @@ class DatasetSource(CopyToThread):
     @abstractmethod
     def schema(self) -> Schema: ...
 
+    def cheap_size(self, _conn: DuckDBPyConnection) -> int | None:
+        """Returns the size if it can be checked cheaply, or None otherwise.
+
+        May require a small amount of IO, but not reading the whole input.
+        """
+        return None # The default
+
     @abstractmethod
     def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]: ...
 
@@ -359,7 +366,10 @@ class DatasetSourceFromDataset(DatasetSource):
     @override
     def schema(self) -> Schema:
         return self.dataset.schema
-    
+
+    def cheap_size(self, _conn: DuckDBPyConnection) -> int | None:
+        return self.dataset.height
+
     @override
     def open(self, conn: DuckDBPyConnection) -> Iterator[Dataset]:
         return iter([self.dataset])

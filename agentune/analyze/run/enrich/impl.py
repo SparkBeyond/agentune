@@ -18,6 +18,7 @@ from agentune.analyze.feature.base import Feature, SyncFeature
 from agentune.analyze.feature.dedup_names import deduplicate_feature_names
 from agentune.analyze.feature.eval.base import FeatureEvaluator, SyncFeatureEvaluator
 from agentune.analyze.feature.eval.limits import async_features_eval_limit_context
+from agentune.analyze.progress.base import ProgressStage, stage_scope
 from agentune.analyze.run.enrich.base import EnrichRunner
 from agentune.analyze.util.queue import ScopedQueue
 
@@ -56,11 +57,18 @@ class EnrichRunnerImpl(EnrichRunner):
                   evaluators: Sequence[type[FeatureEvaluator]], conn: DuckDBPyConnection,
                   keep_input_columns: Sequence[str] = (),
                   deduplicate_names: bool = True) -> Dataset:
+        with stage_scope('Evaluate cells (features*rows)', 0) as cells_progress:
+            return await self._run(features, dataset, evaluators, conn, cells_progress, keep_input_columns, deduplicate_names)
+
+    async def _run(self, features: Sequence[Feature], dataset: Dataset,
+                  evaluators: Sequence[type[FeatureEvaluator]], conn: DuckDBPyConnection, cells_progress: ProgressStage,
+                  keep_input_columns: Sequence[str] = (),
+                  deduplicate_names: bool = True) -> Dataset:
         with async_features_eval_limit_context(self.max_async_features_eval):
             features = self._maybe_deduplicate_feature_names(features, deduplicate_names)
             features_by_evaluator = self._group_features_by_evaluator(features, evaluators)
             all_evaluated = await self._evaluate_all_groups(
-                conn, dataset, features_by_evaluator
+                conn, dataset, features_by_evaluator, cells_progress
             )
             return self._combine_evaluated_features(all_evaluated, features,
                                                     dataset.select(*keep_input_columns) if keep_input_columns else None)
@@ -82,29 +90,34 @@ class EnrichRunnerImpl(EnrichRunner):
         schema = Schema(tuple(field for field in dataset_source.schema.cols if field.name in keep_input_columns) + \
             tuple(Field(feature.name, feature.dtype) for feature in renamed_features))
 
-        # Separate input and output connections to run on different threads
-        with (conn.cursor() as input_conn, conn.cursor() as output_conn, \
+        total_rows = dataset_source.cheap_size(conn)
+        total_cells = total_rows * len(features) if total_rows is not None else None
+        with stage_scope(f'Enrich rows with {len(features)} features', 0, total_rows) as rows_progress, \
+             stage_scope('Evaluate cells (features*rows)', 0, total_cells) as cells_progress:
+            # Separate input and output connections to run on different threads
+            with (conn.cursor() as input_conn, conn.cursor() as output_conn, \
                 ScopedQueue[Dataset]() as input_queue, ScopedQueue[Dataset]() as output_queue):
 
-            def consume_input() -> None:
-                input_queue.consume(dataset_source.copy_to_thread().open(input_conn))
-            input_task = asyncio.create_task(asyncio.to_thread(consume_input))
+                def consume_input() -> None:
+                    input_queue.consume(dataset_source.copy_to_thread().open(input_conn))
+                input_task = asyncio.create_task(asyncio.to_thread(consume_input))
 
-            # This is an illegal DatasetSource which can only be consumed once, but that's all a DatasetSink needs
-            output_source = DatasetSourceFromIterable(schema, output_queue)
-            output_task = asyncio.create_task(asyncio.to_thread(dataset_sink.write, output_source, output_conn))
+                # This is an illegal DatasetSource which can only be consumed once, but that's all a DatasetSink needs
+                output_source = DatasetSourceFromIterable(schema, output_queue)
+                output_task = asyncio.create_task(asyncio.to_thread(dataset_sink.write, output_source, output_conn))
 
-            async for dataset in input_queue:
-                result = await self.run(features, dataset, evaluators, conn, keep_input_columns, deduplicate_names)
-                await output_queue.aput(result)
-            output_queue.close()
-            await input_queue.await_empty()
+                async for dataset in input_queue:
+                    result = await self._run(features, dataset, evaluators, conn, cells_progress, keep_input_columns, deduplicate_names)
+                    rows_progress.increment_count(result.height)
+                    await output_queue.aput(result)
+                output_queue.close()
+                await input_queue.await_empty()
 
-            await input_task
-            await output_task
+                await input_task
+                await output_task
 
-            await input_queue.await_empty()
-            await output_queue.await_empty()
+                await input_queue.await_empty()
+                await output_queue.await_empty()
 
     def _maybe_deduplicate_feature_names(self, features: Sequence[Feature], deduplicate_names: bool) -> Sequence[Feature]:
         if deduplicate_names:
@@ -139,7 +152,8 @@ class EnrichRunnerImpl(EnrichRunner):
         self,
         conn: DuckDBPyConnection,
         dataset: Dataset,
-        features_by_evaluator: dict[type[FeatureEvaluator], list[Feature]]
+        features_by_evaluator: dict[type[FeatureEvaluator], list[Feature]],
+        cells_progress: ProgressStage
     ) -> Sequence[_EvaluatedFeatures]:
         """Evaluate all feature groups, running all async evaluators concurrently
         and all sync evaluators serially (in parallel with the async ones).
@@ -153,13 +167,13 @@ class EnrichRunnerImpl(EnrichRunner):
             else:
                 async_groups.append((evaluator_cls, features))
 
-        async_tasks = [asyncio.create_task(self._evaluate_async_features(conn, dataset, evaluator_cls, features))
+        async_tasks = [asyncio.create_task(self._evaluate_async_features(conn, dataset, evaluator_cls, features, cells_progress))
                        for evaluator_cls, features in async_groups]
 
         if sync_groups:
             with conn.cursor() as sync_cursor:
                 sync_evaluated = await asyncio.to_thread(
-                    self._evaluate_all_sync_features, dataset.copy_to_thread(), sync_cursor, sync_groups
+                    self._evaluate_all_sync_features, dataset.copy_to_thread(), sync_cursor, sync_groups, cells_progress
                 )
         else:
             sync_evaluated = []
@@ -172,28 +186,28 @@ class EnrichRunnerImpl(EnrichRunner):
         conn: DuckDBPyConnection,
         dataset: Dataset,
         evaluator_cls: type[FeatureEvaluator],
-        features: list[Feature]
+        features: list[Feature],
+        cells_progress: ProgressStage
     ) -> _EvaluatedFeatures:
         """Evaluate async features as a single group."""
         evaluator = evaluator_cls.for_features(features)
-        evaluated = await evaluator.aevaluate(dataset, conn)
-        _logger.info(f'Evaluated {len(features)} async features with {evaluator_cls.__name__}')
+        evaluated = await evaluator.aevaluate(dataset, conn, cells_progress)
         return _EvaluatedFeatures(evaluated, features)
 
     def _evaluate_all_sync_features(
         self,
         dataset: Dataset,
         conn: DuckDBPyConnection,
-        sync_groups: list[tuple[type[SyncFeatureEvaluator], list[SyncFeature]]]
+        sync_groups: list[tuple[type[SyncFeatureEvaluator], list[SyncFeature]]],
+        cells_progress: ProgressStage
     ) -> list[_EvaluatedFeatures]:
         """Evaluate all sync features sequentially (called from async thread)."""
         all_evaluated = []
 
         for evaluator_cls, features in sync_groups:
             evaluator = evaluator_cls.for_features(features)
-            evaluated = evaluator.evaluate(dataset, conn)
+            evaluated = evaluator.evaluate(dataset, conn, cells_progress)
             all_evaluated.append(_EvaluatedFeatures(evaluated, cast(list[Feature], features)))
-            _logger.info(f'Evaluated {len(features)} sync features with {evaluator_cls.__name__}')
 
         return all_evaluated
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import datetime
+import itertools
 import threading
 from collections.abc import Generator
 
@@ -71,7 +72,7 @@ class ProgressStage:
         if snapshot.is_completed:
             base += ' [completed]'
         for child in snapshot.children:
-            base += f'\n\\-> {child}'
+            base += f'\n\\-> {str(child).replace('\\n', '   \\n')}'
         return base
 
 
@@ -88,6 +89,17 @@ class ProgressStage:
             if self.total is not None and value > self.total:
                 raise ValueError(f'Cannot update count to {value} > total {self.total}')
             self._count = value
+
+    def increment_count(self, value: int) -> None:
+        """Increment self.count by value; if self.count is None, set it to value."""
+        with self._lock:
+            if self.is_completed:
+                raise ValueError('Cannot update count after stage is completed')
+            if self._count is None:
+                self._count = 0
+            if self._total is not None and self._count + value > self._total:
+                raise ValueError(f'Cannot update count to {self._count + value} > total {self._total}')
+            self._count += value
 
     def set_total(self, value: int) -> None:
         with self._lock:
@@ -143,11 +155,16 @@ def root_stage() -> ProgressStage | None:
     return stage.root if stage is not None else None
 
 @contextlib.contextmanager
-def stage_scope(name: str, count: int | None = None, total: int | None = None) -> Generator[ProgressStage]:
+def stage_scope(name: str, count: int | None = None, total: int | None = None,
+                unique_name: bool = True) -> Generator[ProgressStage]:
     """Create a new stage as a child of the current stage and return it, as a context manager.
 
     If there is no current stage, creates a new root stage.
     The stage is completed when exiting the context.
+
+    Args:
+        unique_name: if True, and a stage already exists with this name as a child of the current stage, add a
+                     unique numeric suffix to make the new stage name valid.
     """
     match current_stage():
         case None:
@@ -159,6 +176,12 @@ def stage_scope(name: str, count: int | None = None, total: int | None = None) -
                 stage.complete()
                 _progress.set(None)
         case stage:
+            if unique_name:
+                existing_names = {child.name for child in stage.children}
+                if name in existing_names:
+                    names = (f'{name} ({i})' for i in itertools.count())
+                    name = next(name for name in names if name not in existing_names)
+
             child = stage.add_child(name, count, total)
             token = _progress.set(child)
             try:

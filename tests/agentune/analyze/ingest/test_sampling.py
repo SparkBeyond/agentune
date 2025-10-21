@@ -17,6 +17,11 @@ def test_split_duckdb_table(conn: DuckDBPyConnection) -> None:
 
     split_table = sampling.split_duckdb_table(conn, 'tab')
 
+    assert split_table.train().cheap_size(conn) == split_table.train().to_dataset(conn).height
+    assert split_table.test().cheap_size(conn) == split_table.test().to_dataset(conn).height
+    assert split_table.feature_search().cheap_size(conn) == split_table.feature_search().to_dataset(conn).height
+    assert split_table.feature_eval().cheap_size(conn) == split_table.feature_eval().to_dataset(conn).height
+
     num_train = len(conn.table('tab').filter('_is_train'))
     expected_num_train = total_count * 0.8
     assert abs(1 - abs(num_train / expected_num_train)) < 0.001, f'Approximately 0.8 of rows marked as train, {num_train=}'
