@@ -1,9 +1,11 @@
+import logging
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Iterable, Iterator
 
 import janus
 from attrs import field, frozen
 from janus import AsyncQueueShutDown, SyncQueueEmpty, SyncQueueShutDown
 
+_logger = logging.getLogger(__name__)
 
 class Queue[T](Iterable[T], AsyncIterable[T]):
     """Queue connecting sync and async. Also supports for and async for, which wait for the queue to be closed.
@@ -158,7 +160,7 @@ class Queue[T](Iterable[T], AsyncIterable[T]):
 # Can't use contextlib.contextmanager, it doesn't support generics
 @frozen
 class ScopedQueue[T]:
-    """Generic context manager for Queue[T]."""
+    """Context manager for Queue[T]. Closes it when going out of scope and logs a warning if it is not empty at that point."""
     maxsize: int = 1
     queue: Queue[T] = field(init=False)
     @queue.default
@@ -167,15 +169,17 @@ class ScopedQueue[T]:
     
     def __enter__(self) -> Queue[T]:
         return self.queue
-    
+
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        if self.queue._queue.sync_q.qsize() > 0:
+            _logger.warning(f'Non-empty ScopedQueue going out of scope, {exc_val=}')
         self.queue.close()
-        self.queue.wait_empty()
 
     async def __aenter__(self) -> Queue[T]:
         return self.queue
     
     async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        if self.queue._queue.async_q.qsize() > 0:
+            _logger.warning(f'Non-empty ScopedQueue going out of scope, {exc_val=}')
         self.queue.close()
-        await self.queue.await_empty()
 
