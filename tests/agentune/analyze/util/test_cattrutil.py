@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import gc
 import logging
 from abc import ABC, abstractmethod
 from typing import override
 
+import attrs
 import cattrs
 import pytest
 from attrs import define, frozen
@@ -186,4 +189,19 @@ def test_delete_subclass_after_registration() -> None:
     while gc.collect() > 0: pass
 
     _logger.info(converter.loads(dumped, Base))
+
+def test_structure_without_unstructure() -> None:
+    """Regression test for a bug that caused the UseTypeTag structure hook to fail if unstructure wasn't called before
+    for that type.
+    """
+    @define
+    class Base(UseTypeTag):
+        name: str
+
+    assert attrs.fields(Base).name.type == 'str' # Not the type str, the value 'str', because we import annotations from __future__
+
+    converter = cattrs.Converter()
+    cattrutil.register_use_type_tag(converter)
+
+    assert converter.structure({'name': 'foo', '_type': 'Base'}, Base) == Base('foo')
 

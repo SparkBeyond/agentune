@@ -7,6 +7,7 @@ import weakref
 from abc import ABC, abstractmethod
 from typing import Any
 
+import attrs
 from cattrs import Converter
 from cattrs.dispatch import StructureHook, UnstructureHook
 
@@ -59,9 +60,15 @@ class UseTypeTag:
 
 def register_use_type_tag(converter: Converter, tag_name: str = '_type') -> None:
     def unstructure_factory(_cl: type[UseTypeTag], converter: Converter) -> UnstructureHook:
+        unstructure_hooks: dict[type, UnstructureHook] = {}
+
         def unstructure_hook(obj: UseTypeTag) -> dict[str, Any]:
-            prev = converter.gen_unstructure_attrs_fromdict(type(obj))
-            dct = prev(obj)
+            real_cl = type(obj)
+            prev_hook = unstructure_hooks.get(real_cl)
+            if prev_hook is None:
+                prev_hook = converter.gen_unstructure_attrs_fromdict(real_cl)
+                unstructure_hooks[real_cl] = prev_hook
+            dct = prev_hook(obj)
             dct[tag_name] = obj._type_tag()
             return dct
         return unstructure_hook
@@ -92,7 +99,14 @@ def register_use_type_tag(converter: Converter, tag_name: str = '_type') -> None
                 raise ValueError(f'Unfamiliar type tag value {tag} for subtype of {target_type.__name__}; '
                                  f'did you forget to import a module?')
 
-            return converter.structure_attrs_fromdict(dct, real_cl)
+            # Work around cattrs#692
+            if attrs.has(real_cl):
+                attrs.resolve_types(real_cl)
+
+            # Can't use converter.gen_structure_attrs_fromdict here because it doesn't handle generic classes like JoinStrategy.
+            # (These are classes where the type param doesn't affect any attrs fields, only method signatures.)
+            # Because of this we can't cache the previous hook; this may slightly hurt performance.
+            return typing.cast(UseTypeTag, converter.structure_attrs_fromdict(dct, real_cl))
 
         return structure_hook
 
