@@ -92,28 +92,38 @@ class TestRandomSampler:
     def test_random_sampling_validation_errors(self) -> None:
         """Test validation errors in random sampling."""
         sampler = RandomSampler()
-        
+
         data_dict: dict[str, list] = {'id': list(range(10)), 'value': [f'item_{i}' for i in range(10)]}
         schema_fields = [Field('id', int32), Field('value', string)]
         dataset = create_test_dataset(data_dict, schema_fields)
-        
+
         # Empty dataset
         empty_data = pl.DataFrame({'id': [], 'value': []}, schema={'id': pl.Int32, 'value': pl.String})
         empty_dataset = Dataset(schema=Schema(tuple(schema_fields)), data=empty_data)
         with pytest.raises(ValueError, match='Cannot sample from empty dataset'):
             sampler.sample(empty_dataset, sample_size=5)
-        
+
         # Negative sample size
         with pytest.raises(ValueError, match='Sample size must be positive'):
             sampler.sample(dataset, sample_size=-1)
-        
+
         # Zero sample size
         with pytest.raises(ValueError, match='Sample size must be positive'):
             sampler.sample(dataset, sample_size=0)
-        
-        # Sample size exceeds dataset size
-        with pytest.raises(ValueError, match='Sample size 20 exceeds dataset size 10'):
-            sampler.sample(dataset, sample_size=20)
+
+    def test_random_sampling_larger_than_dataset(self) -> None:
+        """Test random sampling when sample size exceeds dataset size."""
+        sampler = RandomSampler()
+
+        data_dict: dict[str, list] = {'id': list(range(10)), 'value': [f'item_{i}' for i in range(10)]}
+        schema_fields = [Field('id', int32), Field('value', string)]
+        dataset = create_test_dataset(data_dict, schema_fields)
+
+        # Sample size exceeds dataset size - should return full dataset
+        result = sampler.sample(dataset, sample_size=20, random_seed=42)
+        assert result.data.height == 10
+        assert result.data.equals(dataset.data)
+        assert result.schema == dataset.schema
 
 
 class TestValidateFieldFunctions:
@@ -275,7 +285,26 @@ class TestProportionalClassSampler:
         assert 'common' in unique_types
         assert 'rare1' in unique_types
         assert 'rare2' in unique_types
-    
+
+    def test_proportional_class_larger_than_dataset(self) -> None:
+        """Test proportional class sampling when sample size exceeds dataset size."""
+        enum_dtype = EnumDtype('A', 'B')
+        target_field = Field('category', enum_dtype)
+        sampler = ProportionalClassSampler(target_field=target_field)
+
+        data_dict: dict[str, list] = {
+            'id': list(range(20)),
+            'category': (['A'] * 10) + (['B'] * 10)
+        }
+        schema_fields = [Field('id', int32), Field('category', enum_dtype)]
+        dataset = create_test_dataset(data_dict, schema_fields)
+
+        # Sample size exceeds dataset size - should return full dataset
+        result = sampler.sample(dataset, sample_size=50, random_seed=42)
+        assert result.data.height == 20
+        assert result.data.equals(dataset.data)
+        assert result.schema == dataset.schema
+
 
 class TestProportionalNumericSampler:
     """Test ProportionalNumericSampler functionality and edge cases."""
@@ -364,13 +393,31 @@ class TestProportionalNumericSampler:
         """Test validation error for non-numeric target field."""
         target_field = Field('category', string)
         sampler = ProportionalNumericSampler(num_bins=3, target_field=target_field)
-        
+
         data_dict: dict[str, list] = {'id': [1, 2, 3], 'category': ['A', 'B', 'C']}
         schema_fields = [Field('id', int32), Field('category', string)]
         dataset = create_test_dataset(data_dict, schema_fields)
-        
+
         with pytest.raises(ValueError, match="Field 'category' must be numeric"):
             sampler.sample(dataset, sample_size=2)
+
+    def test_proportional_numeric_larger_than_dataset(self) -> None:
+        """Test proportional numeric sampling when sample size exceeds dataset size."""
+        target_field = Field('score', float64)
+        sampler = ProportionalNumericSampler(num_bins=3, target_field=target_field)
+
+        data_dict: dict[str, list] = {
+            'id': list(range(30)),
+            'score': [i / 10.0 for i in range(30)]
+        }
+        schema_fields = [Field('id', int32), Field('score', float64)]
+        dataset = create_test_dataset(data_dict, schema_fields)
+
+        # Sample size exceeds dataset size - should return full dataset
+        result = sampler.sample(dataset, sample_size=100, random_seed=42)
+        assert result.data.height == 30
+        assert result.data.equals(dataset.data)
+        assert result.schema == dataset.schema
 
 
 class TestBalancedClassSampler:
@@ -464,6 +511,25 @@ class TestBalancedClassSampler:
         
         with pytest.raises(ValueError, match='Cannot sample from empty dataset'):
             sampler.sample(dataset, sample_size=5)
+
+    def test_balanced_class_larger_than_dataset(self) -> None:
+        """Test balanced class sampling when sample size exceeds dataset size."""
+        enum_dtype = EnumDtype('X', 'Y', 'Z')
+        target_field = Field('label', enum_dtype)
+        sampler = BalancedClassSampler(target_field=target_field)
+
+        data_dict: dict[str, list] = {
+            'id': list(range(30)),
+            'label': (['X'] * 10) + (['Y'] * 10) + (['Z'] * 10)
+        }
+        schema_fields = [Field('id', int32), Field('label', enum_dtype)]
+        dataset = create_test_dataset(data_dict, schema_fields)
+
+        # Sample size exceeds dataset size - should return full dataset
+        result = sampler.sample(dataset, sample_size=100, random_seed=42)
+        assert result.data.height == 30
+        assert result.data.equals(dataset.data)
+        assert result.schema == dataset.schema
 
 
 class TestBalancedNumericSampler:
@@ -580,13 +646,31 @@ class TestBalancedNumericSampler:
         """Test validation error for non-numeric target field."""
         target_field = Field('text', string)
         sampler = BalancedNumericSampler(num_bins=3, target_field=target_field)
-        
+
         data_dict: dict[str, list] = {'id': [1, 2, 3], 'text': ['hello', 'world', 'test']}
         schema_fields = [Field('id', int32), Field('text', string)]
         dataset = create_test_dataset(data_dict, schema_fields)
-        
+
         with pytest.raises(ValueError, match="Field 'text' must be numeric"):
             sampler.sample(dataset, sample_size=2)
+
+    def test_balanced_numeric_larger_than_dataset(self) -> None:
+        """Test balanced numeric sampling when sample size exceeds dataset size."""
+        target_field = Field('value', float64)
+        sampler = BalancedNumericSampler(num_bins=4, target_field=target_field)
+
+        data_dict: dict[str, list] = {
+            'id': list(range(40)),
+            'value': [i * 2.5 for i in range(40)]
+        }
+        schema_fields = [Field('id', int32), Field('value', float64)]
+        dataset = create_test_dataset(data_dict, schema_fields)
+
+        # Sample size exceeds dataset size - should return full dataset
+        result = sampler.sample(dataset, sample_size=150, random_seed=42)
+        assert result.data.height == 40
+        assert result.data.equals(dataset.data)
+        assert result.schema == dataset.schema
 
 
 class TestSamplerIntegration:

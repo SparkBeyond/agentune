@@ -54,11 +54,12 @@ logger = logging.getLogger(__name__)
 class ConversationQueryFeatureGenerator(FeatureGenerator):
     # LLM and generation settings
     query_generator_model: LLMWithSpec
-    num_samples_for_generation: int
-    num_features_to_generate: int
-    
     query_enrich_model: LLMWithSpec
-    num_samples_for_enrichment: int
+
+    # Optional parameters with defaults
+    num_samples_for_generation: int = 30
+    num_features_to_generate: int = 30
+    num_samples_for_enrichment: int = 200
     random_seed: int | None = None
     max_categorical: int = 9  # Max unique values for a categorical field
     max_empty_percentage: float = 0.5  # Max percentage of empty/None values allowed

@@ -26,9 +26,6 @@ class DataSampler(ABC):
         if sample_size <= 0:
             raise ValueError('Sample size must be positive')
 
-        if sample_size > dataset.data.height:
-            raise ValueError(f'Sample size {sample_size} exceeds dataset size {dataset.data.height}')
-
 
 @attrs.define
 class RandomSampler(DataSampler):
@@ -42,6 +39,10 @@ class RandomSampler(DataSampler):
     def sample(self, dataset: Dataset, sample_size: int, random_seed: int | None = None) -> Dataset:
         """Sample data using simple random sampling."""
         self._validate_inputs(dataset, sample_size)
+
+        # If sample size >= dataset size, return the entire dataset
+        if sample_size >= dataset.data.height:
+            return dataset
 
         # Simple random sample
         sampled_df = dataset.data.sample(n=sample_size, seed=random_seed)
