@@ -509,3 +509,73 @@ def test_numeric_classification_not_rebinned() -> None:
     expected_totals = (2, 2, 2)
     assert classification_stats.totals_per_class == expected_totals, \
         f'Expected totals {expected_totals}, got {classification_stats.totals_per_class}'
+
+
+def test_constant_feature_sse_reduction() -> None:
+    """Test that constant features (no variance) get SSE reduction = 0.
+    
+    This is a regression test for a bug where constant features were getting
+    negative SSE reduction due to singular system handling in linear regression.
+    
+    When a feature has no variance (all values identical), the linear system
+    becomes singular. The correct behavior is to predict the target mean,
+    giving SSE = baseline_SSE and thus SSE_reduction = 0.
+    
+    Bug scenario: With 2 samples where feature=[1,1] and target=[1,1]:
+    - baseline_sse = 0 (no variance in target)
+    - feature should also give sse = 0 (predicts mean)
+    - sse_reduction = 0 - 0 = 0 ✓
+    
+    The bug was returning sse = 2 (predicting 0 instead of mean),
+    leading to sse_reduction = 0 - sqrt(2/2) = -1 ✗
+    """
+    # Test case 1: Constant feature with constant target (both same class)
+    # Need at least 2 classes in the problem definition, even if all samples are same class
+    feature = SimpleNumericFeature(name='constant_feature', technical_description='Constant feature')
+    feature_series = pl.Series([1.0, 1.0])  # No variance
+    target_series = pl.Series(['A', 'A'])  # No variance - all samples same class
+    
+    # Create problem with 2 classes even though data only has class A
+    problem_desc = ProblemDescription(target_column='y', problem_type='classification')
+    target_field = Field('y', string)
+    problem = ClassificationProblem(
+        problem_description=problem_desc,
+        target_column=target_field,
+        classes=('A', 'B')  # Define 2 classes even though data only has A
+    )
+    
+    calc = UnifiedRelationshipStatsCalculator()
+    
+    stats = calc.calculate_from_series(feature, feature_series, target_series, problem)
+    
+    # With no variance in either feature or target, SSE reduction should be 0
+    assert stats.sse_reduction == pytest.approx(0.0, abs=1e-10), \
+        f'Constant feature with constant target should have sse_reduction=0, got {stats.sse_reduction}'
+    
+    # Test case 2: Constant feature with varying target
+    feature_series2 = pl.Series([1.0, 1.0, 1.0, 1.0])  # No variance
+    target_series2 = pl.Series(['A', 'B', 'A', 'B'])  # Has variance
+    
+    problem2 = _classification_problem(target_series2)
+    stats2 = calc.calculate_from_series(feature, feature_series2, target_series2, problem2)
+    
+    # Constant feature cannot improve prediction, so SSE reduction should be 0
+    assert stats2.sse_reduction == pytest.approx(0.0, abs=1e-10), \
+        f'Constant feature should have sse_reduction=0, got {stats2.sse_reduction}'
+    
+    # Test case 3: Constant numeric feature with numeric target (regression-like)
+    feature_series3 = pl.Series([5.0, 5.0, 5.0])  # No variance
+    target_series3 = pl.Series([1.0, 2.0, 3.0])  # Has variance
+    
+    # Use regression problem
+    regression_problem = _regression_problem()
+    stats3 = calc.calculate_from_series(feature, feature_series3, target_series3, regression_problem)
+    
+    # Constant feature cannot improve prediction, so SSE reduction should be 0
+    assert stats3.sse_reduction == pytest.approx(0.0, abs=1e-10), \
+        f'Constant feature in regression should have sse_reduction=0, got {stats3.sse_reduction}'
+    
+    # Verify that SSE reduction is never negative (additional safety check)
+    assert stats.sse_reduction >= 0, 'SSE reduction should never be negative'
+    assert stats2.sse_reduction >= 0, 'SSE reduction should never be negative'
+    assert stats3.sse_reduction >= 0, 'SSE reduction should never be negative'

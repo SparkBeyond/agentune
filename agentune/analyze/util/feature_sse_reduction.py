@@ -48,6 +48,9 @@ class FeatureTargetStats:
 def solve_2x2_system(a11: float, a12: float, a21: float, a22: float, b1: float, b2: float) -> tuple:
     """Solve 2x2 linear system for single-variable regression with intercept.
     Returns (a, c) for y = a*x + c.
+    
+    When the system is singular (feature has no variance), returns (0, b2/a22)
+    which corresponds to predicting the target mean.
     """
     matrix_a = np.array([[a11, a12], [a21, a22]])
     b = np.array([b1, b2])
@@ -55,7 +58,13 @@ def solve_2x2_system(a11: float, a12: float, a21: float, a22: float, b1: float, 
         solution = np.linalg.solve(matrix_a, b)
         return tuple(solution)
     except np.linalg.LinAlgError:
-        return (0.0, 0.0)
+        # Singular system - feature has no variance
+        # Return mean-only solution: a=0, c=mean_target
+        # From the second equation: sx*a + n*c = sy, with a=0: c = sy/n = b2/a22
+        if a22 != 0:
+            return (0.0, b2 / a22)
+        else:
+            return (0.0, 0.0)
 
 
 def lin_regression_1variable_with_sums(sx: float, sy: float, sx2: float, sxy: float, n: float, sy2: float) -> float:
