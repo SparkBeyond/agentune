@@ -40,12 +40,12 @@ jobs:
           cd ${{ inputs.src_path }}
           poetry install --sync --no-interaction
 
-      - name: Run ruff
+      - name: Run linting
         run: |
           cd ${{ inputs.src_path }}
           poetry run ruff check .
 
-      - name: Run mypy
+      - name: Run type checking
         run: |
           cd ${{ inputs.src_path }}
           poetry run mypy .
