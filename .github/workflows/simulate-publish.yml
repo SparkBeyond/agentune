@@ -1,0 +1,40 @@
+name: Publish agentune-simulate to PyPI
+
+on:
+  push:
+    tags:
+      - 'simulate-v*'
+
+jobs:
+  test:
+    uses: ./.github/workflows/python-tests.yml
+    with:
+      src_path: "agentune_simulate"
+
+
+  build:
+    needs: test
+    uses: ./.github/workflows/build.yml
+    with:
+      src_path: "agentune_simulate"
+      tag_ref: "simulate-v"
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/p/agentune-simulate
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-files
+        path: dist/
+    
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        print-hash: true

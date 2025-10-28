@@ -1,0 +1,29 @@
+name: Agentune-analyze-main
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'agentune_analyze/agentune/**'
+      - 'agentune_analyze/tests/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'agentune_analyze/agentune/**'
+      - 'agentune_analyze/tests/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+  packages: write
+
+jobs:
+  python_tests:
+    uses: ./.github/workflows/python-tests.yml
+    with:
+      src_path: "agentune_analyze"
+
+

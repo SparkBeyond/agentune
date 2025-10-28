@@ -1,0 +1,27 @@
+name: Agentune-simulate-main
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'agentune_simulate/agentune/**'
+      - 'agentune_simulate/tests/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'agentune_simulate/agentune/**'
+      - 'agentune_simulate/tests/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+  packages: write
+
+jobs:
+  python_tests:
+    uses: ./.github/workflows/python-tests.yml
+    with:
+      src_path: "agentune_simulate"
