@@ -90,7 +90,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
     num_actionable_rounds: int = 2
     num_creative_features: int = 20
     
-    random_seed: int | None = None
+    random_seed: int | None = 42
     max_categorical: int = 9  # Max unique values for a categorical field
     max_empty_percentage: float = 0.5  # Max percentage of empty/None values allowed
     
