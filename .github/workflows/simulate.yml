@@ -7,12 +7,16 @@ on:
     paths:
       - 'agentune_simulate/agentune/**'
       - 'agentune_simulate/tests/**'
+      - 'agentune_simulate/pyproject.toml'
+      - 'agentune_simulate/poetry.lock'
   push:
     branches:
       - main
     paths:
       - 'agentune_simulate/agentune/**'
       - 'agentune_simulate/tests/**'
+      - 'agentune_simulate/pyproject.toml'
+      - 'agentune_simulate/poetry.lock'
 
 permissions:
   contents: write

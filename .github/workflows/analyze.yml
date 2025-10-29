@@ -7,12 +7,20 @@ on:
     paths:
       - 'agentune_analyze/agentune/**'
       - 'agentune_analyze/tests/**'
+      - 'agentune_analyze/pyproject.toml'
+      - 'agentune_analyze/poetry.lock'
+      - 'agentune_analyze/mypy.ini'
+      - 'agentune_analyze/.ruff.toml'
   push:
     branches:
       - main
     paths:
       - 'agentune_analyze/agentune/**'
       - 'agentune_analyze/tests/**'
+      - 'agentune_analyze/pyproject.toml'
+      - 'agentune_analyze/poetry.lock'
+      - 'agentune_analyze/mypy.ini'
+      - 'agentune_analyze/.ruff.toml'
 
 permissions:
   contents: write
