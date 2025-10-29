@@ -1,0 +1,62 @@
+name: Agentune Building Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      src_path:
+        description: 'Source Path'
+        required: false
+        type: string
+      tag_ref:
+        description: 'Tag reference'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "2.0.1"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Install dependencies
+        run: |
+          cd ${{ inputs.src_path }}
+          poetry install --sync --no-interaction
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/${{ inputs.tag_ref }}}" >> $GITHUB_OUTPUT
+
+      - name: Update version in pyproject.toml
+        run: |
+          cd ${{ inputs.src_path }}
+          poetry version ${{ steps.get_version.outputs.version }}
+
+      - name: Build package
+        run: |
+          cd ${{ inputs.src_path }}
+          poetry build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-files
+          path: ${{ inputs.src_path }}/dist/

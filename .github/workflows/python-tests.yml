@@ -1,10 +1,15 @@
-name: Agentune Simulate CI
+name: Agentune Styling, Linting and Testing
 
 on:
-  pull_request:
-    branches: [ main ]
-  push:
-    branches: [ main ]
+  workflow_call:
+    inputs:
+      src_path:
+        description: 'src_path'
+        required: false
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   lint-typecheck-test:
@@ -14,38 +19,39 @@ jobs:
         python-version: ["3.12"]
 
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.12.6"
-        cache: 'pip'
-    
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: "2.0.1"
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-        installer-parallel: true
-    
-    - name: Install dependencies
-      run: |
-        cd agentune_simulate
-        poetry install --sync --no-interaction
-    
-    - name: Run ruff
-      run: |
-        cd agentune_simulate
-        poetry run ruff check .
+      - uses: actions/checkout@v4
 
-    - name: Run mypy
-      run: |
-        cd agentune_simulate
-        poetry run mypy .
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12.6"
+          cache: 'pip'
 
-    - name: Run tests
-      run: |
-        cd agentune_simulate
-        poetry run python -m pytest
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "2.0.1"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Install dependencies
+        run: |
+          cd ${{ inputs.src_path }}
+          poetry install --sync --no-interaction
+
+      - name: Run linting
+        run: |
+          cd ${{ inputs.src_path }}
+          poetry run ruff check .
+
+      - name: Run type checking
+        run: |
+          cd ${{ inputs.src_path }}
+          poetry run mypy .
+
+      - name: Run tests
+        run: |
+          cd ${{ inputs.src_path }}
+          poetry run python -m pytest
+
