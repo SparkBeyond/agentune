@@ -10,17 +10,17 @@ from agentune.analyze.core import types
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.gen.base import FeatureGenerator, GeneratedFeature
-from agentune.analyze.feature.gen.insightful_text_generator.dedup.base import (
-    QueryDeduplicator,
-    SimpleDeduplicator,
+from agentune.analyze.feature.gen.insightful_text_generator.dedup.base import QueryDeduplicator
+from agentune.analyze.feature.gen.insightful_text_generator.dedup.llm_based_deduplicator import (
+    LLMBasedDeduplicator,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.features import (
-    create_feature,
-)
+from agentune.analyze.feature.gen.insightful_text_generator.features import create_feature
 from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
     ConversationFormatter,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.prompts import (
+    ACTIONABLE_QUESTIONNAIRE_PROMPT,
+    CREATIVE_FEATURES_PROMPT,
     create_enrich_conversation_prompt,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.query_generator import (
@@ -49,17 +49,47 @@ from agentune.analyze.join.conversation import ConversationJoinStrategy
 
 logger = logging.getLogger(__name__)
 
+SEED_OFFSET = 17
+
 
 @define
 class ConversationQueryFeatureGenerator(FeatureGenerator):
+    """A feature generator that creates insightful features from conversation data using LLM-based query generation.
+    
+    This generator works in multiple phases:
+    1. Generates analytical queries about conversations using LLMs
+    2. Enriches the queries with additional conversation context
+    3. Determines appropriate data types for the generated features
+    4. Creates and returns feature objects
+
+    The generator supports two types of queries:
+    - Actionable queries: Focus on practical, actionable insights from conversations
+    - Creative queries: Focus on interesting, potentially valuable patterns in conversations
+
+    Args:
+        query_generator_model: LLM model used for generating queries about conversations
+        query_enrich_model: LLM model used for enriching queries with conversation context
+        num_samples_for_generation: Number of conversation samples used when generating queries
+        num_samples_for_enrichment: Number of conversation samples used when enriching queries
+        num_features_per_round: Number of features to generate in each actionable round
+        num_actionable_rounds: Number of rounds to generate actionable features
+        num_creative_features: Number of additional creative features to generate
+        random_seed: Random seed for reproducible sampling
+        max_categorical: Maximum number of unique values allowed for categorical features
+        max_empty_percentage: Maximum percentage of empty/None values allowed in features
+    """
+    
     # LLM and generation settings
     query_generator_model: LLMWithSpec
     query_enrich_model: LLMWithSpec
 
     # Optional parameters with defaults
     num_samples_for_generation: int = 30
-    num_features_to_generate: int = 30
     num_samples_for_enrichment: int = 200
+    num_features_per_round: int = 20
+    num_actionable_rounds: int = 2
+    num_creative_features: int = 20
+    
     random_seed: int | None = None
     max_categorical: int = 9  # Max unique values for a categorical field
     max_empty_percentage: float = 0.5  # Max percentage of empty/None values allowed
@@ -72,8 +102,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         return RandomSampler()
     
     def _get_deduplicator(self) -> QueryDeduplicator:
-        # TODO: upgrade to a more sophisticated deduplicator
-        return SimpleDeduplicator()
+        return LLMBasedDeduplicator(llm_with_spec=self.query_generator_model)
     
     def _get_formatter(self, conversation_strategy: ConversationJoinStrategy, problem: Problem, include_target: bool) -> ConversationFormatter:
         params_to_print = (problem.target_column,) if include_target else ()
@@ -91,17 +120,16 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             if isinstance(strategy, ConversationJoinStrategy)
         ]
 
-    def create_query_generator(self, conversation_strategy: ConversationJoinStrategy, problem: Problem) -> ConversationQueryGenerator:
+    def create_query_generator(self, conversation_strategy: ConversationJoinStrategy, problem: Problem, creative: bool = False) -> ConversationQueryGenerator:
         """Create a ConversationQueryGenerator for the given conversation strategy."""
         sampler = self._get_sampler(problem)
-        deduplicator = self._get_deduplicator()
         formatter = self._get_formatter(conversation_strategy, problem, include_target=True)
+        prompt_template = CREATIVE_FEATURES_PROMPT if creative else ACTIONABLE_QUESTIONNAIRE_PROMPT
         return ConversationQueryGenerator(
             model=self.query_generator_model,
             sampler=sampler,
             sample_size=self.num_samples_for_generation,
-            deduplicator=deduplicator,
-            num_features_to_generate=self.num_features_to_generate,
+            prompt_template=prompt_template,
             formatter=formatter
         )
 
@@ -144,7 +172,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
 
     async def _determine_dtype(self, query: Query, series_data: pl.Series) -> Query | None:
         """Determine the appropriate dtype for a query based on the series data.
-        if no suitable dtype is found, return None.
+        if no suitable dtype is found, cast to categorical.
         """
         # Check for empty rows (None or empty string)
         total_rows = len(series_data)
@@ -201,22 +229,20 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         conversation_strategies = self.find_conversation_strategies(join_strategies)
 
         for conversation_strategy in conversation_strategies:
-            # 1. Create a query generator for the conversation
-            query_generator = self.create_query_generator(conversation_strategy, problem)
 
-            # 2. Generate queries from the conversation data
-            query_batch = await query_generator.agenerate_queries(feature_search, problem, conn, self.random_seed)
+            # 1. Generate queries
+            query_batch = await self._generate_queries(conversation_strategy, feature_search, problem, conn)
 
-            # 3. Enrich the queries with additional conversation information
+            # 2. Enrich the queries with additional conversation information
             sampler = self._get_sampler(problem)
             sampled_data = sampler.sample(feature_search, self.num_samples_for_enrichment, self.random_seed)
             enrichment_formatter = self._get_formatter(conversation_strategy, problem, include_target=False)
             enriched_output = await self.enrich_queries(query_batch, enrichment_formatter, sampled_data, conn)
 
-            # 4. Determine the data types for the enriched queries
+            # 3. Determine the data types for the enriched queries
             updated_queries = await self.determine_dtypes(query_batch, enriched_output)
 
-            # 5. Create Features from the enriched queries
+            # 4. Create Features from the enriched queries
             features = [create_feature(
                 query=query,
                 formatter=enrichment_formatter,
@@ -226,3 +252,46 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             # Yield features one by one
             for feature in features:
                 yield GeneratedFeature(feature, False)
+
+    async def _generate_queries(self, conversation_strategy: ConversationJoinStrategy, input_data: Dataset, problem: Problem, conn: DuckDBPyConnection) -> list[Query]:
+        """Generate queries num_generations times, each generating num_features_per_generation queries,
+        followed by generating num_juicy_features juicy features.
+        Finally deduplicate all generated queries and return the unique set.
+        """
+        query_generator = self.create_query_generator(conversation_strategy, problem, creative=False)
+        current_seed = self.random_seed
+        queries: list[Query] = []
+        for gen_idx in range(self.num_actionable_rounds):
+            logger.debug(f'Starting generation {gen_idx + 1}/{self.num_actionable_rounds} for conversation strategy "{conversation_strategy.name}"')
+            gen_queries = await query_generator.agenerate_queries(
+                input_data,
+                problem,
+                self.num_features_per_round,
+                conn,
+                random_seed=current_seed,
+                existing_queries=queries
+            )
+            logger.debug(f'Generated {len(gen_queries)} queries in generation {gen_idx + 1}/{self.num_actionable_rounds}')
+            queries.extend(gen_queries)
+            if current_seed is not None:
+                current_seed += SEED_OFFSET  # Offset seed for next generation to sample different conversations
+
+        creative_query_generator = self.create_query_generator(conversation_strategy, problem, creative=True)
+        if self.num_creative_features > 0:
+            logger.debug(f'Generating additional {self.num_creative_features} juicy features for conversation strategy "{conversation_strategy.name}"')
+            creative_queries = await creative_query_generator.agenerate_queries(
+                input_data,
+                problem,
+                self.num_creative_features,
+                conn,
+                random_seed=current_seed,
+                existing_queries=queries
+            )
+            logger.debug(f'Generated {len(creative_queries)} creative queries')
+            queries.extend(creative_queries)
+        
+        # Final deduplication on all queries from both phases
+        deduplicator = self._get_deduplicator()
+        unique_queries = await deduplicator.deduplicate(queries)
+        logger.debug(f'Deduplicated to {len(unique_queries)} unique queries after all generations')
+        return unique_queries

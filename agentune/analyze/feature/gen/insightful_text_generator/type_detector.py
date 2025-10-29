@@ -118,7 +118,7 @@ def detect_categorical_type(data: pl.Series, max_categorical: int, min_threshold
     return None
 
 
-def decide_dtype(query: Query, data: pl.Series, max_categorical: int, max_error_percentage: float = 0.01,
+def decide_dtype(query: Query, data: pl.Series, max_categorical: int, max_error_percentage: float = 0.05,
                  min_threshold_percentage: float = 0.01, min_categorical_coverage: float = 0.9, max_categorical_chars: int = 50) -> types.Dtype:
     """Decide the appropriate data type for a query based on the data values.
     
@@ -126,7 +126,7 @@ def decide_dtype(query: Query, data: pl.Series, max_categorical: int, max_error_
         query: The query object
         data: Polars Series with the data
         max_categorical: Maximum number of categories for enum (default: 10)
-        min_threshold_percentage: Minimum percentage of total data a category must represent (default: 0.01 = 1%)
+        min_threshold_percentage: Minimum percentage of total data a category must represent (default: 0.05 = 5%)
         min_categorical_coverage: Minimum coverage the top categories must provide (default: 0.9 = 90%)
         max_categorical_chars: Maximum number of characters for each category value (default: 50)
 

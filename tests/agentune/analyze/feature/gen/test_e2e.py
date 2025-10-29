@@ -150,10 +150,12 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
 
     feature_generator: ConversationQueryFeatureGenerator = ConversationQueryFeatureGenerator(
         query_generator_model=real_llm_with_spec,
-        num_features_to_generate=5,
+        query_enrich_model=real_llm_with_spec,
         num_samples_for_generation=10,
         num_samples_for_enrichment=5,
-        query_enrich_model=real_llm_with_spec,
+        num_features_per_round=5,
+        num_actionable_rounds=2,
+        num_creative_features=5,
         random_seed=random_seed
     )
 
@@ -161,11 +163,9 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
     conversation_strategies = feature_generator.find_conversation_strategies(strategies)
 
     for conversation_strategy in conversation_strategies:
-        # 1. Create a query generator for the conversation strategy
-        query_generator = feature_generator.create_query_generator(conversation_strategy, problem)
 
-        # 2. Generate queries from the conversation data
-        queries = await query_generator.agenerate_queries(main_dataset, problem, conn, random_seed=feature_generator.random_seed)
+        # 1. Generate queries using two-phase approach
+        queries = await feature_generator._generate_queries(conversation_strategy, main_dataset, problem, conn)
 
         # Validate result
         assert isinstance(queries, list)
@@ -187,7 +187,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
             # log the generated queries for verification
             logger.info(f'Generated queries: {query.name} - {query.query_text}')
 
-        # 3. Test enrichment part
+        # 2. Test enrichment part
         sampler = feature_generator._get_sampler(problem)
         sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
         enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, include_target=False)
@@ -213,7 +213,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
 
         logger.info(f'Enrichment successful: {enriched_output.height} rows with {len(enriched_output.columns)} columns')
 
-        # 4. Test determine_dtype part
+        # 3. Test determine_dtype part
         updated_queries = await feature_generator.determine_dtypes(queries, enriched_output)
         
         # Validate updated queries
@@ -235,7 +235,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         
         logger.info(f'Dtype determination successful: {len(updated_queries)} queries with valid types')
 
-        # 5. Test feature creation and evaluation
+        # 4. Test feature creation and evaluation
         features = [create_feature(
             query=query,
             formatter=enrichment_formatter,
@@ -247,7 +247,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
             logger.info(f'Created feature: {feature.name} - {feature.description}')
         assert len(features) > 0 and len(main_dataset.data) > 0
 
-        # 6. Test feature evaluation on first row
+        # 5. Test feature evaluation on first row
         for feature in features:
             strict_df = pl.DataFrame([main_dataset.data.get_column(col.name) for col in feature.params.cols])
             first_row_args = strict_df.row(0, named=False)

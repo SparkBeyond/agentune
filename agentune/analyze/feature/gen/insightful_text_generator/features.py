@@ -89,7 +89,7 @@ class InsightfulTextFeature[T](LlmFeature[T]):
         messages = [ChatMessage(role='user', content=prompt)]
         response = await sllm.achat(messages)
         # parse the response
-        out = response.raw.dict()[PARSER_OUT_FIELD]
+        out = response.raw.model_dump()[PARSER_OUT_FIELD]
 
         return out
 
