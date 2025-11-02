@@ -26,33 +26,33 @@ All features can return missing values (represented by None in scalars).
 The type of a Feature instance can be determined by checking isinstance against the dedicated subclass: IntFeature, FloatFeature,
 BoolFeature, and CategoricalFeature; or by checking `feature.dtype` (this is less recommended). 
 
-## Feature.evaluate signature
+## Feature.compute signature
 
-There are two core methods implemented by Feature: row (scalar) evaluate and batch evaluate.
+There are two core methods implemented by Feature: row (scalar) compute and batch compute.
 They should not be called by users directly; the rest of this document describes progressively 
 higher-level APIs. 
 
 ```python
-async def aevaluate(self, args: tuple[Any, ...], 
+async def acompute(self, args: tuple[Any, ...], 
                     conn: DuckDBPyConnection) -> T | None:
-async def aevaluate_batch(self, input: Dataset, 
+async def acompute_batch(self, input: Dataset, 
                           conn: DuckDBPyConnection) -> pl.Series:
 ```
 
 A feature typically overrides only one of these two methods; the default implementation of each 
-calls the other one. (The default implementation of `aevaluate_batch` may change in the future
-to enable better control of concurrent evaluation.)
+calls the other one. (The default implementation of `acompute_batch` may change in the future
+to enable better control of concurrent computation.)
 
 The main dataset is given either by `args` (for a single row) or by `input` (for a batch of rows).
-A future update will add support for implementing aevaluate by declaring the specific arguments used,
-e.g. `async def aevaluate(self, id: int, name: str, conn: ...)` (#144).
+A future update will add support for implementing acompute by declaring the specific arguments used,
+e.g. `async def acompute(self, id: int, name: str, conn: ...)` (#144).
 
 The secondary datasets are available in duckdb using `conn`. A feature can store any `JoinStrategy` instances
 that were available during feature generation and use them to query the data, or it can create one later;
 they do not represent the availability of additional data.
 
 The main table can also be made available via `conn` to run queries that join it to secondary tables,
-by using `conn.register`; see `SqlFeature.evaluate_batch` for an example. 
+by using `conn.register`; see `SqlFeature.compute_batch` for an example. 
 
 All data, both input and output, can contain missing values (`na` in Polars, `null` in SQL).
 
@@ -95,38 +95,38 @@ that no selected features use.
 `secondary_tables` should be used if the feature runs SQL queries on them; `join_strategies` should be used
 if it uses those objects to access data. Both can be specified.
 
-When `Feature.evaluate` variants are called, only the data declared in `params` is actually passed in the `args`
+When `Feature.compute` variants are called, only the data declared in `params` is actually passed in the `args`
 parameter. The `args` are passed in the order in which they were declared in `params`, which may be different
-from the order of these columns in the feature search input dataset. Similarly, the dataset passed to `evaluate_batch`
+from the order of these columns in the feature search input dataset. Similarly, the dataset passed to `compute_batch`
 includes only the columns declared in `params`. The data available through the DuckDB connection includes only the 
 `secondary_tables` (and only the columns listed for them in `secondary_tables`), as well as any tables and columns
 referenced by the declared `join_strategies`.
 
 More data MAY be available through the DuckDB connection and in additional columns of the main dataset passed to 
-`evaluate_batch`, but the feature must not access it or rely on it.
+`compute_batch`, but the feature must not access it or rely on it.
 
-## Safe feature evaluation (evaluate_safe)
+## Safe feature computation (compute_safe)
 
-The implementation of `evaluate` SHOULD always return a value of the correct type. But, because we don't implement
+The implementation of `compute` SHOULD always return a value of the correct type. But, because we don't implement
 all features ourselves, we need to guard against bugs and incorrect behavior. This is done in the wrapper methods:
 
 ```python
-async def aevaluate_safe(self, args: tuple[Any, ...], 
+async def acompute_safe(self, args: tuple[Any, ...], 
                          conn: DuckDBPyConnection) -> T | None:
-async def aevaluate_batch_safe(self, input: Dataset, 
+async def acompute_batch_safe(self, input: Dataset, 
                                conn: DuckDBPyConnection) -> pl.Series:
 ```
 
-These wrap the base `aevaluate` and `aevaluate_batch` methods, catch all errors and return missing values.
+These wrap the base `acompute` and `acompute_batch` methods, catch all errors and return missing values.
 For categorical features, they also replace return values that are not in the declared categories list with 
 `CategoricalFeature.other_category`, and replace the empty string with a missing value.
 
 All higher-level code (e.g. EnrichRunner) uses the _safe wrapper methods. Features must not override them.
 
-Note that, if `aevaluate_batch` raises an error, the output for entire batch becomes missing values.
+Note that, if `acompute_batch` raises an error, the output for entire batch becomes missing values.
 This may be changed in the future (#155).
 
-## Feature evaluation with default values
+## Feature computation with default values
 
 Each Feature instance stores a default value which can be used instead of the missing value in outputs.
 This is defined as an attribute `default_for_missing: T`, so you can use `attrs.evolve` to change it.
@@ -134,7 +134,7 @@ This is defined as an attribute `default_for_missing: T`, so you can use `attrs.
 Float features have three additional default values which can be substituted for non-finite values: 
 `default_for_nan`, `default_for_inf`, and `default_for_neg_inf`.
 
-You can substitute these values into the output of `evaluate_safe` by calling these Feature methods:
+You can substitute these values into the output of `compute_safe` by calling these Feature methods:
 
 ```python
 def substitute_defaults(self, value: T | None) -> T:
@@ -143,19 +143,19 @@ def subsistute_defaults_batch(self, values: pl.Series) -> pl.Series:
 
 (These methods are synchronous because they admit no other / asynchronous implementation; they are very fast in practice.)
 
-You can also call these convenience methods, which combine `evaluate_safe` and `substitute_defaults`:
+You can also call these convenience methods, which combine `compute_safe` and `substitute_defaults`:
 
 ```python
-async def aevaluate_with_defaults(self, args: tuple[Any, ...], 
+async def acompute_with_defaults(self, args: tuple[Any, ...], 
                                   conn: DuckDBPyConnection) -> T:
-async def aevaluate_batch_with_defaults(self, input: Dataset, 
+async def acompute_batch_with_defaults(self, input: Dataset, 
                                         conn: DuckDBPyConnection) -> pl.Series:
 ```
 
-Note that `aevaluate_with_defaults` returns `T` and not `T | None`.
+Note that `acompute_with_defaults` returns `T` and not `T | None`.
 
 Each component needs to decide whether to support missing values and/or non-finite float values.
-The enriched data passed around is (normally) the output of `evaluate_safe`, with missing and non-finite values,
+The enriched data passed around is (normally) the output of `compute_safe`, with missing and non-finite values,
 because substituting the defaults is very cheap and can be done whenever it's needed. High-level user APIs
 such as EnrichRunner may, in the future, add support for returning the output with defaults, or both sets of outputs.
 
@@ -181,10 +181,10 @@ A feature's implementation may be asynchronous, as shown above, or synchronous. 
 be synchronous if they don't await anything.
 
 Synchronous features implement the subclass `SyncFeature` and the appropriate per-type subclass (`SyncIntFeature`, etc.).
-The evaluate method has the same signature as before, apart from being synchronous and being called `evaluate` not `aevaluate`:
+The `compute` method has the same signature as before, apart from being synchronous and being called `compute` not `acompute`:
 
 ```python
-def evaluate(self, args: tuple[Any, ...], 
+def compute(self, args: tuple[Any, ...], 
              conn: DuckDBPyConnection) -> T | None:
 ```
 
@@ -193,18 +193,18 @@ There are synchronous equivalents of all the other methods mentioned above: _bat
 Although SyncFeature extends Feature, its asynchronous methods SHOULD NOT be called. All code handling features has separate
 codepaths for synchronous and asynchronous features.
 
-## Efficient evaluation strategies (FeatureEvaluator)
+## Efficient computation strategies (FeatureComputer)
 
-Sometimes it's possible to evaluate several features on the same data more efficiently than calling them one by one
+Sometimes it's possible to compute several features on the same data more efficiently than calling them one by one
 (or in parallel, in the case of asynchronous features). Each such strategy is specific to some particular Feature implementation.
-These strategies are implemented by FeatureEvaluator subclasses. In Enrich, each available evaluator can choose which features
+These strategies are implemented by FeatureComputer subclasses. In Enrich, each available FeatureComputer can choose which features
 to operate on.
 
-There are no current implementations of FeatureEvaluator (other than the trivial ones used by default for all features).
+There are no current implementations of FeatureComputer (other than the trivial ones used by default for all features).
 Implementations we may add in the future include:
-- LLM-backed features: we may want to evaluate one feature first, to insert it into the provider's token cache,
-  and then evaluate all other features on the same row in parallel
-- Function-composition features: we may want to evaluate common subfunctions only once on the same inputs,
+- LLM-backed features: we may want to compute one feature first, to insert it into the provider's token cache,
+  and then compute all other features on the same row in parallel
+- Function-composition features: we may want to compute common subfunctions only once on the same inputs,
   both across features and across rows
 
 ## Implementing new features
@@ -217,9 +217,9 @@ Extend any additional subclasses of Feature that describe your feature:
 - SqlQueryFeature or SqlBackedFeature, for features defined by a single SQL query
 - WrappedFeature, if you wrap another feature instance and modify its output
 
-Override either `evaluate` or `evaluate_batch` or both: 
-- Override `evaluate_batch` if it is a real batch implementation; don't restate the default implementation which loops over rows. However, it may be appropriate to change the default behavior to e.g. change the degree of parallelism in `aevaluate_batch`.
-- If you override `evaluate_batch`, check if you can override `evaluate` to be cheaper than the default implementation (which wraps each row in a Dataset to call evaluate_batch). All code calls `evaluate_batch` when possible in preference to `evaluate`, but some (e.g. user) code may still call `evaluate`.
+Override either `compute` or `compute_batch` or both: 
+- Override `compute_batch` if it is a real batch implementation; don't restate the default implementation which loops over rows. However, it may be appropriate to change the default behavior to e.g. change the degree of parallelism in `acompute_batch`.
+- If you override `compute_batch`, check if you can override `compute` to be cheaper than the default implementation (which wraps each row in a Dataset to call compute_batch). All code calls `compute_batch` when possible in preference to `compute`, but some (e.g. user) code may still call `compute`.
 
 Decorate your class with `@attrs.define` (or, preferrably, `@attrs.frozen`).
 
@@ -231,11 +231,11 @@ Make sure serialization works.
 
 TBD (to be done and to be documented); see #157.
 
-## Evaluating features (as a user)
+## Computing features (as a user)
 
-The high-level API that users, and if possible all code components, use to evaluate one or more features is `EnrichRunner`. 
-It adds support for things individual features (and FeatureEvaluators) don't need to handle, e.g. feature name deduplication, 
+The high-level API that users, and if possible all code components, use to compute one or more features is `EnrichRunner`. 
+It adds support for things individual features (and FeatureComputers) don't need to handle, e.g. feature name deduplication, 
 keeping some input columns in the output and choosing whether to substitute feature defaults in the output.
 
-When you have a Feature instance in hand it's tempting to call one of its evaluate methods directly. You should be aware of
+When you have a Feature instance in hand it's tempting to call one of its compute methods directly. You should be aware of
 the functionality added by EnrichRunner that you would be missing out on.

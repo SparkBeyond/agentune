@@ -69,8 +69,8 @@ class InsightfulTextFeature[T](LlmFeature[T]):
     def parser_model(self) -> type[BaseModel]:
         """The Pydantic model used to parse LLM responses."""
 
-    async def aevaluate(self, args: tuple[Any, ...],
-                        conn: DuckDBPyConnection) -> T | None:
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> T | None:
         # convert to dataframe
         df = pl.DataFrame(
             {col.name: [value] for col, value in zip(self.params.cols, args, strict=True)},

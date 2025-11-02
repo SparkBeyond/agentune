@@ -173,12 +173,12 @@ class TestFeatureTypes:
         assert feature.name == 'is_positive'
         
         # Test positive message
-        result = await feature.aevaluate((1001, 'Thank you so much! This is perfect!'), conn)
+        result = await feature.acompute((1001, 'Thank you so much! This is perfect!'), conn)
         assert isinstance(result, bool)
         assert result is True
         
         # Test negative message
-        result = await feature.aevaluate((1002, 'This is terrible! I hate it!'), conn)
+        result = await feature.acompute((1002, 'This is terrible! I hate it!'), conn)
         assert isinstance(result, bool)
         assert result is False
 
@@ -198,7 +198,7 @@ class TestFeatureTypes:
         assert feature.name == 'word_count'
         
         # Test word counting
-        result = await feature.aevaluate((1001, 'Can you help me please?'),  conn)
+        result = await feature.acompute((1001, 'Can you help me please?'), conn)
         assert isinstance(result, int)
         assert result == 5
 
@@ -218,12 +218,12 @@ class TestFeatureTypes:
         assert feature.name == 'urgency_score'
         
         # Test high urgency
-        result = await feature.aevaluate((1001, 'URGENT! Account locked, need immediate help!'), conn)
+        result = await feature.acompute((1001, 'URGENT! Account locked, need immediate help!'), conn)
         assert isinstance(result, float)
         assert 0.7 <= result <= 1.0
         
         # Test low urgency
-        result = await feature.aevaluate((1002, 'When convenient, could you help with this feature?'), conn)
+        result = await feature.acompute((1002, 'When convenient, could you help with this feature?'), conn)
         assert isinstance(result, float)
         assert 0.0 <= result <= 0.4
 
@@ -245,14 +245,14 @@ class TestFeatureTypes:
         assert feature.categories == tuple(categories)
         
         # Test different intents
-        result = await feature.aevaluate((1001, 'How do I reset my password?'), conn)
+        result = await feature.acompute((1001, 'How do I reset my password?'), conn)
         assert result == 'question'
 
-        result = await feature.aevaluate((1002, 'This service is terrible!'), conn)
+        result = await feature.acompute((1002, 'This service is terrible!'), conn)
         assert result == 'complaint'
 
-        result = await feature.aevaluate((1003, 'Great job! Love this feature!'), conn)
+        result = await feature.acompute((1003, 'Great job! Love this feature!'), conn)
         assert result == 'compliment'
 
-        result = await feature.aevaluate((1004, 'Please update my billing address'), conn)
+        result = await feature.acompute((1004, 'Please update my billing address'), conn)
         assert result == 'request'

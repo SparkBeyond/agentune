@@ -10,10 +10,10 @@ from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.feature.base import Feature
-from agentune.analyze.feature.eval.base import FeatureEvaluator
-from agentune.analyze.feature.eval.universal import (
-    UniversalAsyncFeatureEvaluator,
-    UniversalSyncFeatureEvaluator,
+from agentune.analyze.feature.compute.base import FeatureComputer
+from agentune.analyze.feature.compute.universal import (
+    UniversalAsyncFeatureComputer,
+    UniversalSyncFeatureComputer,
 )
 from agentune.analyze.feature.gen.base import FeatureGenerator
 from agentune.analyze.feature.problem import Problem, ProblemDescription
@@ -83,10 +83,10 @@ class FeatureSearchParams:
     problem_description: ProblemDescription
     generators: tuple[FeatureGenerator, ...]
     selector: FeatureSelector | EnrichedFeatureSelector
-    # Must always include at least one evaluator willing to handle every feature generated.
-    # Normally this means including the two universal evaluators at the end of the list.
-    # Evaluators are tried in the order in which they appear.
-    evaluators: tuple[type[FeatureEvaluator], ...] = (UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator)
+    # Must always include at least one feature computer willing to handle every feature generated.
+    # Normally this means including the two universal computers at the end of the list.
+    # Feature computeres are tried in the order in which they appear.
+    feature_computers: tuple[type[FeatureComputer], ...] = (UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer)
     enrich_runner: EnrichRunner = EnrichRunnerImpl()
     store_enriched_train: DuckdbName | None = None
     store_enriched_test: DuckdbName | None = None

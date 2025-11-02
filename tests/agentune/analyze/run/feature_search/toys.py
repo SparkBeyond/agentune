@@ -76,13 +76,13 @@ class ToySyncFeature(SyncFloatFeature):
         return []
         
     @override
-    def evaluate(self, args: tuple[Any, ...],
-                 conn: DuckDBPyConnection) -> float:
+    def compute(self, args: tuple[Any, ...],
+                conn: DuckDBPyConnection) -> float:
         return args[0] + args[1]
     
     @override
-    def evaluate_batch(self, input: Dataset,
-                       conn: DuckDBPyConnection) -> pl.Series:
+    def compute_batch(self, input: Dataset,
+                      conn: DuckDBPyConnection) -> pl.Series:
         return input.data.get_column(self.col1) + input.data.get_column(self.col2)
     
 @frozen
@@ -117,13 +117,13 @@ class ToyAsyncFeature(FloatFeature):
         return []
         
     @override
-    async def aevaluate(self, args: tuple[Any, ...],
-                        conn: DuckDBPyConnection) -> float:
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> float:
         return args[0] + args[1]
     
     @override
-    async def aevaluate_batch(self, input: Dataset,
-                              conn: DuckDBPyConnection) -> pl.Series:
+    async def acompute_batch(self, input: Dataset,
+                             conn: DuckDBPyConnection) -> pl.Series:
         return input.data.get_column(self.col1) + input.data.get_column(self.col2)
     
 class ToySyncFeatureGenerator(SyncFeatureGenerator):

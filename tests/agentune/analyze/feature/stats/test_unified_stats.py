@@ -50,7 +50,7 @@ def _regression_problem() -> RegressionProblem:
 class SimpleBoolFeature(BoolFeature):
     name: str
     description: str = 'Test bool feature'
-    code: str = 'def evaluate(df): return df[self.name]'
+    code: str = 'def compute(df): return df[self.name]'
 
     # Redeclare attributes with defaults
     default_for_missing: bool = False
@@ -72,7 +72,7 @@ class SimpleBoolFeature(BoolFeature):
 class SimpleNumericFeature(FloatFeature):
     name: str
     description: str = 'Test numeric feature'
-    code: str = 'def evaluate(df): return df[self.name]'
+    code: str = 'def compute(df): return df[self.name]'
     technical_description = 'A simple numeric feature'
 
     default_for_missing: float = 0.0
@@ -98,7 +98,7 @@ class SimpleCategoricalFeature(CategoricalFeature):
     name: str
     categories: tuple[str, ...]
     description: str = 'Test categorical feature'
-    code: str = 'def evaluate(df): return df[self.name]'
+    code: str = 'def compute(df): return df[self.name]'
     technical_description = 'A simple categorical feature'
 
     default_for_missing: str = CategoricalFeature.other_category

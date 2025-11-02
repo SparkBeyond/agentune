@@ -20,10 +20,10 @@ from agentune.analyze.core.duckdbio import DuckdbTableSink, DuckdbTableSource
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.core.types import float64
 from agentune.analyze.feature.base import FloatFeature
-from agentune.analyze.feature.eval.base import FeatureEvaluator
-from agentune.analyze.feature.eval.universal import (
-    UniversalAsyncFeatureEvaluator,
-    UniversalSyncFeatureEvaluator,
+from agentune.analyze.feature.compute.base import FeatureComputer
+from agentune.analyze.feature.compute.universal import (
+    UniversalAsyncFeatureComputer,
+    UniversalSyncFeatureComputer,
 )
 from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
@@ -66,8 +66,8 @@ class CountingAsyncFeature(FloatFeature):
         return []
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...],
-                        conn: DuckDBPyConnection) -> float:
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> float:
         self.concurrent_calls.inc_and_get()
         await asyncio.sleep(0.001)
         self.max_concurrent_calls.setmax(self.concurrent_calls.get())
@@ -114,25 +114,25 @@ def async_features() -> list[ToyAsyncFeature]:
 async def test_run(conn: DuckDBPyConnection, sample_dataset: Dataset,
                    sync_features: Sequence[ToySyncFeature], async_features: Sequence[ToyAsyncFeature]) -> None:
     runner = EnrichRunnerImpl()
-    evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
+    feature_computers: list[type[FeatureComputer]] = [UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer]
 
     expected_a_plus_b = [5.0, 7.0, 9.0]  # [1+4, 2+5, 3+6]
     expected_a_plus_c = [8.0, 10.0, 12.0]  # [1+7, 2+8, 3+9]
     expected_b_plus_c = [11.0, 13.0, 15.0]  # [4+7, 5+8, 6+9]
 
-    sync_result = await runner.run(sync_features, sample_dataset, evaluators, conn)
+    sync_result = await runner.run(sync_features, sample_dataset, feature_computers, conn)
     assert sync_result.data.equals(pl.DataFrame({
         'a_plus_b': expected_a_plus_b,
         'a_plus_c': expected_a_plus_c
     }))
 
-    async_result = await runner.run(async_features, sample_dataset, evaluators, conn)
+    async_result = await runner.run(async_features, sample_dataset, feature_computers, conn)
     assert async_result.data.equals(pl.DataFrame({
         'a_plus_b': expected_a_plus_b,
         'b_plus_c': expected_b_plus_c
     }))
 
-    mixed_result = await runner.run([*sync_features, *async_features], sample_dataset, evaluators, conn)
+    mixed_result = await runner.run([*sync_features, *async_features], sample_dataset, feature_computers, conn)
     assert mixed_result.data.equals(pl.DataFrame({
         'a_plus_b': expected_a_plus_b,
         'a_plus_c': expected_a_plus_c,
@@ -141,23 +141,23 @@ async def test_run(conn: DuckDBPyConnection, sample_dataset: Dataset,
     }))
 
     mixed_result2 = await runner.run([sync_features[0], async_features[0], sync_features[1], async_features[1]],
-                                      sample_dataset, evaluators, conn)
+                                      sample_dataset, feature_computers, conn)
     assert mixed_result2.data.equals(pl.DataFrame({
         'a_plus_b': expected_a_plus_b,
         'a_plus_b_': expected_a_plus_b,
         'a_plus_c': expected_a_plus_c,
         'b_plus_c': expected_b_plus_c
-    })), 'Output column order must match input feature order, regardless of division into evaluators'
+    })), 'Output column order must match input feature order, regardless of division into feature computers'
 
-    with pytest.raises(ValueError, match='No evaluator found for features'):
-        await runner.run([*async_features, *sync_features], sample_dataset, [UniversalSyncFeatureEvaluator], conn)
+    with pytest.raises(ValueError, match='No feature computer found for feature'):
+        await runner.run([*async_features, *sync_features], sample_dataset, [UniversalSyncFeatureComputer], conn)
 
 
 async def test_run_with_duplicate_names(conn: DuckDBPyConnection,
                                         sample_dataset: Dataset) -> None:
     """Test run() method with duplicate feature names and deduplication enabled."""
     runner = EnrichRunnerImpl()
-    evaluators = [UniversalSyncFeatureEvaluator]
+    feature_computers = [UniversalSyncFeatureComputer]
 
     # Create features with duplicate names
     features = [
@@ -165,7 +165,7 @@ async def test_run_with_duplicate_names(conn: DuckDBPyConnection,
         ToySyncFeature('a', 'c', 'sum', 'Second sum', 'a + c'),
     ]
 
-    result = await runner.run(features, sample_dataset, evaluators, conn)
+    result = await runner.run(features, sample_dataset, feature_computers, conn)
 
     # Names should be deduplicated
     assert result.schema.names == ['sum', 'sum_']
@@ -173,33 +173,33 @@ async def test_run_with_duplicate_names(conn: DuckDBPyConnection,
 
     # With dedup disabled, this fails
     with pytest.raises(ValueError, match='Duplicate feature names found'):
-        await runner.run(features, sample_dataset, evaluators, conn, deduplicate_names=False)
+        await runner.run(features, sample_dataset, feature_computers, conn, deduplicate_names=False)
 
 
-async def test_run_with_no_evaluator_for_feature(conn: DuckDBPyConnection,
-                                                 sample_dataset: Dataset,
-                                                 sync_features: list[ToySyncFeature]) -> None:
-    """Test run() method when no evaluator can handle a feature."""
+async def test_run_with_no_computer_for_feature(conn: DuckDBPyConnection,
+                                                sample_dataset: Dataset,
+                                                sync_features: list[ToySyncFeature]) -> None:
+    """Test run() method when no feature computer can handle a feature."""
     runner = EnrichRunnerImpl()
-    # Only provide async evaluator for sync features
-    evaluators = [UniversalAsyncFeatureEvaluator]
+    # Only provide async computer for sync features
+    feature_computers = [UniversalAsyncFeatureComputer]
 
-    with pytest.raises(ValueError, match='No evaluator found for features'):
-        await runner.run(sync_features, sample_dataset, evaluators, conn)
+    with pytest.raises(ValueError, match='No feature computer found for feature'):
+        await runner.run(sync_features, sample_dataset, feature_computers, conn)
 
 async def test_run_stream(conn: DuckDBPyConnection, sample_dataset: Dataset,
                           sync_features: list[ToySyncFeature], async_features: list[ToyAsyncFeature]) -> None:
     runner = EnrichRunnerImpl()
     features = [*sync_features, *async_features]
-    evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
+    feature_computers: list[type[FeatureComputer]] = [UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer]
 
     # Create a dataset source with multiple datasets
     sample_datasets = [sample_dataset] * 5
     dataset_source = DatasetSourceFromIterable(sample_dataset.schema, sample_datasets)
 
-    enriched_dataset = await runner.run(features, sample_dataset, evaluators, conn)
+    enriched_dataset = await runner.run(features, sample_dataset, feature_computers, conn)
     dataset_sink = DuckdbTableSink(DuckdbName.qualify('sink', conn))
-    await runner.run_stream(features, dataset_source, dataset_sink, evaluators, conn)
+    await runner.run_stream(features, dataset_source, dataset_sink, feature_computers, conn)
 
     result_table = DuckdbTable.from_duckdb('sink', conn)
     result_dataset = DuckdbTableSource(result_table).to_dataset(conn)
@@ -212,9 +212,9 @@ async def test_empty_features_list(conn: DuckDBPyConnection,
                                    sample_dataset: Dataset) -> None:
     """Test run() method with empty features list."""
     runner = EnrichRunnerImpl()
-    evaluators = [UniversalSyncFeatureEvaluator]
+    feature_computers = [UniversalSyncFeatureComputer]
 
-    result = await runner.run([], sample_dataset, evaluators, conn)
+    result = await runner.run([], sample_dataset, feature_computers, conn)
 
     assert result.schema.names == []
     assert result.data.height == 0
@@ -226,13 +226,13 @@ async def test_larger_data_streaming(conn: DuckDBPyConnection) -> None:
 
     feature1 = ToySyncFeature('a', 'b', 'a+b', '', '')
     feature2 = ToyAsyncFeature('a', 'b', 'a+b', '', '')
-    evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
+    feature_computers: list[type[FeatureComputer]] = [UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer]
 
     source = DuckdbTableSource(DuckdbTable.from_duckdb('input', conn), batch_size=1000)
     sink = DuckdbTableSink(DuckdbName.qualify('sink', conn))
 
     runner = EnrichRunnerImpl()
-    await runner.run_stream([feature1, feature2], source, sink, evaluators, conn)
+    await runner.run_stream([feature1, feature2], source, sink, feature_computers, conn)
 
     sink_table = DuckdbTable.from_duckdb('sink', conn)
     sink_dataset = DuckdbTableSource(sink_table).to_dataset(conn)
@@ -249,7 +249,7 @@ async def test_keep_input_cols(conn: DuckDBPyConnection) -> None:
 
     feature1 = ToySyncFeature('a', 'b', 'a+b', '', '')
     feature2 = ToyAsyncFeature('a', 'b', 'a+b', '', '')
-    evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
+    feature_computers: list[type[FeatureComputer]] = [UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer]
 
     source = DuckdbTableSource(DuckdbTable.from_duckdb('input', conn), batch_size=1000)
     sink = DuckdbTableSink.into_unqualified_duckdb_table('sink', conn)
@@ -258,13 +258,13 @@ async def test_keep_input_cols(conn: DuckDBPyConnection) -> None:
 
     source_dataset = source.to_dataset(conn)
     enriched_dataset = await runner.run([feature1, feature2], source_dataset,
-                                        evaluators, conn,
+                                        feature_computers, conn,
                                         keep_input_columns=['a'])
     assert enriched_dataset.schema.names == ['a', 'a+b', 'a+b_']
     assert enriched_dataset.schema.dtypes == [types.int32, types.float64, types.float64]
     assert enriched_dataset.data['a'].equals(source_dataset.data['a'])
 
-    await runner.run_stream([feature1, feature2], source, sink, evaluators, conn,
+    await runner.run_stream([feature1, feature2], source, sink, feature_computers, conn,
                             keep_input_columns=['a'])
 
     sink_table = DuckdbTable.from_duckdb('sink', conn)
@@ -288,9 +288,9 @@ async def test_limits(conn: DuckDBPyConnection, sample_dataset: Dataset) -> None
         CountingAsyncFeature(concurrent_calls, max_concurrent_calls, 'b', 'c', 'b_plus_c', 'Async adds b and c', 'b + c'),
     ]
 
-    runner = EnrichRunnerImpl(max_async_features_eval=10)
-    evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
+    runner = EnrichRunnerImpl(max_async_features_compute=10)
+    feature_computers: list[type[FeatureComputer]] = [UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer]
 
-    await runner.run(features, sample_dataset, evaluators, conn)
+    await runner.run(features, sample_dataset, feature_computers, conn)
 
     assert max_concurrent_calls.get() == 10

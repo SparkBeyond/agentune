@@ -10,8 +10,8 @@ from agentune.analyze.feature.base import Feature
 from agentune.analyze.progress.base import ProgressStage
 
 
-class FeatureEvaluator(ABC):
-    """A feature evaluator can evaluate many features at once more efficiently than calling each feature's evaluate method one by one.
+class FeatureComputer(ABC):
+    """A feature computer can compute many features at once more efficiently than calling each feature's compute method one by one.
     
     This works only for features with particular similiarities: e.g. a group of async features, SQL query features, or AST-based features.
     """
@@ -19,10 +19,10 @@ class FeatureEvaluator(ABC):
     @classmethod
     @abstractmethod
     def supports_feature(cls, feature: Feature) -> bool:
-        """Whether this evaluator can evaluate this feature, together with other features for which it returns True,
-        more efficiently than evaluating them one by one (or in parallel in the case of async features).
+        """Whether this computer can compute this feature, together with other features for which it returns True,
+        more efficiently than computing them one by one (or in parallel in the case of async features).
         """
-        raise NotImplementedError # returning ... evaluates as false in a boolean context
+        raise NotImplementedError # returning ... computes as false in a boolean context
 
     @classmethod
     @abstractmethod
@@ -34,13 +34,13 @@ class FeatureEvaluator(ABC):
         ...
 
     @abstractmethod
-    async def aevaluate(self, dataset: Dataset, conn: DuckDBPyConnection,
-                        cells_progress: ProgressStage | None = None) -> Dataset:
+    async def acompute(self, dataset: Dataset, conn: DuckDBPyConnection,
+                       cells_progress: ProgressStage | None = None) -> Dataset:
         """Args:
             dataset: includes all columns needed by all the features. Any additional columns must be ignored by the implementation.
             conn: makes available contains data declared in `secondary_tables` or `join_strategies`.
                   Any additional tables or columns must be ignored by the implementation.
-            cells_progress: will be used to increment the count of cells (i.e. rows*features) evaluated.
+            cells_progress: will be used to increment the count of cells (i.e. rows*features) computed.
                             If not given, a new stage will be created for the duration of the call.
 
         Returns:
@@ -48,15 +48,15 @@ class FeatureEvaluator(ABC):
         """
         ...
 
-class SyncFeatureEvaluator(FeatureEvaluator):
+class SyncFeatureComputer(FeatureComputer):
     @abstractmethod
-    def evaluate(self, dataset: Dataset, conn: DuckDBPyConnection,
-                 cells_progress: ProgressStage | None = None) -> Dataset:
-        """See FeatureEvaluator.aevaluate for details."""
+    def compute(self, dataset: Dataset, conn: DuckDBPyConnection,
+                cells_progress: ProgressStage | None = None) -> Dataset:
+        """See FeatureComputer.acompute for details."""
         ...
 
     @override
-    async def aevaluate(self, dataset: Dataset, conn: DuckDBPyConnection,
-                        cells_progress: ProgressStage | None = None) -> Dataset:
+    async def acompute(self, dataset: Dataset, conn: DuckDBPyConnection,
+                       cells_progress: ProgressStage | None = None) -> Dataset:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.evaluate, dataset.copy_to_thread(), cursor, cells_progress)
+            return await asyncio.to_thread(self.compute, dataset.copy_to_thread(), cursor, cells_progress)

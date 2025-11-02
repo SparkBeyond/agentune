@@ -69,8 +69,8 @@ class TestFloatFeature(FloatFeature):
     join_strategies: tuple[JoinStrategy, ...] = ()
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...], 
-                        conn: DuckDBPyConnection) -> float | None:
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> float | None:
         return 0.0
 
 @frozen
@@ -85,8 +85,8 @@ class TestIntFeature(IntFeature):
     join_strategies: tuple[JoinStrategy, ...] = ()
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...], 
-                        conn: DuckDBPyConnection) -> int | None:
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> int | None:
         return 0
 
 
@@ -102,8 +102,8 @@ class TestBoolFeature(BoolFeature):
     join_strategies: tuple[JoinStrategy, ...] = ()
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...], 
-                        conn: DuckDBPyConnection) -> bool | None:
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> bool | None:
         return True
 
 @frozen
@@ -120,8 +120,8 @@ class TestCategoricalFeature(CategoricalFeature):
     join_strategies: tuple[JoinStrategy, ...] = ()
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...], 
-                        conn: DuckDBPyConnection) -> str | None:
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> str | None:
         return None
 
 @frozen

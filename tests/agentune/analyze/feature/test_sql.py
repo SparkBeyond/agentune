@@ -31,8 +31,8 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
     main_table_name: str = 'main_table'
 
     @override
-    def evaluate_batch(self, input: Dataset, 
-                       conn: duckdb.DuckDBPyConnection) -> pl.Series:
+    def compute_batch(self, input: Dataset,
+                      conn: duckdb.DuckDBPyConnection) -> pl.Series:
         # Separate cursor to register the main table
         with (conn.cursor() as cursor):
             # Need to explicitly order the result to match the original df
@@ -66,9 +66,9 @@ class IntSqlFeatureForTests(SqlBackedFeature[pl.Int32], IntFeature):
     index_column_name: str = 'row_index_column'
     main_table_name: str = 'main_table'
 
-    def evaluate_batch(self, input: Dataset, 
-                       conn: duckdb.DuckDBPyConnection) -> pl.Series:
-        series =  super().evaluate_batch(input, conn)
+    def compute_batch(self, input: Dataset,
+                      conn: duckdb.DuckDBPyConnection) -> pl.Series:
+        series =  super().compute_batch(input, conn)
         assert series.dtype == self.dtype.polars_type, f'SQL query must return a column of type {self.dtype.polars_type} but returned {series.dtype}'
         assert series.len() == input.data.height, f'SQL query must return the same number of rows as the input data but returned {series.len()}'
         return series
@@ -91,12 +91,12 @@ def test_sql_feature() -> None:
             '''
         )
         
-        assert feature.evaluate((1, ), conn) == 2
-        assert feature.evaluate((3, ), conn) == 4
-        assert feature.evaluate((2, ), conn) is None
+        assert feature.compute((1,), conn) == 2
+        assert feature.compute((3,), conn) == 4
+        assert feature.compute((2,), conn) is None
 
         # Batch, with some repeated and some missing keys, to test the ordering
-        assert feature.evaluate_batch(
+        assert feature.compute_batch(
             Dataset(feature.params, pl.DataFrame({'key': [3, 2, 1, 3, 1]})), conn).equals(
                 pl.Series('test_sql_feature', [4, None, 2, 4, 2]))
 

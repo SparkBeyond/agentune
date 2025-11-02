@@ -189,7 +189,7 @@ async def test_blackbox_feature_generation_with_real_llm(test_dataset_with_strat
     feature = generated_features[0].feature
     strict_df = pl.DataFrame([main_dataset.data.get_column(col.name) for col in feature.params.cols])
     first_row_args = strict_df.row(0, named=False)
-    result = await feature.aevaluate(first_row_args, conn)
+    result = await feature.acompute(first_row_args, conn)
     
     # Validate result
     if result is None:

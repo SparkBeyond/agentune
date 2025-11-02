@@ -235,7 +235,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         
         logger.info(f'Dtype determination successful: {len(updated_queries)} queries with valid types')
 
-        # 4. Test feature creation and evaluation
+        # 4. Test feature creation and computation
         features = [create_feature(
             query=query,
             formatter=enrichment_formatter,
@@ -247,12 +247,12 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
             logger.info(f'Created feature: {feature.name} - {feature.description}')
         assert len(features) > 0 and len(main_dataset.data) > 0
 
-        # 5. Test feature evaluation on first row
+        # 5. Test feature compute on first row
         for feature in features:
             strict_df = pl.DataFrame([main_dataset.data.get_column(col.name) for col in feature.params.cols])
             first_row_args = strict_df.row(0, named=False)
-            # Evaluate the feature on the first row
-            result = await feature.aevaluate(first_row_args, conn)
+            # Compute the feature on the first row
+            result = await feature.acompute(first_row_args, conn)
 
             # Validate result
             if result is None:
@@ -276,6 +276,6 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
                         f'{feature.categories}'
                     )
                 
-                logger.info(f'Feature {feature.name} evaluation successful: {result} (type: {type(result).__name__})')
+                logger.info(f'Feature {feature.name} compute successful: {result} (type: {type(result).__name__})')
             
-        logger.info('Feature creation and evaluation test completed successfully')
+        logger.info('Feature creation and compute test completed successfully')

@@ -14,10 +14,10 @@ from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.duckdbio import DuckdbTableSink, DuckdbTableSource
 from agentune.analyze.core.schema import Field, Schema
 from agentune.analyze.feature.base import FloatFeature
-from agentune.analyze.feature.eval.base import FeatureEvaluator
-from agentune.analyze.feature.eval.universal import (
-    UniversalAsyncFeatureEvaluator,
-    UniversalSyncFeatureEvaluator,
+from agentune.analyze.feature.compute.base import FeatureComputer
+from agentune.analyze.feature.compute.universal import (
+    UniversalAsyncFeatureComputer,
+    UniversalSyncFeatureComputer,
 )
 from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.progress.base import root_stage_scope
@@ -56,8 +56,8 @@ class DelayingNonbatchingAsyncFeature(FloatFeature):
         return []
 
     @override
-    async def aevaluate(self, args: tuple[Any, ...],
-                        conn: DuckDBPyConnection) -> float:
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> float:
         await asyncio.sleep(self.delay_per_row.total_seconds())
         return args[0] + args[1]
 
@@ -98,11 +98,11 @@ async def ignore_demonstrate_progress_logging(conn: DuckDBPyConnection) -> None:
 
         sync_feature = ToySyncFeature('a', 'b', 'a+b', '', '')
         async_featues = [DelayingNonbatchingAsyncFeature('a', 'b', 'a+b', '', '', datetime.timedelta(milliseconds=1))] * 10
-        evaluators: list[type[FeatureEvaluator]] = [UniversalSyncFeatureEvaluator, UniversalAsyncFeatureEvaluator]
+        feature_computers: list[type[FeatureComputer]] = [UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer]
 
         source = DuckdbTableSource(DuckdbTable.from_duckdb('input', conn), batch_size=1000)
         sink = DuckdbTableSink(DuckdbName.qualify('sink', conn))
 
-        runner = EnrichRunnerImpl(max_async_features_eval=5)
-        await runner.run_stream([sync_feature, *async_featues], source, sink, evaluators, conn)
+        runner = EnrichRunnerImpl(max_async_features_compute=5)
+        await runner.run_stream([sync_feature, *async_featues], source, sink, feature_computers, conn)
 

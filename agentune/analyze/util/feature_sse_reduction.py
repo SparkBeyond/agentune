@@ -1,7 +1,7 @@
 """Joint utility for single feature SSE reduction calculations.
 
 This module provides shared functionality for calculating Sum of Squared Errors (SSE)
-reduction when evaluating individual features against targets. It supports both
+reduction when computing individual features against targets. It supports both
 regression and classification tasks with proper target encoding.
 """
 

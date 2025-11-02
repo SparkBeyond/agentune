@@ -108,7 +108,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
         # since after selection not all deduplication will be needed
         deduplicated_candidate_features = self._deduplicate_generated_feature_names(candidate_features, existing_names=[problem.target_column.name])
 
-        # Evaluate candidate features on the feature_search dataset, storing the results in the temp schema.
+        # Compute candidate features on the feature_search dataset, storing the results in the temp schema.
         (enriched_feature_eval_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
             deduplicated_candidate_features, data.feature_eval,
             run_context.ddb_manager, params, 'enriched_feature_search',
@@ -143,7 +143,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
             with run_context.ddb_manager.cursor() as conn:
                 enriched_eval_sink = DatasetSink.into_duckdb_table(enriched_eval_name)
                 await params.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval,
-                                                      enriched_eval_sink, params.evaluators, conn,
+                                                      enriched_eval_sink, params.feature_computers, conn,
                                                       keep_input_columns=(problem.target_column.name,),
                                                       deduplicate_names=False)
                 features_with_eval_stats: list[FeatureWithFullStats] = \
@@ -155,7 +155,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
 
                 enriched_test_sink = DatasetSink.into_duckdb_table(enriched_test_name)
                 await params.enrich_runner.run_stream(deduplicated_selected_features, data.test,
-                                                      enriched_test_sink, params.evaluators, conn,
+                                                      enriched_test_sink, params.feature_computers, conn,
                                                       keep_input_columns=(problem.target_column.name,),
                                                       deduplicate_names=False)
                 features_with_test_stats: list[FeatureWithFullStats] = \
@@ -254,9 +254,9 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                     group_table_name = ddb_manager.temp_random_name(target_table_base_name)
                     dataset_sink = DatasetSink.into_duckdb_table(group_table_name)
                     await params.enrich_runner.run_stream([gen.feature for gen in feature_group],
-                                                           dataset_source, dataset_sink, params.evaluators,
-                                                           conn, keep_input_columns=keep_input_columns,
-                                                           deduplicate_names=False)
+                                                          dataset_source, dataset_sink, params.feature_computers,
+                                                          conn, keep_input_columns=keep_input_columns,
+                                                          deduplicate_names=False)
                     table = DuckdbTable.from_duckdb(group_table_name, conn)
                     tables.append(table)
 

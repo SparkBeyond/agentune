@@ -72,7 +72,7 @@ class MockFloatFeature(SyncFloatFeature):
     def join_strategies(self) -> list[Any]:
         return []
     
-    def evaluate(self, args: Any, conn: Any) -> Any:  # noqa: ARG002
+    def compute(self, args: Any, conn: Any) -> Any:  # noqa: ARG002
         return args[0]
 
 
