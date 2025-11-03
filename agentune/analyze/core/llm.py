@@ -77,6 +77,10 @@ class DefaultLLMProvider(LLMProvider):
 
     @override
     def from_spec(self, spec: LLMSpec, context: LLMContext) -> LLM | None:
+        match context.httpx_async_client.timeout.read:
+            case None: read_timeout = 60.0*60*24 # None means no timeout in httpx; set a very high limit but not literally infinite
+            case timeout: read_timeout = float(timeout)
+
         match spec.origin:
             case 'openai':
                 try:
@@ -84,12 +88,16 @@ class DefaultLLMProvider(LLMProvider):
                     # Prefer OpenAIResponses if a nonspecific type is requested
                     llm: LLM
                     if spec.llm_type_matches(OpenAIResponses):
-                        llm = OpenAIResponses(model=spec.model_name, http_client=context.httpx_client, async_http_client=context.httpx_async_client)
+                        llm = OpenAIResponses(model=spec.model_name, http_client=context.httpx_client,
+                                              async_http_client=context.httpx_async_client,
+                                              timeout=read_timeout)
                         if context.cache_backend is not None:
                             return CachingOpenAIResponses.adapt(llm, context.cache_backend)
                         return llm
                     if spec.llm_type_matches(OpenAI):
-                        llm = OpenAI(model=spec.model_name, http_client=context.httpx_client, async_http_client=context.httpx_async_client)
+                        llm = OpenAI(model=spec.model_name, http_client=context.httpx_client,
+                                     async_http_client=context.httpx_async_client,
+                                     timeout=read_timeout)
                         if context.cache_backend is not None:
                             return CachingOpenAI.adapt(llm, context.cache_backend)
                         return llm
