@@ -98,8 +98,8 @@ def _add_train_sample(conn: DuckDBPyConnection, table_name: DuckdbName, is_train
     conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{new_col_name}" DROP DEFAULT')
 
 def split_duckdb_table(conn: DuckDBPyConnection, table_name: DuckdbName | str,
-                       train_fraction: float = 0.8, feature_search_size: int = 10000,
-                       feature_eval_size: int = 100000,
+                       train_fraction: float = 0.8, feature_search_size: int = 1000,
+                       feature_eval_size: int = 1000,
                        is_train_col_name: str = '_is_train',
                        is_feature_search_col_name: str = '_is_feature_search',
                        is_feature_eval_col_name: str = '_is_feature_eval',) -> SplitDuckdbTable:

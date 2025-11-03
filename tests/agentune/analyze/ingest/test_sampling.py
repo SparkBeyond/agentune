@@ -27,11 +27,11 @@ def test_split_duckdb_table(conn: DuckDBPyConnection) -> None:
     assert abs(1 - abs(num_train / expected_num_train)) < 0.001, f'Approximately 0.8 of rows marked as train, {num_train=}'
 
     num_feature_search = len(conn.table('tab').filter('_is_feature_search'))
-    expected_num_feature_search = 10000
+    expected_num_feature_search = 1000
     assert num_feature_search == expected_num_feature_search, 'Exactly 10000 rows marked as feature_search'
 
     num_feature_eval = len(conn.table('tab').filter('_is_feature_eval'))
-    expected_num_feature_eval = 100000
+    expected_num_feature_eval = 1000
     assert num_feature_eval == expected_num_feature_eval, 'Exactly 100000 rows marked as feature_eval'
 
     train_df = split_table.train().to_dataset(conn)
