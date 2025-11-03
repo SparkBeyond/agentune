@@ -63,6 +63,11 @@ class RelationshipStats:
     # Definition: baseline_stdev - feature_stdev (higher values indicate better predictive power)
     sse_reduction: float
 
+    # R² (coefficient of determination) - proportion of variance explained by the feature
+    # Definition: 1 - (SSE_with_feature / SSE_baseline)
+    # Range: [0, 1] where 0 = no predictive power, 1 = perfect prediction
+    r_squared: float
+
     # Binning information for numeric features (None for categorical features)
     binning_info: BinningInfo | None
 

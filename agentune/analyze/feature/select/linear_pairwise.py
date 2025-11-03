@@ -217,8 +217,8 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         # Phase 1: single feature scoring and initial filtering
         candidate_marginal_scores: dict[str, float] = {}
         for f_name in remaining_feature_names:
-            score = single_feature_score(stats_by_name[f_name], baseline_stats)
-            candidate_marginal_scores[f_name] = score
+            sse_reduction, _ = single_feature_score(stats_by_name[f_name], baseline_stats)
+            candidate_marginal_scores[f_name] = sse_reduction
         if not remaining_feature_names:
             self.final_importances_ = {'feature': [], 'importance': []}
             return [], []

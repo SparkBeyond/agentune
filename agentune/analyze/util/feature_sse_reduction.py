@@ -132,43 +132,59 @@ def calculate_feature_statistics(feature_values: np.ndarray, target: np.ndarray)
     return FeatureTargetStats(sx=sx_arr, sx2=sx2_arr, sxy=sxy, sses=sses)
 
 
-def single_feature_score(feature_stats: FeatureTargetStats, baseline_stats: TargetStats) -> float:
-    """Score a single feature via SSE reduction: stdev_baseline - stdev_with_feature.
+def single_feature_score(feature_stats: FeatureTargetStats, baseline_stats: TargetStats) -> tuple[float, float]:
+    """Score a single feature via SSE reduction and R².
 
     Args:
         feature_stats: Precomputed sums/SSEs for the feature against target(s)
         baseline_stats: Baseline statistics from calculate_baseline_statistics
 
     Returns:
-        Average improvement score across all targets
+        Tuple of (sse_reduction, r_squared):
+        - sse_reduction: baseline_stdev - feature_stdev (average across targets)
+        - r_squared: 1 - (SSE_feature / SSE_baseline), clamped to range [0, 1] (average across targets).
+          Negative R² values (feature performs worse than baseline) are clamped to 0.
     """
     # Check if feature has invalid statistics
     if np.any(np.isinf(feature_stats.sx)):
         raise ValueError('an infinite value was passed')
 
-    # Calculate raw scores for each target: stdev_baseline - stdev_with_feature
-    raw_scores = []
+    # Calculate both metrics for each target in a single pass
+    sse_reductions = []
+    r2_scores = []
+    
     for i in range(len(baseline_stats.stdevs)):
         if np.isinf(feature_stats.sses[i]):
             raise ValueError('an infinite value was passed')
-        baseline_stdev = baseline_stats.stdevs[i]
-        # Add numerical stability check for SSE
+        
+        baseline_sse = baseline_stats.priorsses[i]
+        feature_sse = feature_stats.sses[i]
         n = baseline_stats.n_samples
-        sse_normalized = feature_stats.sses[i] / n
-        if sse_normalized < 0:
-            # Numerical precision issue - clamp to zero
-            sse_normalized = 0.0
+        
+        # Calculate SSE reduction (stdev_baseline - stdev_feature)
+        baseline_stdev = baseline_stats.stdevs[i]
+        sse_normalized = max(0.0, feature_sse / n)  # Clamp for numerical stability
         feature_stdev = np.sqrt(sse_normalized)
-        raw_scores.append(baseline_stdev - feature_stdev)
+        sse_reductions.append(baseline_stdev - feature_stdev)
+        
+        # Calculate R² = 1 - (SSE_feature / SSE_baseline)
+        if baseline_sse == 0:
+            r2_scores.append(0.0)
+        else:
+            r2 = 1.0 - (feature_sse / baseline_sse)
+            r2_scores.append(max(0.0, min(1.0, r2)))  # Clamp to [0, 1]
 
     # Average across all targets, handling infinite values
-    finite_scores = [score for score in raw_scores if np.isfinite(score)]
-    if len(finite_scores) != len(raw_scores):
+    finite_sse = [s for s in sse_reductions if np.isfinite(s)]
+    finite_r2 = [s for s in r2_scores if np.isfinite(s)]
+    
+    if len(finite_sse) != len(sse_reductions) or len(finite_r2) != len(r2_scores):
         raise ValueError('an infinite value was passed')
 
-    average_score = np.mean(finite_scores)
+    avg_sse_reduction = float(np.mean(finite_sse))
+    avg_r2 = float(np.mean(finite_r2))
 
-    return float(average_score)
+    return avg_sse_reduction, avg_r2
 
 
 # ---------------------------------------------------------------------------
@@ -312,8 +328,8 @@ def prepare_sse_data(features: Sequence[Feature], df: pl.DataFrame, target_colum
 # High-level SSE reduction calculation
 # ---------------------------------------------------------------------------
 
-def calculate_sse_reduction(feature: Feature, series: pl.Series, target: pl.Series) -> float:
-    """Calculate SSE reduction for a feature against target using linear regression.
+def calculate_sse_reduction(feature: Feature, series: pl.Series, target: pl.Series) -> tuple[float, float]:
+    """Calculate both SSE reduction and R² for a feature against target using linear regression.
     
     Assumes target is already properly formatted (binned for numeric targets, categorical for string targets).
     Handles numeric, boolean, and categorical features with appropriate encoding.
@@ -324,7 +340,9 @@ def calculate_sse_reduction(feature: Feature, series: pl.Series, target: pl.Seri
         target: Target values as polars Series (already properly formatted)
         
     Returns:
-        SSE reduction score (baseline_stdev - feature_stdev)
+        Tuple of (sse_reduction, r_squared):
+        - sse_reduction: baseline_stdev - feature_stdev
+        - r_squared: 1 - (SSE_feature / SSE_baseline), clamped to be in range [0, 1], nan is mapped to 0.
     """
     # Create aligned arrays without nulls
     df = pl.DataFrame({feature.name: series, 'target': target}).drop_nulls()
@@ -333,8 +351,6 @@ def calculate_sse_reduction(feature: Feature, series: pl.Series, target: pl.Seri
     prepared_target, feature_values, baseline_stats = prepare_sse_data([feature], df, 'target')
     feature_np = feature_values[feature.name]
     
-    # Calculate feature statistics
+    # Calculate feature statistics and both metrics in one pass
     feature_stats = calculate_feature_statistics(feature_np, prepared_target)
-    
-    # Calculate SSE reduction score
     return single_feature_score(feature_stats, baseline_stats)

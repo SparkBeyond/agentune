@@ -304,8 +304,8 @@ class UnifiedRelationshipStatsCalculator(SyncRelationshipStatsCalculator):
         # Calculate per-class totals and missing percentages
         missing_pct, totals = _missing_and_totals_per_class(series, class_series_full, classes)
 
-        # Calculate SSE reduction for sse_reduction field
-        sse_reduction = calculate_sse_reduction(feature, series, target)
+        # Calculate both SSE reduction and R² in one call
+        sse_reduction, r_squared = calculate_sse_reduction(feature, series, target)
 
         # Create binning info if bin_edges is available (numeric features only)
         binning_info = None
@@ -323,6 +323,7 @@ class UnifiedRelationshipStatsCalculator(SyncRelationshipStatsCalculator):
             mean_shift=prob_shift,
             lift=lift,
             sse_reduction=sse_reduction,
+            r_squared=r_squared,
             binning_info=binning_info,
             totals_per_class=totals,
             missing_percentage_per_class=missing_pct,
@@ -423,6 +424,7 @@ class NumericRegressionRelationshipStatsCalculator(UnifiedRelationshipStatsCalcu
             lift=base_stats.lift,
             mean_shift=base_stats.mean_shift,
             sse_reduction=base_stats.sse_reduction,
+            r_squared=base_stats.r_squared,
             binning_info=base_stats.binning_info,
             totals_per_class=base_stats.totals_per_class,
             missing_percentage_per_class=base_stats.missing_percentage_per_class,
