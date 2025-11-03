@@ -66,18 +66,25 @@ class FeatureSearchInputData(CopyToThread):
             self.join_strategies
         )
 
+@frozen
+class UniqueTableName:
+    """A request to create a unique (nonexistent) table name with the given prefix."""
+    basename: str | DuckdbName
 
 @frozen
 class FeatureSearchParams:
     """Non-data arguments to feature search.
 
     Args:
-        store_enriched_train: if not None, the final features computed on the train dataset will be stored in the named table.
+        store_enriched_train: if not None, the final features computed on the train dataset will be stored in the named table
                               and remain available after the feature search completes. If this table already exists,
                               it will be replaced.
-                              This is the data that FeatureSearchResults.features_with_train_stats is computed on.
+                              If a UniqueTableName is passed, a random suffix will be appended to its `basename`
+                              to make sure the table does not replace an existing one.
                               If None, the data will be stored in a temporary table and deleted before feature search
                               completes.
+
+                              This is the data that FeatureSearchResults.features_with_train_stats is computed on.
         store_enriched_test:  as above, for the test dataset.
     """
     problem_description: ProblemDescription
@@ -88,8 +95,8 @@ class FeatureSearchParams:
     # Feature computeres are tried in the order in which they appear.
     feature_computers: tuple[type[FeatureComputer], ...] = (UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer)
     enrich_runner: EnrichRunner = EnrichRunnerImpl()
-    store_enriched_train: DuckdbName | None = None
-    store_enriched_test: DuckdbName | None = None
+    store_enriched_train: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_train')
+    store_enriched_test: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_test')
     max_classes: int = 20
 
 @frozen

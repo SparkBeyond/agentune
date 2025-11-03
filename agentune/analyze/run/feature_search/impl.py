@@ -13,6 +13,7 @@ from duckdb.duckdb import DuckDBPyConnection, DuckDBPyRelation
 from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.database import (
     DuckdbManager,
+    DuckdbName,
     DuckdbTable,
 )
 from agentune.analyze.core.dataset import DatasetSink, DatasetSource
@@ -48,6 +49,7 @@ from agentune.analyze.run.feature_search.base import (
     FeatureSearchResults,
     FeatureSearchRunner,
     NoFeaturesFoundError,
+    UniqueTableName,
 )
 from agentune.analyze.util.queue import Queue, ScopedQueue
 
@@ -136,8 +138,8 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
         selected_features_with_original_names = [attrs.evolve(feature, name=original_name(feature)) for feature in selected_features]
         deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[problem.target_column.name])
 
-        enriched_eval_name = params.store_enriched_train or run_context.ddb_manager.temp_random_name('enriched_eval')
-        enriched_test_name = params.store_enriched_test or run_context.ddb_manager.temp_random_name('enriched_test')
+        enriched_eval_name = self._enriched_table_name(run_context.ddb_manager, params.store_enriched_train, 'enriched_eval')
+        enriched_test_name = self._enriched_table_name(run_context.ddb_manager, params.store_enriched_test, 'enriched_test')
 
         try:
             with run_context.ddb_manager.cursor() as conn:
@@ -176,6 +178,18 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                 if not params.store_enriched_test:
                     conn.execute(f'drop table if exists {enriched_test_name}')
 
+    def _enriched_table_name(self, ddb_manager: DuckdbManager,
+                             user_requested: str | DuckdbName | UniqueTableName | None,
+                             default_basename: str) -> DuckdbName:
+        with ddb_manager.cursor() as conn:
+            match user_requested:
+                case str() as s: return DuckdbName.qualify(s, conn)
+                case DuckdbName() as n: return n
+                case UniqueTableName(basename):
+                    match basename:
+                        case str(): return DuckdbName.qualify(ddb_manager.random_name(basename), conn)
+                        case DuckdbName(): return attrs.evolve(basename, name=ddb_manager.random_name(basename.name))
+                case None: return ddb_manager.temp_random_name(default_basename)
 
     def _deduplicate_generated_feature_names(self, features: Sequence[GeneratedFeature],
                                              existing_names: Sequence[str] = ()) -> list[GeneratedFeature]:

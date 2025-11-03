@@ -47,6 +47,7 @@ from agentune.analyze.run.feature_search.base import (
     FeatureSearchInputData,
     FeatureSearchParams,
     NoFeaturesFoundError,
+    UniqueTableName,
 )
 from agentune.analyze.run.feature_search.impl import FeatureSearchRunnerImpl
 from agentune.analyze.run.ingest import sampling
@@ -55,7 +56,7 @@ _logger = logging.getLogger(__name__)
 
 
 @frozen
-class TestFloatFeature(FloatFeature):
+class _TestFloatFeature(FloatFeature):
     name: str
     description: str = ''
     technical_description: str = ''
@@ -74,7 +75,7 @@ class TestFloatFeature(FloatFeature):
         return 0.0
 
 @frozen
-class TestIntFeature(IntFeature):
+class _TestIntFeature(IntFeature):
     name: str
     description: str = ''
     technical_description: str = ''
@@ -91,7 +92,7 @@ class TestIntFeature(IntFeature):
 
 
 @frozen
-class TestBoolFeature(BoolFeature):
+class _TestBoolFeature(BoolFeature):
     name: str
     description: str = ''
     technical_description: str = ''
@@ -107,7 +108,7 @@ class TestBoolFeature(BoolFeature):
         return True
 
 @frozen
-class TestCategoricalFeature(CategoricalFeature):
+class _TestCategoricalFeature(CategoricalFeature):
     name: str
     description: str = ''
     technical_description: str = ''
@@ -194,14 +195,16 @@ async def test_feature_search(input_data: FeatureSearchInputData, run_context: R
         regression_params = FeatureSearchParams(
             ProblemDescription('target', 'regression'),
             generators=generators,
-            selector=selector
+            selector=selector,
+            store_enriched_test=None, store_enriched_train=None
         )
         await _test_feature_search(input_data, run_context, regression_params)
         _logger.info(f'Running classification with selector {selector}')
         classification_params = FeatureSearchParams(
             ProblemDescription('target', 'classification'),
             generators=generators,
-            selector=selector
+            selector=selector,
+            store_enriched_test=None, store_enriched_train=None
         )
         await _test_feature_search(input_data, run_context, classification_params)
 
@@ -242,8 +245,8 @@ async def test_two_features_have_the_same_name(input_data: FeatureSearchInputDat
 def test_update_feature_defaults() -> None:
     runner = FeatureSearchRunnerImpl()
 
-    float_feature = TestFloatFeature('f1', default_for_missing=math.inf, default_for_nan=math.inf,
-                                     default_for_infinity=math.inf, default_for_neg_infinity=math.inf)
+    float_feature = _TestFloatFeature('f1', default_for_missing=math.inf, default_for_nan=math.inf,
+                                      default_for_infinity=math.inf, default_for_neg_infinity=math.inf)
 
     adjusted_float_feature = runner._update_feature_defaults(float_feature, pl.Series([-1.0, 0.0, 1.0]))
     assert isinstance(adjusted_float_feature, FloatFeature)
@@ -253,17 +256,17 @@ def test_update_feature_defaults() -> None:
     assert adjusted_float_feature.default_for_neg_infinity == -2.0
     assert type(adjusted_float_feature) is type(float_feature)
 
-    bool_feature = TestBoolFeature('b1', default_for_missing=True)
+    bool_feature = _TestBoolFeature('b1', default_for_missing=True)
     adjusted_bool_feature = runner._update_feature_defaults(bool_feature, pl.Series([True, False, True]))
     assert adjusted_bool_feature.default_for_missing is False
     assert type(adjusted_bool_feature) is type(bool_feature)
 
-    int_feature = TestIntFeature('i1', default_for_missing=-1)
+    int_feature = _TestIntFeature('i1', default_for_missing=-1)
     adjusted_int_feature = runner._update_feature_defaults(int_feature, pl.Series([1, 2, 3]))
     assert adjusted_int_feature.default_for_missing == 2
     assert type(adjusted_int_feature) is type(int_feature)
 
-    categorical_feature = TestCategoricalFeature('c1', default_for_missing='b')
+    categorical_feature = _TestCategoricalFeature('c1', default_for_missing='b')
     adjusted_categorical_feature = runner._update_feature_defaults(categorical_feature, pl.Series(['a', 'b', 'c']))
     assert adjusted_categorical_feature.default_for_missing == CategoricalFeature.other_category
     assert type(adjusted_categorical_feature) is type(categorical_feature)
@@ -300,57 +303,84 @@ async def test_keep_enrich_output(input_data: FeatureSearchInputData, run_contex
     with run_context.ddb_manager.cursor() as conn:
         runner = FeatureSearchRunnerImpl()
 
-        enriched_train_name = DuckdbName.qualify('enriched_train', conn)
-        enriched_test_name = DuckdbName.qualify('enriched_test', conn)
-
-        orig_table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
-
         feature = ToySyncFeature('x', 'y', 'x+y', '', '')
         generator = SimplePrebuiltFeaturesGenerator((GeneratedFeature(feature, False), GeneratedFeature(feature, True)))
         selector = ToyAllFeatureSelector()
-        params = FeatureSearchParams(
-            ProblemDescription('target', 'regression'),
-            generators=(generator,),
-            selector=selector,
-            store_enriched_train=enriched_train_name,
-            store_enriched_test=enriched_test_name
-        )
-        results = await runner.run(run_context, input_data, params)
 
-        assert results.enriched_train == DuckdbTable.from_duckdb(enriched_train_name, conn), 'Enriched train was stored'
-        assert results.enriched_test == DuckdbTable.from_duckdb(enriched_test_name, conn), 'Enriched test was stored'
+        async def do_test(store_enriched_train: str | DuckdbName | UniqueTableName | None,
+                          store_enriched_test: str | DuckdbName | UniqueTableName | None) -> None:
+            orig_table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
 
-        assert results.enriched_train.schema == results.enriched_test.schema, 'Same schema for enriched train and test'
-        assert results.enriched_train.schema == Schema((
-            input_data.feature_search.schema['target'],
-            * [Field(feature.name, feature.dtype) for feature in results.features]
-        )), 'Enriched train contains the target column and a column for each feature'
+            params = FeatureSearchParams(
+                ProblemDescription('target', 'regression'),
+                generators=(generator,),
+                selector=selector,
+                store_enriched_train=store_enriched_train,
+                store_enriched_test=store_enriched_test
+            )
+            results = await runner.run(run_context, input_data, params)
+            
+            def test_correct_stored(requested: str | DuckdbName | UniqueTableName | None,
+                                    result: DuckdbTable | None,
+                                    matching_input: DatasetSource) -> None:
+                if requested is None:
+                    assert result is None
+                else:
+                    assert result is not None
+                    assert result == DuckdbTable.from_duckdb(result.name, conn), 'Enriched train was stored'
+                    match requested:
+                        case str() as name: assert result.name == DuckdbName.qualify(name, conn)
+                        case DuckdbName() as name: assert result.name == name
+                        case UniqueTableName(basename):
+                            match basename:
+                                case str() as name:
+                                    assert result.name.name.startswith(name) and result.name.name != name, 'Prefix used'
+                                case DuckdbName() as name:
+                                    assert result.name.name.startswith(name.name) and result.name.name != name.name, 'Prefix used'
+                                    assert attrs.evolve(result.name, name='foo') == attrs.evolve(name, name='foo'), 'Rest of input DuckdbName used'
 
-        enriched_train_len = conn.execute(f'select count(*) from {enriched_train_name}').fetchone()
-        assert enriched_train_len == (input_data.feature_eval.to_dataset(conn).height, ), 'Enriched train has expected number of rows'
-        enriched_test_len = conn.execute(f'select count(*) from {enriched_test_name}').fetchone()
-        assert enriched_test_len == (input_data.test.to_dataset(conn).height, ), 'Enriched test has expected number of rows'
+                    assert result.schema == Schema((
+                        input_data.feature_search.schema['target'],
+                        * [Field(feature.name, feature.dtype) for feature in results.features]
+                    )), 'Enriched data contains the target column and a column for each feature'
 
-        table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
-        expected_table_names = [
-            *orig_table_names,
-            (enriched_train_name.database, enriched_train_name.schema, enriched_train_name.name),
-            (enriched_test_name.database, enriched_test_name.schema, enriched_test_name.name),
-        ]
-        assert set(table_names) == set(expected_table_names), 'No other new tables left in DB (temporary or otherwise)'
+                    enriched_len = conn.execute(f'select count(*) from {result.name}').fetchone()
+                    assert enriched_len == (matching_input.to_dataset(conn).height, ), 'Enriched data has expected number of rows'
 
-        # Run again, should overwrite previous contents of enriched tables if they exist
-        # Change the tables' contents first to notice that they change back
-        conn.execute(f'insert into {enriched_train_name} select * from {enriched_test_name}')
-        conn.execute(f'insert into {enriched_test_name} select * from {enriched_train_name}')
+            test_correct_stored(store_enriched_train, results.enriched_train, input_data.feature_eval)
+            test_correct_stored(store_enriched_test, results.enriched_test, input_data.test)
 
-        results2 = await runner.run(run_context, input_data, params)
-        assert results2 == results, 'Same features selected, same stats calculated'
+            def triple(name: DuckdbName) -> tuple[str, str, str]:
+                return (name.database, name.schema, name.name)
 
-        enriched_train_len = conn.execute(f'select count(*) from {enriched_train_name}').fetchone()
-        assert enriched_train_len == (input_data.feature_eval.to_dataset(conn).height, ), 'Enriched train has expected number of rows'
-        enriched_test_len = conn.execute(f'select count(*) from {enriched_test_name}').fetchone()
-        assert enriched_test_len == (input_data.test.to_dataset(conn).height, ), 'Enriched test has expected number of rows'
+            table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
+            expected_table_names = list(orig_table_names) + \
+                                   ([triple(results.enriched_train.name)] if results.enriched_train is not None else []) + \
+                                   ([triple(results.enriched_test.name)] if results.enriched_test is not None else [])
+            assert set(table_names) == set(expected_table_names), f'No other new tables left in DB (temporary or otherwise), {orig_table_names=}'
+
+            # Run again. Should overwrite previous contents of enriched tables if they exist
+            # Change the tables' contents first to notice that they change back
+            if results.enriched_train is not None and results.enriched_test is not None:
+                conn.execute(f'truncate {results.enriched_train.name}')
+                conn.execute(f'truncate {results.enriched_test.name}')
+
+                results2 = await runner.run(run_context, input_data, params)
+                assert results2.features_with_train_stats == results.features_with_train_stats, 'Same features selected, same stats calculated'
+                assert results2.features_with_test_stats == results.features_with_test_stats
+
+                assert results2.enriched_train is not None
+                enriched_train_len = conn.execute(f'select count(*) from {results2.enriched_train.name}').fetchone()
+                assert enriched_train_len == (input_data.feature_eval.to_dataset(conn).height, ), 'Enriched train has expected number of rows'
+
+                assert results2.enriched_test is not None
+                enriched_test_len = conn.execute(f'select count(*) from {results2.enriched_test.name}').fetchone()
+                assert enriched_test_len == (input_data.test.to_dataset(conn).height, ), 'Enriched test has expected number of rows'
+
+        await do_test(DuckdbName.qualify('enriched_train', conn), DuckdbName.qualify('enriched_test', conn))
+        await do_test('foo', None)
+        await do_test('bar', UniqueTableName('base'))
+        await do_test(None, None)
 
 async def test_zero_generated_features(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
     runner = FeatureSearchRunnerImpl()
