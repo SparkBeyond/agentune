@@ -121,7 +121,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                 selected_features = await self._select_features(features_with_updated_defaults,
                                                                 data.feature_eval, enriched_feature_eval_group_tables,
                                                                 problem, params, conn)
-                _logger.info(f'Selected {len(selected_features)} features out of {len(features_with_updated_defaults)}')
+                _logger.debug(f'Selected {len(selected_features)} features out of {len(features_with_updated_defaults)}')
         finally:
             with run_context.ddb_manager.cursor() as conn:
                 for table in enriched_feature_eval_group_tables:
@@ -224,23 +224,23 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
         with conn.cursor() as cursor: # Cursor for new thread
             def sync_generate() -> None:
                 for generator in generators:
-                    _logger.info(f'Generating features with {generator=}')
+                    _logger.debug(f'Generating features with {generator=}')
                     count = 0
                     for feature in generator.generate(data.feature_search, problem, data.join_strategies, cursor):
                         output_queue.put(feature)
                         count += 1
-                    _logger.info(f'Generated {count} features with {generator=}')
+                    _logger.debug(f'Generated {count} features with {generator=}')
             await asyncio.to_thread(sync_generate)
 
     async def _generate_async(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: FeatureSearchInputData,
                               generators: list[FeatureGenerator], problem: Problem) -> None:
         async def agenerate(generator: FeatureGenerator) -> None:
-            _logger.info(f'Generating features with {generator=}')
+            _logger.debug(f'Generating features with {generator=}')
             count = 0
             async for feature in generator.agenerate(data.feature_search, problem, data.join_strategies, conn):
                 await output_queue.aput(feature)
                 count += 1
-            _logger.info(f'Generated {count} features with {generator=}')
+            _logger.debug(f'Generated {count} features with {generator=}')
 
         if self.run_generators_concurrently:
             await asyncio.gather(*[agenerate(generator) for generator in generators])
@@ -283,7 +283,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                             series = df[gen.feature.name]
                             features_with_updated_defaults.append(self._update_feature_defaults(gen.feature, series))
 
-                _logger.info(f'Enriched {len(features)} features in {len(feature_groups)} batches')
+                _logger.debug(f'Enriched {len(features)} features in {len(feature_groups)} batches')
                 return (tables, features_with_updated_defaults)
         except:
             # On error, delete tables created so far before returning
