@@ -52,6 +52,22 @@ class ConversationWithExplanation:
 
 
 @frozen
+class ConversationWithMetadata:
+    """A conversation with its metadata for the report.
+    
+    This is stored in a dict keyed by display_number (the number shown in the LLM prompt).
+    
+    Fields:
+    - actual_id: The actual database conversation ID (UUID, string, etc.)
+    - conversation: The conversation content itself
+    - outcome: The outcome/target value for this conversation (optional)
+    """
+    actual_id: int | str
+    conversation: Conversation
+    outcome: str
+
+
+@frozen
 class Recommendation:
     """An actionable recommendation with enriched feature data."""
     title: str
@@ -67,7 +83,7 @@ class RecommendationsReport:
     """Structured recommendations report with enriched SSE reduction data."""
     analysis_summary: str
     recommendations: tuple[Recommendation, ...]
-    conversations: dict[int, Conversation]
+    conversations: dict[int, ConversationWithMetadata]  # Keyed by display_number (1, 2, 3...)
     raw_report: str
 
 
@@ -99,7 +115,6 @@ class ConversationActionRecommender(ActionRecommender):
     
     # Descriptions for the agent and instances being analyzed (defaults defined in prompts.py)
     agent_description: str = prompts.DEFAULT_AGENT_DESCRIPTION
-    instance_description: str = prompts.DEFAULT_INSTANCE_DESCRIPTION
 
     def _get_sampler(self, problem: Problem) -> DataSampler:
         """Get appropriate sampler based on problem type.
@@ -119,43 +134,54 @@ class ConversationActionRecommender(ActionRecommender):
             case _:
                 raise ValueError(f'Unsupported problem type: {type(problem)}')
 
-    def _find_conversation_features(
-        self, features_with_stats: Sequence[FeatureWithFullStats]
-    ) -> list[FeatureWithFullStats]:
-        """Filter features that use ConversationFormatter.
-        
+    @staticmethod
+    def _find_and_prepare_conv_features(
+            features_with_stats: Sequence[FeatureWithFullStats]
+    ) -> tuple[list[FeatureWithFullStats], ConversationJoinStrategy] | None:
+        """Find conversation features, validate single strategy, and return sorted features with strategy.
+
         Args:
             features_with_stats: All features with their statistics
-            
-        Returns:
-            List of features that have a ConversationFormatter
-        """
-        return [
-            fws for fws in features_with_stats
-            if (isinstance(fws.feature, InsightfulTextFeature) and
-                isinstance(fws.feature.formatter, ConversationFormatter))
-        ]
 
-    def _group_by_strategy(
-        self, conv_features: list[FeatureWithFullStats]
-    ) -> dict[str, list[FeatureWithFullStats]]:
-        """Group conversation features by their ConversationJoinStrategy.
-        
-        Args:
-            conv_features: Features that use ConversationFormatter
-            
         Returns:
-            Dictionary mapping strategy name to list of features using that strategy
+            Tuple of (sorted features by SSE reduction, conversation strategy) if conversation features found.
+            None if no conversation features are found.
+            
+        Raises:
+            ValueError: If multiple conversation strategies are found (not yet supported)
         """
-        by_strategy: dict[str, list[FeatureWithFullStats]] = {}
-        for fws in conv_features:
-            strategies = fws.feature.join_strategies
-            if len(strategies) == 1 and isinstance(strategies[0], ConversationJoinStrategy):
-                strategy = strategies[0]
-                if strategy.name not in by_strategy:
-                    by_strategy[strategy.name] = []
-                by_strategy[strategy.name].append(fws)
-        return by_strategy
+        # Collect all conversation features with their strategies
+        conv_features: list[tuple[FeatureWithFullStats, ConversationJoinStrategy]] = []
+        
+        for fws in features_with_stats:
+            if isinstance(fws.feature, InsightfulTextFeature):
+                strategy = fws.feature.join_strategies[0]
+                if isinstance(strategy, ConversationJoinStrategy):
+                    conv_features.append((fws, strategy))
+                else:
+                    raise ValueError(f'Feature {fws.feature.name} has non-conversation join strategy: {strategy}')
+
+        # No conversation features found
+        if not conv_features:
+            return None
+
+        # Validate single strategy by checking all strategies are the same
+        first_strategy = conv_features[0][1]
+        unique_strategies = {strategy.name for _, strategy in conv_features}
+        if len(unique_strategies) > 1:
+            raise ValueError(
+                f'Found {len(unique_strategies)} conversation sources: {list(unique_strategies)}. '
+                f'Multiple conversation sources not yet supported.'
+            )
+        
+        # Sort features by SSE reduction (importance)
+        sorted_features = sorted(
+            [fws for fws, _ in conv_features],
+            key=lambda fws: fws.stats.relationship.sse_reduction,
+            reverse=True
+        )
+        
+        return sorted_features, first_strategy
 
     def _format_sse_reduction_dict(
         self, features_with_stats: list[FeatureWithFullStats]
@@ -175,17 +201,24 @@ class ConversationActionRecommender(ActionRecommender):
             lines.append(f'{i}. {description}: {sse_reduction:.4f}')
         return '\n'.join(lines)
 
-    def _format_conversations(self, formatted_samples: pl.Series) -> str:
+    def _format_conversations(
+        self,
+        formatted_samples: pl.Series,
+    ) -> str:
         """Format conversation samples as a readable string.
+        
+        Conversations are numbered sequentially (1, 2, 3...) based on their order
+        in the formatted_samples series. This ensures the LLM's references
+        (e.g., "Conversation 5") can be traced back to the database.
         
         Args:
             formatted_samples: Series of formatted conversation strings
             
         Returns:
-            Formatted string with numbered conversations
+            Formatted string with conversations numbered sequentially
         """
         lines = []
-        for i, conversation in enumerate(formatted_samples.to_list(), 1):
+        for i, conversation in enumerate(formatted_samples.to_list(), start=1):
             lines.append(f'--- Conversation {i} ---')
             lines.append(str(conversation))
             lines.append('')
@@ -196,6 +229,8 @@ class ConversationActionRecommender(ActionRecommender):
         pydantic_report: prompts.StructuredReport,
         features_with_stats: list[FeatureWithFullStats],
         conversations: tuple[Conversation | None, ...],
+        conversation_ids: list[int | str],
+        outcomes: list[str],
         raw_report: str,
     ) -> RecommendationsReport:
         """Convert Pydantic report to attrs report, enriching with SSE reduction and conversation data.
@@ -204,22 +239,17 @@ class ConversationActionRecommender(ActionRecommender):
             pydantic_report: The Pydantic model from LLM structured output
             features_with_stats: Features with their statistics (for SSE lookup)
             conversations: Tuple of Conversation objects (in same order as shown to LLM)
+            conversation_ids: List of actual database conversation IDs (in same order as conversations)
+            outcomes: List of outcome values (in same order as conversations)
             raw_report: Raw report from LLM structured output
             
         Returns:
-            RecommendationsReport with enriched feature references and Conversation objects
+            RecommendationsReport with enriched feature references and ConversationWithMetadata objects
         """
         # Build a lookup map: feature description -> SSE reduction
         sse_lookup = {
             fws.feature.description: fws.stats.relationship.sse_reduction
             for fws in features_with_stats
-        }
-        
-        # Build a lookup map: conversation index (1-based) -> Conversation object
-        # Keep all indices even if conversation is None to maintain alignment
-        conversation_lookup = {
-            i + 1: conv
-            for i, conv in enumerate(conversations)
         }
         
         def find_sse_for_feature(feat_name: str) -> float:
@@ -268,16 +298,19 @@ class ConversationActionRecommender(ActionRecommender):
                             explanation=conv_ref.explanation,
                         )
                         for conv_ref in rec.supporting_conversations
-                        if conversation_lookup.get(conv_ref.conversation_id) is not None
                     ),
                 )
             )
         
-        # Build conversations dict with only the referenced conversations
+        # Build conversations dict with metadata for only the referenced conversations
         conversations_dict = {
-            idx: conv
+            idx: ConversationWithMetadata(
+                actual_id=conversation_ids[idx - 1],  # idx is 1-based, list is 0-based
+                conversation=conversations[idx - 1],  # type: ignore[arg-type]  # idx is 1-based, list is 0-based
+                outcome=outcomes[idx - 1],  # idx is 1-based, list is 0-based
+            )
             for idx in all_conversation_indices
-            if (conv := conversation_lookup.get(idx)) is not None
+            if 1 <= idx <= len(conversation_ids)  # Validate idx is within valid range
         }
         
         return RecommendationsReport(
@@ -310,45 +343,24 @@ class ConversationActionRecommender(ActionRecommender):
         Raises:
             ValueError: If multiple conversation strategies are found (not yet supported)
         """
-        # 1. Find conversation features
-        conv_features = self._find_conversation_features(features_with_stats)
-        if not conv_features:
+        # 1. Find and prepare conversation features
+        conv_result = self._find_and_prepare_conv_features(features_with_stats)
+        if conv_result is None:
             return None  # No conversation features - explainer not applicable
-
-        # 2. Group by conversation strategy
-        by_strategy = self._group_by_strategy(conv_features)
-
-        # 3. Handle multiple strategies
-        if len(by_strategy) > 1:
-            # For now, fail with clear error until team decides on multi-strategy handling
-            raise ValueError(
-                f'Found {len(by_strategy)} conversation sources: {list(by_strategy.keys())}. '
-                f'Multiple conversation sources not yet supported.'
-            )
-
-        # 4. Get the single strategy and its features
-        strategy_name = next(iter(by_strategy))
-        strategy_features = by_strategy[strategy_name]
         
-        # Sort by SSE reduction (importance)
-        sorted_features = sorted(
-            strategy_features,
-            key=lambda fws: fws.stats.relationship.sse_reduction,
-            reverse=True
-        )
-        
-        # Get the conversation strategy from the first feature
-        first_formatter: ConversationFormatter = sorted_features[0].feature.formatter  # type: ignore[attr-defined]
-        conversation_strategy = first_formatter.conversation_strategy
+        sorted_features, conversation_strategy = conv_result
 
-        # 5. Sample data
+        # 2. Sample data
         sampler = self._get_sampler(problem)
         sampled_data = sampler.sample(dataset, self.num_samples)
 
-        # 6. Fetch conversations once (used for both formatting and final output)
+        # 3. Fetch conversations once (used for both formatting and final output)
         conversations = conversation_strategy.get_conversations(sampled_data, conn)
         
-        # 7. Format conversations using ConversationFormatter
+        # 4. Extract actual conversation IDs from sampled data
+        conversation_ids = sampled_data.data[conversation_strategy.main_table_id_column.name].to_list()
+        
+        # 5. Format conversations using ConversationFormatter
         formatter = ConversationFormatter(
             name='action_recommender_conversations',
             conversation_strategy=conversation_strategy,
@@ -356,20 +368,22 @@ class ConversationActionRecommender(ActionRecommender):
         )
         formatted_samples = await formatter.aformat_batch(sampled_data, conn)
 
-        # 8. Build prompt (adapts to regression vs classification)
+        # 6. Build prompt (adapts to regression vs classification)
         formatted_conversations = self._format_conversations(formatted_samples)
+        if formatter.description is None:
+            raise ValueError(f'Formatter {formatter.name} description not available')
         prompt = prompts.create_conversation_analysis_prompt(
             agent_description=self.agent_description,
-            instance_description=self.instance_description,
+            instance_description=formatter.description,
             problem=problem,
             sse_reduction_dict=self._format_sse_reduction_dict(sorted_features),
             conversations=formatted_conversations,
         )
 
-        # 9. Call LLM to get raw text report
+        # 7. Call LLM to get raw text report
         raw_report = await achat_raw(self.model, prompt)
 
-        # 10. Structure the report using LLM (returns Pydantic model)
+        # 8. Structure the report using LLM (returns Pydantic model)
         pydantic_report = await prompts.structure_report_with_llm(
             report=raw_report,
             sse_reduction_dict=self._format_sse_reduction_dict(sorted_features),
@@ -377,7 +391,11 @@ class ConversationActionRecommender(ActionRecommender):
             structuring_model=self.structuring_model,
         )
         
-        # 11. Convert Pydantic to attrs, enriching with SSE reduction and conversation data
+        # 9. Convert Pydantic to attrs, enriching with SSE reduction and conversation data
+        # Extract outcomes as strings for metadata
+        outcomes = [str(val) for val in sampled_data.data[problem.target_column.name].to_list()]
+        
         return self._convert_pydantic_to_attrs(
-            pydantic_report, sorted_features, conversations, raw_report
+            pydantic_report, sorted_features, conversations, 
+            conversation_ids, outcomes, raw_report
         )

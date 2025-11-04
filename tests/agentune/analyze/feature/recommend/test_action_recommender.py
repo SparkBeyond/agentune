@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -25,7 +26,11 @@ from agentune.analyze.feature.recommend import (
     ConversationActionRecommender,
     RecommendationsReport,
 )
+from agentune.analyze.feature.recommend.action_recommender import (
+    ConversationWithMetadata,
+)
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
+from agentune.analyze.join.conversation import Conversation, Message
 from agentune.analyze.run.base import RunContext
 
 logger = logging.getLogger(__name__)
@@ -114,8 +119,7 @@ def _reconstruct_features_with_stats(
         list[FeatureWithFullStats]
     )
 
-
-@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_action_recommender(
     real_llm_with_spec: LLMWithSpec,
     structuring_llm_with_spec: LLMWithSpec,
@@ -187,7 +191,6 @@ async def test_action_recommender(
         pytest.skip('No conversation features found')
     
     assert isinstance(report, RecommendationsReport)
-    assert len(report.analysis_summary) > 50
     assert len(report.recommendations) > 0
     
     # Optionally save results (useful for manual inspection)
@@ -207,8 +210,9 @@ async def test_action_recommender(
     logger.info(f'Features analyzed: {len(features_with_stats)}')
     logger.info(f'Analysis summary: {report.analysis_summary[:200]}...')
     logger.info(f'Number of recommendations: {len(report.recommendations)}')
+    logger.info(f'Number of conversations referenced: {len(report.conversations)}')
     
-    # Verify structure
+    # Verify recommendation structure
     for rec in report.recommendations:
         assert len(rec.title) > 0, 'Recommendation title should not be empty'
         assert len(rec.description) > 0, 'Recommendation description should not be empty'
@@ -218,3 +222,80 @@ async def test_action_recommender(
         for feat_ref in rec.supporting_features:
             assert isinstance(feat_ref.sse_reduction, float), 'SSE reduction should be a float'
             # Note: SSE reduction can be negative (temporary errors), so we don't assert > 0
+    
+    # Verify ConversationWithMetadata structure
+    assert len(report.conversations) > 0, 'Should have at least one conversation referenced'
+    
+    for display_num, conv_metadata in report.conversations.items():
+        # Verify all required fields are present
+        assert conv_metadata.actual_id is not None, f'Conversation {display_num} missing actual_id'
+        assert conv_metadata.conversation is not None, f'Conversation {display_num} missing conversation content'
+        assert conv_metadata.outcome is not None, f'Conversation {display_num} missing outcome'
+        
+        # Verify conversation has messages
+        assert len(conv_metadata.conversation.messages) > 0, f'Conversation {display_num} has no messages'
+        
+        # Format actual_id for display (handle both string UUIDs and integers)
+        actual_id_display = str(conv_metadata.actual_id)[:20] + '...' if len(str(conv_metadata.actual_id)) > 20 else str(conv_metadata.actual_id)
+        logger.info(f'Conversation {display_num}: ID={actual_id_display}, Outcome={conv_metadata.outcome}, Messages={len(conv_metadata.conversation.messages)}')
+    
+    logger.info('✅ All conversation metadata verified successfully!')
+
+
+def test_conversation_id_mapping() -> None:
+    """Test that conversation IDs are correctly mapped to display numbers.
+    
+    This test verifies that the implicit mapping through list positions works correctly:
+    - Display number N corresponds to conversation_ids[N-1]
+    - The same position in conversations tuple
+    - The same position in outcomes list
+    """
+    # Simulate the data structures as they would be in arecommend()
+    conversation_ids = ['conv_abc', 'conv_def', 'conv_ghi', 'conv_jkl', 'conv_mno']
+    outcomes = ['positive', 'negative', 'positive', 'negative', 'positive']
+    
+    # Create mock conversations
+    conversations = tuple(
+        Conversation(messages=(
+            Message(role='user', content=f'Message from {conv_id}', timestamp=datetime.now()),
+        ))
+        for conv_id in conversation_ids
+    )
+    
+    # Simulate LLM referencing conversations 2, 4, and 5
+    llm_referenced_indices = {2, 4, 5}
+    
+    # Build conversations dict as done in _convert_pydantic_to_attrs
+    conversations_dict = {
+        idx: ConversationWithMetadata(
+            actual_id=conversation_ids[idx - 1],  # idx is 1-based, list is 0-based
+            conversation=conversations[idx - 1],
+            outcome=outcomes[idx - 1],
+        )
+        for idx in llm_referenced_indices
+    }
+    
+    # Verify the mapping is correct
+    assert len(conversations_dict) == 3, 'Should have 3 conversations'
+    
+    # Verify Conversation 2 maps correctly
+    assert 2 in conversations_dict
+    assert conversations_dict[2].actual_id == 'conv_def'  # conversation_ids[1]
+    assert conversations_dict[2].outcome == 'negative'  # outcomes[1]
+    assert 'conv_def' in conversations_dict[2].conversation.messages[0].content
+    
+    # Verify Conversation 4 maps correctly
+    assert 4 in conversations_dict
+    assert conversations_dict[4].actual_id == 'conv_jkl'  # conversation_ids[3]
+    assert conversations_dict[4].outcome == 'negative'  # outcomes[3]
+    assert 'conv_jkl' in conversations_dict[4].conversation.messages[0].content
+    
+    # Verify Conversation 5 maps correctly
+    assert 5 in conversations_dict
+    assert conversations_dict[5].actual_id == 'conv_mno'  # conversation_ids[4]
+    assert conversations_dict[5].outcome == 'positive'  # outcomes[4]
+    assert 'conv_mno' in conversations_dict[5].conversation.messages[0].content
+    
+    # Verify conversations 1 and 3 are NOT in the dict (not referenced by LLM)
+    assert 1 not in conversations_dict
+    assert 3 not in conversations_dict

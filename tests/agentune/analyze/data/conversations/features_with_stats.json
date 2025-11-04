@@ -275,7 +275,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -524,7 +525,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -773,7 +775,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -1022,7 +1025,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -1183,7 +1187,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -1432,7 +1437,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -1635,7 +1641,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -1796,7 +1803,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -1957,7 +1965,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -2118,7 +2127,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -2279,7 +2289,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -2440,7 +2451,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -2601,7 +2613,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -2762,7 +2775,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -2923,7 +2937,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -3084,7 +3099,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -3245,7 +3261,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -3406,7 +3423,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -3567,7 +3585,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -3732,7 +3751,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -3981,7 +4001,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -4142,7 +4163,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -4391,7 +4413,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -4552,7 +4575,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -4729,7 +4753,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -4890,7 +4915,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -5051,7 +5077,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -5300,7 +5327,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -5461,7 +5489,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -5622,7 +5651,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -5803,7 +5833,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -5984,7 +6015,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -6233,7 +6265,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -6386,7 +6419,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -6539,7 +6573,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -6788,7 +6823,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -7025,7 +7061,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -7274,7 +7311,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -7523,7 +7561,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -7700,7 +7739,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -7949,7 +7989,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -8110,7 +8151,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -8359,7 +8401,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -8512,7 +8555,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -8673,7 +8717,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -8922,7 +8967,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -9125,7 +9171,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -9278,7 +9325,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -9455,7 +9503,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     },
@@ -9644,7 +9693,8 @@
           "missing_percentage_per_class": [
             0.0,
             0.0
-          ]
+          ],
+          "r_squared": 0.0
         }
       }
     }

@@ -8,7 +8,6 @@ from agentune.analyze.feature.problem import Problem, RegressionDirection, Regre
 
 # Default descriptions for the agent and instances being analyzed
 DEFAULT_AGENT_DESCRIPTION = 'An advanced online sales agent designed to assist customers with product inquiries and purchases.'
-DEFAULT_INSTANCE_DESCRIPTION = 'transcripts of conversations between a customer and the online sales agent'
 
 
 # Prompt template adapted from recommendations_report/prompt.py
