@@ -294,17 +294,17 @@ class DuckdbConfig:
     max_temp_directory_size: str | None = None
     threads: int | None = None
 
-    config: frozendict[str, object] = field(factory=frozendict, converter=frozendict_converter)
+    config: frozendict[str, str] = field(factory=frozendict, converter=frozendict_converter)
 
-    def _mandatory_config_dict(self) -> dict[str, object]:
+    def _mandatory_config_dict(self) -> dict[str, str]:
         """Config values our code relies on, which should not be changed by users."""
         return {
             'storage_compatibility_version': required_db_version,
-            'python_enable_replacements': False,
+            'python_enable_replacements': 'False',
         }
 
-    def to_config_dict(self) -> dict[str, object]:
-        set_fields = { k: v for k, v
+    def to_config_dict(self) -> dict[str, str]:
+        set_fields = { k: str(v) for k, v
                        in cattrs.Converter().unstructure_attrs_asdict(self).items()
                        if v is not None and k != 'config' }
         # Note order of precedence

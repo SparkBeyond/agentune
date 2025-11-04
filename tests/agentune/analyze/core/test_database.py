@@ -9,7 +9,7 @@ import attrs
 import duckdb
 import polars as pl
 import pytest
-from duckdb.duckdb import CatalogException, DuckDBPyConnection
+from duckdb import CatalogException, DuckDBPyConnection
 
 from agentune.analyze.core import database, types
 from agentune.analyze.core.database import (

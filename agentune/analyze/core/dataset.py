@@ -149,7 +149,7 @@ class DatasetSource(CopyToThread):
     
     def to_dataset(self, conn: DuckDBPyConnection) -> Dataset:
         """Read the entire source into memory."""
-        return Dataset(self.schema, self.to_duckdb(conn).pl())
+        return Dataset(self.schema, duckdb_to_polars(self.to_duckdb(conn)))
 
     def select(self, *cols: str, batch_size: int = default_duckdb_batch_size) -> DatasetSource:
         new_schema = self.schema.select(*cols)

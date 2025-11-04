@@ -414,7 +414,7 @@ class NumericRegressionRelationshipStatsCalculator(UnifiedRelationshipStatsCalcu
     
             pearson_corr_result, _ = stats.pearsonr(feature_values, target_values)
             spearman_corr_result, _ = stats.spearmanr(feature_values, target_values)
-            pearson_corr = float(pearson_corr_result)
+            pearson_corr = float(cast(np.float64, pearson_corr_result))
             spearman_corr = float(spearman_corr_result)
 
         return NumericRegressionRelationshipStats(

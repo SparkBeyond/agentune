@@ -78,7 +78,7 @@ def test_dataset_from_csv_string(conn: DuckDBPyConnection) -> None:
     csv_content = 'product,price,category\nLaptop,999.99,Electronics\nChair,149.50,Furniture\nBook,12.99,Education'
     
     def make_csv_opener() -> Callable[[DuckDBPyConnection], DuckDBPyRelation]:
-        return lambda conn: conn.read_csv(StringIO(csv_content))
+        return lambda conn: conn.read_csv(StringIO(csv_content)) # type: ignore[arg-type]
     
     source = DatasetSource.from_duckdb_parser(make_csv_opener(), conn)
     dataset = source.to_dataset(conn)

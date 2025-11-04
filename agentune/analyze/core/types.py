@@ -4,11 +4,11 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from functools import partial
-from typing import Any, override
+from typing import Any, cast, override
 
 import cattrs.strategies
 import duckdb
-import duckdb.typing as ddt
+import duckdb.sqltypes as ddt
 import polars as pl
 import polars.datatypes
 import pyarrow as pa
@@ -232,14 +232,17 @@ def dtype_from_duckdb(ddtype: ddt.DuckDBPyType) -> Dtype:
     if str(ddtype) in _simple_dtype_by_duckdb_type_str:
         return _simple_dtype_by_duckdb_type_str[str(ddtype)]
     elif ddtype.id == 'enum':
-        return EnumDtype(* dict(ddtype.children)['values'])
+        enum_children = cast(Sequence[tuple[str, str]], ddtype.children)
+        return EnumDtype(* dict(enum_children)['values'])
     elif ddtype.id == 'list':
-        return ListDtype(dtype_from_duckdb(dict(ddtype.children)['child']))
+        children = cast(Sequence[tuple[str, ddt.DuckDBPyType]], ddtype.children)
+        return ListDtype(dtype_from_duckdb(dict(children)['child']))
     elif ddtype.id == 'array':
         params = dict(ddtype.children)
-        return ArrayDtype(dtype_from_duckdb(params['child']), params['size'])
+        return ArrayDtype(dtype_from_duckdb(cast(ddt.DuckDBPyType, params['child'])), cast(int, params['size']))
     elif ddtype.id == 'struct':
-        return StructDtype(* [(name, dtype_from_duckdb(dtype)) for name, dtype in ddtype.children])
+        children = cast(Sequence[tuple[str, ddt.DuckDBPyType]], ddtype.children)
+        return StructDtype(* [(name, dtype_from_duckdb(dtype)) for name, dtype in children])
     else:
         raise ValueError(f'Unsupported duckdb type: {ddtype}')
 

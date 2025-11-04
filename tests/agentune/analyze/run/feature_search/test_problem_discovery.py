@@ -3,7 +3,7 @@ import logging
 import attrs
 import polars as pl
 import pytest
-from duckdb.duckdb import DuckDBPyConnection
+from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbName, DuckdbTable

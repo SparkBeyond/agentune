@@ -1,10 +1,11 @@
 import datetime
 import logging
+import typing
 import uuid
 from typing import Any
 
 import polars as pl
-from duckdb.duckdb import DuckDBPyConnection
+from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbManager
@@ -101,7 +102,7 @@ def test_scalar_types(conn: DuckDBPyConnection) -> None:
                             values({', '.join(['?' for _dtype in all_types])})''',
                  [value_for_type(dtype) for dtype in all_types])
 
-    duckdb_results = conn.execute('select * from tab').fetchone()
+    duckdb_results = typing.cast(tuple[Any, ...], conn.execute('select * from tab').fetchone())
     polars_results = duckdb_to_polars(conn.table('tab')).row(0)
     expected = tuple(value_for_type(dtype) for dtype in all_types)
     for dtype, duckdb_value, polars_value, expected_value in zip(all_types, duckdb_results, polars_results, expected, strict=True):

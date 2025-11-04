@@ -13,7 +13,7 @@ def replace[T](value: T, **kwargs: Any) -> T:
         return attrs.evolve(val2, **kwargs)
     elif dataclasses.is_dataclass(value):
         # This is a *different* mypy bug from the above, and I'm tired of fighting it
-        return dataclasses.replace(value, **kwargs) # type: ignore[type-var,return-value]
+        return dataclasses.replace(value, **kwargs) # type: ignore[type-var]
     else:
         dunder_replace = getattr(val2, '__replace__', None)
         if dunder_replace is None:

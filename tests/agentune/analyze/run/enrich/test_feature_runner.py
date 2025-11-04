@@ -7,7 +7,7 @@ from typing import Any, override
 import polars as pl
 import pytest
 from attrs import frozen
-from duckdb.duckdb import DuckDBPyConnection
+from duckdb import DuckDBPyConnection
 from tests.agentune.analyze.run.feature_search.toys import (
     ToyAsyncFeature,
     ToySyncFeature,

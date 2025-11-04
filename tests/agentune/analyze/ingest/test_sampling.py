@@ -1,7 +1,7 @@
 import logging
 
 import pytest
-from duckdb.duckdb import BinderException, ConversionException, DuckDBPyConnection
+from duckdb import BinderException, ConversionException, DuckDBPyConnection
 
 from agentune.analyze.core.schema import Schema
 from agentune.analyze.run.ingest import sampling

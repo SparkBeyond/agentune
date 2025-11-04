@@ -8,7 +8,7 @@ from typing import cast, override
 import attrs
 import polars as pl
 from attrs import frozen
-from duckdb.duckdb import DuckDBPyConnection, DuckDBPyRelation
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.database import (
