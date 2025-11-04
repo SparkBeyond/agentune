@@ -29,6 +29,15 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+required_db_version = 'v1.2.0'
+'''The minimum required version of duckdb databases, enforced when we create or attach them.
+
+The mapping from duckdb releases to actual format versions is given at 
+https://duckdb.org/docs/stable/internals/storage#storage-version-table
+Not every released version changes the format, but every released version number is a supported parameter, including 
+fix versions like 'v1.2.1'.
+'''
+
 
 @frozen
 class DuckdbName:
@@ -258,22 +267,48 @@ class DuckdbConfig:
     The attributes defined in this class override keys of the same name placed in the config dict.
     Attributes set to None will let the duckdb default value take effect.
 
-    Changing settings can, of course, make agentune code not work correctly.
+    Changing settings not declared as attributes of this class can make agentune code not work correctly.
+    In particular, these settings are controlled directly and cannot be changed via the config dict:
+    - storage_compatibility_version
+    - python_enable_replacements
+
+    Params:
+        max_memory: The maximum amount of memory to use for both in-memory databases and temporary storage during
+                    queries on all databases. When this limit is exceeded, duckdb starts writing to the temp directory.
+                    Can be specified in units of bytes (with various prefixes, eg '1GB') or as a percentage of
+                    reported system memory (e.g. '80%').
+                    The default is 80% of available system RAM.
+        temp_dir:   The directory to write to when duckdb runs out of memory. This applies to in-memory databases
+                    that don't fit in memory and also to temporary storage during queries.
+                    The directory will only be created when duckdb runs out of in-process memory, and it will be deleted
+                    on exit.
+                    The default is '.tmp' in the current working dir in in-memory mode, or <database_name>.tmp otherwise.
+        max_temp_directory_size: The maximum size of the temp directory. When this limit is exceeded, queries fail.
+                                 Can be specified in units of bytes (with various prefixes, eg '1GB') or as a percentage of
+                                 free disk space (e.g. '80%').
+                                 The default is 90% of free disk space.
+        threads:    number of (native) threads used by duckdb. The default is the number of CPU cores.
     """
-    memory_limit: str | None = None # Default is 80% of available system RAM
-    threads: int | None = None # Default is the number of CPU cores
+    max_memory: str | None = None
+    temp_dir: str | None = None
+    max_temp_directory_size: str | None = None
+    threads: int | None = None
 
-    # Settings agentune deliberately modifies from defaults. These are extra likely to break our code
-    # if you change them. We do not test agentune with different values of these settings.
-    python_enable_replacements: bool | None = False
+    config: frozendict[str, object] = field(factory=frozendict, converter=frozendict_converter)
 
-    kwargs: frozendict[str, object] = field(factory=frozendict, converter=frozendict_converter)
+    def _mandatory_config_dict(self) -> dict[str, object]:
+        """Config values our code relies on, which should not be changed by users."""
+        return {
+            'storage_compatibility_version': required_db_version,
+            'python_enable_replacements': False,
+        }
 
     def to_config_dict(self) -> dict[str, object]:
         set_fields = { k: v for k, v
                        in cattrs.Converter().unstructure_attrs_asdict(self).items()
-                       if v is not None and k != 'kwargs' }
-        return { **self.kwargs, **set_fields}
+                       if v is not None and k != 'config' }
+        # Note order of precedence
+        return {**self.config, **set_fields, **self._mandatory_config_dict()}
 
 
 @define(init=False, eq=False, hash=False)
@@ -406,7 +441,7 @@ class DuckdbManager:
         if isinstance(db, DuckdbFilesystemDatabase) and db.read_only:
             options.append('READ_ONLY')
         if isinstance(db, DuckdbFilesystemDatabase):
-            options.append("STORAGE_VERSION 'v1.2.0'")
+            options.append(f"STORAGE_VERSION '{required_db_version}'")
         options_str = '' if not options else '(' + ', '.join(options) + ')' # empty '()' is invalid
         target = db.path if isinstance(db, DuckdbFilesystemDatabase) else ':memory:'
         with self._conn_lock:

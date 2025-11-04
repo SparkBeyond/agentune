@@ -11,7 +11,7 @@ import polars as pl
 import pytest
 from duckdb.duckdb import CatalogException, DuckDBPyConnection
 
-from agentune.analyze.core import types
+from agentune.analyze.core import database, types
 from agentune.analyze.core.database import (
     ArtIndex,
     DuckdbConfig,
@@ -104,8 +104,6 @@ def test_duckdb_manager_config() -> None:
             "Sanity check of duckdb's own default"
 
     with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
-        assert not DuckdbConfig().python_enable_replacements, \
-            "Sanity check of what we're testing"
         assert conn.sql("SELECT current_setting('python_enable_replacements')").fetchone() == (False, ), \
             'Default value of setting set in DuckdbConnectionConfig overrides duckdb default'
 
@@ -125,7 +123,7 @@ def test_duckdb_manager_config() -> None:
         assert conn.sql("SELECT current_setting('threads')").fetchone() == (1, ), \
             'Setting threads in DuckdbConfig works'
 
-    with (contextlib.closing(DuckdbManager.in_memory(DuckdbConfig(kwargs={'threads': 1}))) as ddb_manager,
+    with (contextlib.closing(DuckdbManager.in_memory(DuckdbConfig(config={'threads': 1}))) as ddb_manager,
           ddb_manager.cursor() as conn):
         assert conn.sql("SELECT current_setting('threads')").fetchone() == (1, ), \
             'Setting threads in DuckdbConfig.kwargs works'
@@ -256,3 +254,19 @@ def test_cheap_size(conn: DuckDBPyConnection) -> None:
     conn.execute('INSERT INTO tab(a) VALUES (1), (2), (3)')
     source = DuckdbTable.from_duckdb('tab', conn).as_source(1)
     assert source.cheap_size(conn) == 3
+
+def test_db_storage_version(tmp_path: Path) -> None:
+    def get_storage_version(conn: DuckDBPyConnection, db_name: str) -> str:
+        match conn.execute('SELECT tags FROM duckdb_databases() where database_name = $1;', [db_name]).fetchone():
+            case (dict() as tags,):
+                return cast(str, tags['storage_version'])
+            case other:
+                raise ValueError(f'Unexpected result: {other}')
+
+    with contextlib.closing(DuckdbManager.on_disk(tmp_path / 'duck.db')) as ddb_manager:
+        with ddb_manager.cursor() as conn:
+            # We set version eg 'v1.2.0' and the version reported back is 'v1.2.0+'
+            assert get_storage_version(conn, 'duck') == database.required_db_version + '+'
+        ddb_manager.attach(DuckdbFilesystemDatabase(tmp_path / 'duck2.db'))
+        with ddb_manager.cursor() as conn:
+            assert get_storage_version(conn, 'duck2') == database.required_db_version + '+'
