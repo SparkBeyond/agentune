@@ -136,3 +136,27 @@ def test_serialize_feature(converter: JsonConverter, httpx_async_client: httpx.A
     for feature in features:
         for tpe in [Feature[Any], Feature, InsightfulTextFeature, LlmFeature, type(feature)]:
             assert converter.loads(converter.dumps(feature), tpe) == feature, f'Roundtrip {feature.__class__.__name__} with formal type {tpe}' # type: ignore[arg-type]
+
+def test_llmwithspec_does_not_leak_key(httpx_async_client: httpx.AsyncClient) -> None:
+    llm_context = LLMContext(httpx_async_client)
+    serialization_context = SerializationContext(llm_context)
+    converter = serialization_context.converter
+    spec = LLMSpec('openai', 'gpt-4o')
+    key = 'the secret key'
+
+    import os
+    prev = os.environ.get('OPENAI_API_KEY', default=None) # This can break multithreaded tests...
+    try:
+        os.environ['OPENAI_API_KEY'] = key
+
+        llm = llm_context.from_spec(spec)
+        assert key in str(llm)
+
+        llm_with_spec = LLMWithSpec(spec, llm)
+        assert key not in str(llm_with_spec)
+        assert key not in str(converter.dumps(llm_with_spec))
+
+    finally:
+        if prev is not None:
+            os.environ['OPENAI_API_KEY'] = prev
+

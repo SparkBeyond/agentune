@@ -66,6 +66,13 @@ class LLMWithSpec:
     def __eq__(self, value: object) -> bool:
         return isinstance(value, LLMWithSpec) and self.spec == value.spec
 
+    # LLM instances must not be stringified, they leak keys and other secrets
+    def __str__(self) -> str:
+        return f'LLMWithSpec({self.spec}, <{type(self.llm).__name__}>)'
+
+    def __repr__(self) -> str:
+        return str(self)
+
 # Variants on cattrs register/unregister functions that additionally use a SerializationContext.
 
 type ContextConverterHook = Callable[[SerializationContext, cattrs.Converter], None]
