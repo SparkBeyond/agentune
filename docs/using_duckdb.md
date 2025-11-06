@@ -14,7 +14,7 @@ qualify it using the connection.
 When writing queries (for conn.sql() or conn.execute()), always use DuckdbName and not a bare string. Stringify the object directly;
 do not add quotes - it will add quotes automatically.
 
-When specifying *column* names in a query, if the names are dynamic (runtime parametrs), you MUST add quotes around them.
+When specifying *column* names in a query, if the names are dynamic (runtime parameters), you MUST add quotes around them.
 
 Example:
 
@@ -99,16 +99,7 @@ It's possible to use `connection.sql()` with non-query statements; they are exec
 
 ### Replacement scans
 
-When using a replacement scan, you MUST explicitly call `connection.register`. Do not use the replacement scan automatic feature of looking up python variables to resolve unfamiliar names.
+When using a replacement scan, you MUST explicitly call `connection.register`. The replacement scan automatic feature of looking up python variables to resolve unfamiliar names is disabled, and you should not enable it on a connection.
 
 Make sure the name you use to register the object doesn't shadow any other name you use in queries on that connection. You can use `DuckdbManager.random_name` to generate a nonce name.
-
-## TODO (missing docs)
-
-Need to add information on:
-
-- Handling (fully qualified) names in queries (once #43 is resolved)
-- Quoting names in queries
-- Managing schemas, i.e. the correct ways to move data to/from duckdb (this can be just a list of pointers to the relevant code, which should be documented). Maybe make that a separate 'overview' section that will come first.
-- Nonce names (once #42 is resolved)
 

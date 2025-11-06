@@ -88,8 +88,6 @@ Symbols starting with _ are always private, as per Python convention.
 
 Classes should *not* document different rules for determining which attributes are public and can be depended on.
 
-(TODO: marking some code as private has not yet been done consistently throughout the codebase.)
-
 ### Interfaces and implementations
 
 Interfaces must extend `abc.ABC`, and use the `@abstractmethod`, `@final`, etc. family of decorators.

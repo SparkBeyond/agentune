@@ -123,7 +123,6 @@ setup.setup()
 date_dtype = SimpleDtype('date', ddt.DATE, pl.Date)
 time_dtype = SimpleDtype('time', ddt.TIME, pl.Time)
 
-# TODO confirm standardization on ms precision
 timestamp = SimpleDtype('timestamp', ddt.TIMESTAMP_MS, pl.Datetime('ms'))
 
 @frozen(init=False)
@@ -133,10 +132,10 @@ class EnumDtype(Dtype):
     @staticmethod
     def duckdb_enum_type(values: Sequence[str]) -> ddt.DuckDBPyType:
         # Can't create it directly by calling duckdb.enum_type(), we get a NotImplementedException ("enum_type creation method is not implemented yet")
-        # This isn't risking an actual SQL escape but if we don't format this properly, the type definition won't parse; TODO test
+        # This isn't risking an actual SQL escape but if we don't format this properly, the type definition won't parse.
         escaped = ', '.join("'" + value.replace("'", "''") + "'" for value in values)
         return duckdb.dtype(f'ENUM({escaped})')
-    
+
     def __init__(self, *values: str):
         self.__attrs_init__(
             f'Enum[{', '.join(values)}]',

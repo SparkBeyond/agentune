@@ -8,7 +8,7 @@ import polars as pl
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
-from agentune.analyze.core.database import DuckdbManager
+from agentune.analyze.core.database import DuckdbManager, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource, duckdb_to_polars
 from agentune.analyze.core.schema import Field, Schema, restore_relation_types
 
@@ -140,4 +140,17 @@ def test_restore_relation_types(ddb_manager: DuckdbManager) -> None:
         assert reread.schema == dataset.schema
         assert reread.data.equals(dataset.data)
 
+def test_enum_with_escaped_value(conn: DuckDBPyConnection) -> None:
+    values = ['foo \nbar', 'foo"bar', "foo'bar", '''foo' bar" ''']
+    enum_type = types.EnumDtype(*values)
+    dataset = Dataset.from_polars(
+        pl.DataFrame({
+            'enum': values,
+        }, schema={
+            'enum': enum_type.polars_type
+        })
+    )
+    DatasetSink.into_unqualified_duckdb_table('table', conn).write(dataset.as_source(), conn)
+    table = DuckdbTable.from_duckdb('table', conn)
+    assert table.schema['enum'].dtype == enum_type
 
