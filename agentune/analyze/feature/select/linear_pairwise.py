@@ -55,7 +55,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
     def select_features(
         self,
         features: Sequence[Feature],
-        feature_count: int,
+        max_features_to_select: int,
         enriched_data: DatasetSource,
         problem: Problem,
         conn: DuckDBPyConnection,
@@ -91,7 +91,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             self.final_importances_ = {'feature': [], 'importance': []}
             return []
 
-        selected_feature_names, feature_scores = self._select_best_features(feature_values, target, baseline_stats, feature_count)
+        selected_feature_names, feature_scores = self._select_best_features(feature_values, target, baseline_stats, max_features_to_select)
         
         # Return features in selection order (not importance order)
         feature_by_name = {f.name: f for f in features}
@@ -204,7 +204,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         return np.repeat(x, n_targets, axis=1) if x.shape[1] == 1 else x
 
     def _select_best_features(self, feature_values: dict[str, np.ndarray], target: np.ndarray, baseline_stats: TargetStats,
-                              feature_count: int) -> tuple[list[str], list[float]]:
+                              max_features_to_select: int) -> tuple[list[str], list[float]]:
         """Two-phase feature selection: single feature scoring, then pairwise marginalization."""
         remaining_feature_names = list(feature_values.keys())
         selected_feature_names: list[str] = []
@@ -248,7 +248,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         norm_feature_values: dict[str, np.ndarray] = {
             name: self._normalize_to_targets(vals, n_targets) for name, vals in feature_values.items()
         }
-        while len(selected_feature_names) < feature_count and viable_features:
+        while len(selected_feature_names) < max_features_to_select and viable_features:
             last_selected_name = selected_feature_names[-1]
             # Update candidate's marginal only against the newly selected feature
             # Normalize Z once to (n_samples, n_targets)

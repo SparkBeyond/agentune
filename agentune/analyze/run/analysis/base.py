@@ -84,11 +84,12 @@ class AnalyzeParams:
 
                               This is the data that AnalyzeResults.features_with_train_stats is computed on.
         store_enriched_test:  as above, for the test dataset.
+        max_features_to_select: maximum number of features to return from the analysis.
     """
     store_enriched_train: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_train')
     store_enriched_test: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_test')
     max_classes: int = 20
-    feature_count: int = 60
+    max_features_to_select: int = 60
 
 @frozen
 class AnalyzeComponents:

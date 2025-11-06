@@ -4,13 +4,14 @@ This module provides consolidated tests for all feature selectors covering:
 1. Basic functionality on real datasets (classification & regression)
 2. Ground truth vs LinearPairWise NDCG similarity validation (>0.99)
 3. Enriched API synthetic data testing
-4. Edge cases (empty features, feature_count > available)
+4. Edge cases (empty features, max_features_to_select > available)
 5. String recognition for categorical features and multiclass targets
 6. Fake category impact testing
 """
 import json
 import math
 import time
+import typing
 from pathlib import Path
 from typing import cast
 
@@ -44,7 +45,7 @@ DATASETS: dict[str, dict[str, str | int]] = {
         'file_path': str((Path(__file__).parent / 'data' / 'titanic_300_features_anonymized.csv').resolve()),
         'target_col': 'survived',
         'task_type': 'classification',
-        'feature_count': 20
+        'max_features_to_select': 20
     }
 }
 
@@ -80,7 +81,7 @@ def symmetric_ndcg(list_a: list[str], list_b: list[str], k: int = 20) -> float:
 
 
 # Timing sweep configuration (using anonymized Titanic dataset)
-TIMING_FEATURE_COUNTS = [5, 10, 20]
+TIMING_MAX_FEATURES_TO_SELECT = [5, 10, 20]
 
 def define_problem(config: dict[str, str | int]) -> Problem:
     task_type = cast(TargetKind, config['task_type'])
@@ -92,10 +93,12 @@ def define_problem(config: dict[str, str | int]) -> Problem:
 
 # All tests below instantiate EnrichedBuilder to construct Dataset/Source/Features
 def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnection) -> None:
-    """Measure Linear PairWise selection time at different feature_count values for the Titanic dataset.
+    """Measure Linear PairWise selection time at different max_features_to_select values for the Titanic dataset.
 
-    This test measures execution time for feature_count values defined in TIMING_FEATURE_COUNTS on the anonymized Titanic dataset.
-    Results are saved as a CSV where rows are datasets and columns are the requested feature_count values.
+    This test measures execution time for max_features_to_select values defined in TIMING_MAX_FEATURES_TO_SELECT
+    on the anonymized Titanic dataset. Results are saved as a CSV where rows are datasets and columns are the requested
+    max_features_to_select values.
+
     Output: selector_results/linear_pairwise_timing_by_k.csv
     """
     timing_results = []
@@ -109,9 +112,9 @@ def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnect
         features, source = builder.build(df, config['target_col'])  # type: ignore[arg-type]
         
         dataset_timings = {'dataset': dataset_name}
-        for feature_count in TIMING_FEATURE_COUNTS:
-            if feature_count > len(features):
-                dataset_timings[f'feature_count_{feature_count}'] = 'None'
+        for max_features_to_select in TIMING_MAX_FEATURES_TO_SELECT:
+            if max_features_to_select > len(features):
+                dataset_timings[f'max_features_to_select_{max_features_to_select}'] = 'None'
                 continue
             # Create selectors for comparison via factory to avoid duplication
             selector_names = ['LightGBM', 'Linear PairWise']
@@ -122,20 +125,20 @@ def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnect
             for selector_name, selector in selectors.items():
                 # Measure execution time using enriched API
                 start_time = time.time()
-                selected_features = selector.select_features(features, feature_count, source, define_problem(config), conn)
+                selected_features = selector.select_features(features, max_features_to_select, source, define_problem(config), conn)
                 execution_time = time.time() - start_time
                 
                 times_by_selector[selector_name] = round(execution_time, 3)
                 
                 # Sanity check
-                assert len(selected_features) <= feature_count, f'Should not exceed {feature_count=}'
+                assert len(selected_features) <= max_features_to_select, f'Should not exceed {max_features_to_select=}'
                 assert len(selected_features) > 0, 'Should select at least one feature'
 
-            # For CSV: keep only the Linear PairWise timing per feature_count
+            # For CSV: keep only the Linear PairWise timing per max_features_to_select
             if 'Linear PairWise' in times_by_selector:
-                dataset_timings[f'feature_count_{feature_count}'] = str(times_by_selector['Linear PairWise'])
+                dataset_timings[f'max_features_to_select_{max_features_to_select}'] = str(times_by_selector['Linear PairWise'])
             else:
-                dataset_timings[f'feature_count_{feature_count}'] = 'None'
+                dataset_timings[f'max_features_to_select_{max_features_to_select}'] = 'None'
         
         timing_results.append(dataset_timings)
     
@@ -143,15 +146,15 @@ def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnect
     for result in timing_results:
         dataset_name = result['dataset']
         
-        # Check that timing generally increases with feature_count (allowing some variance)
+        # Check that timing generally increases with max_features_to_select (allowing some variance)
         timing_values = []
-        for k in TIMING_FEATURE_COUNTS:
-            val = result.get(f'feature_count_{k}')
+        for k in TIMING_MAX_FEATURES_TO_SELECT:
+            val = result.get(f'max_features_to_select_{k}')
             if val is not None and val != 'None':
                 timing_values.append(float(val))
         
         if len(timing_values) >= 2:
-            # The largest feature_count should not be more than 10x slower than the smallest
+            # The largest max_features_to_select should not be more than 10x slower than the smallest
             min_time = min(timing_values)
             max_time = max(timing_values)
             time_ratio = max_time / min_time if min_time > 0 else float('inf')
@@ -183,7 +186,7 @@ def test_selector_basic_functionality(selector_name: str, dataset_name: str, con
     df = load_and_clean_csv(str(dataset_config['file_path']), dataset_name, cast_text_to_float=True)
     
     # Create selector
-    feature_count=cast(int, dataset_config['feature_count'])
+    max_features_to_select=cast(int, dataset_config['max_features_to_select'])
     selector = create_selector(selector_name=selector_name)
     
     # Get features and source using enriched API
@@ -191,12 +194,12 @@ def test_selector_basic_functionality(selector_name: str, dataset_name: str, con
     features, source = builder.build(df, dataset_config['target_col'])  # type: ignore[arg-type]
     
     # Select features
-    selected_features = selector.select_features(features, feature_count, source, define_problem(dataset_config), conn)
+    selected_features = selector.select_features(features, max_features_to_select, source, define_problem(dataset_config), conn)
     
     # Basic assertions
-    feature_count_val = dataset_config['feature_count']
-    assert isinstance(feature_count_val, int)
-    assert len(selected_features) <= feature_count_val, f'Should not exceed feature_count={feature_count_val}'
+    max_features_to_select = typing.cast(int, dataset_config['max_features_to_select'])
+    assert isinstance(max_features_to_select, int)
+    assert len(selected_features) <= max_features_to_select, f'Should not exceed max_features_to_select={max_features_to_select}'
     assert len(selected_features) > 0, 'Should select at least one feature'
     assert all(hasattr(f, 'name') for f in selected_features), 'All selected features should have names'
     
@@ -274,7 +277,7 @@ def test_enriched_api_synthetic_data(selector_name: str, task_type: str, conn: d
     selected = selector.select_features(features, 5, source, problem, conn)
     
     # Assertions
-    assert len(selected) <= 5, 'Should not exceed feature_count=5'
+    assert len(selected) <= 5, 'Should not exceed max_features_to_select=5'
     assert len(selected) > 0, 'Should select at least one feature'
     
     # The first 3 features should be more likely to be selected (they're informative)
@@ -286,7 +289,7 @@ def test_enriched_api_synthetic_data(selector_name: str, task_type: str, conn: d
 
 
 def test_edge_cases(conn: duckdb.DuckDBPyConnection) -> None:
-    """Test edge cases: empty features, feature_count > available."""
+    """Test edge cases: empty features, max_features_to_select > available."""
     # Create small synthetic dataset
     rng = np.random.default_rng(42)
     n_rows, n_features = 50, 3
@@ -308,8 +311,8 @@ def test_edge_cases(conn: duckdb.DuckDBPyConnection) -> None:
     selected = selector.select_features([], 5, source, regression_problem, conn)
     assert len(selected) == 0, 'Empty features should return empty selection'
     
-    # Test 2: feature_count > available features
-    selector = LinearPairWiseFeatureSelector()  # feature_count > available
+    # Test 2: max_features_to_select > available features
+    selector = LinearPairWiseFeatureSelector()  # max_features_to_select > available
     classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
     selected = selector.select_features(features, 10, source, classification_problem, conn)
     assert len(selected) <= len(features), 'Should not exceed available features'
@@ -407,7 +410,7 @@ def test_linear_pairwise_threshold_functionality(conn: duckdb.DuckDBPyConnection
     classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
     selected_default = selector_default.select_features(features,5,  source, classification_problem, conn)
     assert len(selected_default) > 0, 'Default threshold should select features'
-    assert len(selected_default) <= 5, 'Should not exceed feature_count'
+    assert len(selected_default) <= 5, 'Should not exceed max_features_to_select'
     
     # Test 2: High threshold (0.1) - should select fewer features
     selector_high = LinearPairWiseFeatureSelector(min_marginal_reduction_threshold=0.1)
@@ -464,7 +467,7 @@ def test_linear_pairwise_threshold_early_stopping(conn: duckdb.DuckDBPyConnectio
     classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
     selected = selector.select_features(features, 10, source, classification_problem, conn)
     
-    # Should select fewer than feature_count due to early stopping
+    # Should select fewer than max_features_to_select due to early stopping
     assert len(selected) < 10, 'Should stop early when features do not meet threshold'
     assert len(selected) > 0, 'Should select at least the good feature'
     

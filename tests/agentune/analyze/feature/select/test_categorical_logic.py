@@ -42,7 +42,7 @@ TRIANGLE_OVERRIDE_PROB = 0.6
 DATA_FILE_PATH_TITANIC = str((Path(__file__).parent / 'data' / 'titanic_300_features_anonymized.csv').resolve())
 DATA_FILE_PATH_TITANIC_WITH_EMBARKED = str((Path(__file__).parent / 'data' / 'titanic_300_features_anonymized_with_embarked.csv').resolve())
 TARGET_COLUMN_TITANIC = 'survived'
-FEATURE_COUNT = 20
+MAX_FEATURES_TO_SELECT = 20
 
 
 # Helpers to reduce duplication in tests below
@@ -78,12 +78,12 @@ def enrich_as_categorical(
 def select_feature_names(
     selector: LinearPairWiseFeatureSelector,
     features: Sequence[object],
-    feature_count: int,
+    max_features_to_select: int,
     source: DatasetSource,
     target_col: str,
     conn: duckdb.DuckDBPyConnection
 ) -> tuple[list[str], Sequence[object]]:
-    selected = selector.select_features(features, feature_count, source, target_col, conn)  # type: ignore[arg-type]
+    selected = selector.select_features(features, max_features_to_select, source, target_col, conn)  # type: ignore[arg-type]
     return [f.name for f in selected], selected
 
 def overlap_stats(a: Sequence[str], b: Sequence[str], top_k: int) -> tuple[float, set[str]]:
@@ -100,7 +100,7 @@ def log_and_assert_overlap(
 ) -> None:
     """Log and assert feature selection overlap statistics."""
     common_features = set(selected_a) & set(selected_b)
-    overlap_ratio = len(common_features) / FEATURE_COUNT
+    overlap_ratio = len(common_features) / MAX_FEATURES_TO_SELECT
     feature_selected = feature_to_check in selected_b if feature_to_check else False
 
 
@@ -127,7 +127,7 @@ def run_selection_on_df(
         features = list(features_seq)
 
     problem = ClassificationProblem(ProblemDescription(target_col), Field(target_col, types.int64), (0, 1))
-    selected = selector.select_features(features, FEATURE_COUNT, source, problem, conn)
+    selected = selector.select_features(features, MAX_FEATURES_TO_SELECT, source, problem, conn)
     return [f.name for f in selected]
  
 
@@ -465,9 +465,9 @@ def test_titanic_multiclass_embarked_categorical_comparison(conn: duckdb.DuckDBP
     )
 
     # Additional assertions for this specific test
-    binary_multiclass_overlap = len(set(selected_names_original) & set(selected_names_multiclass)) / FEATURE_COUNT
+    binary_multiclass_overlap = len(set(selected_names_original) & set(selected_names_multiclass)) / MAX_FEATURES_TO_SELECT
     assert binary_multiclass_overlap >= 0.4, f'Binary-multiclass overlap ({binary_multiclass_overlap:.2f}) should be at least 40%'
 
-    assert len(selected_names_original) == FEATURE_COUNT
-    assert len(selected_names_multiclass) == FEATURE_COUNT
-    assert len(selected_names_multiclass_embarked) == FEATURE_COUNT
+    assert len(selected_names_original) == MAX_FEATURES_TO_SELECT
+    assert len(selected_names_multiclass) == MAX_FEATURES_TO_SELECT
+    assert len(selected_names_multiclass_embarked) == MAX_FEATURES_TO_SELECT

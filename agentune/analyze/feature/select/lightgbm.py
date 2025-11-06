@@ -59,7 +59,7 @@ class LightGBMFeatureSelector(SyncEnrichedFeatureSelector):
     def select_features(
         self,
         features: Sequence[Feature],
-        feature_count: int,
+        max_features_to_select: int,
         enriched_data: DatasetSource,
         problem: Problem,
         conn: DuckDBPyConnection,
@@ -67,12 +67,12 @@ class LightGBMFeatureSelector(SyncEnrichedFeatureSelector):
         """Select features using the enriched API, matching the base interface signature."""
         df = enriched_data.to_dataset(conn).data
         feature_cols = [f.name for f in features]
-        selected_names = self._select_features_df(df, problem.target_column.name, problem.target_kind, feature_cols, feature_count)
+        selected_names = self._select_features_df(df, problem.target_column.name, problem.target_kind, feature_cols, max_features_to_select)
         return [f for f in features if f.name in selected_names]
 
     def _select_features_df(self, data: pl.DataFrame, target_col: str, target_kind: TargetKind, feature_cols: list[str],
-                            feature_count: int) -> list[str]:
-        """Select feature_count features using a single LightGBM model (DataFrame API)."""
+                            max_features_to_select: int) -> list[str]:
+        """Select max_features_to_select features using a single LightGBM model (DataFrame API)."""
         if not feature_cols:
             self.final_importances_ = {'feature': [], 'importance': []}
             self._selected_feature_names = []
@@ -92,9 +92,9 @@ class LightGBMFeatureSelector(SyncEnrichedFeatureSelector):
         initial_model.fit(x_train.to_numpy(), y_train.to_numpy())
         all_importances = initial_model.booster_.feature_importance(importance_type=self.importance_type)
 
-        # Rank and select feature_count features
+        # Rank and select max_features_to_select features
         sorted_indices = np.argsort(all_importances)[::-1]
-        top_k_indices = sorted_indices[: feature_count]
+        top_k_indices = sorted_indices[: max_features_to_select]
         selected_features = [feature_cols[i] for i in top_k_indices]
 
         # 2) Refit FINAL model on the selected features using LightGBM for proper importances

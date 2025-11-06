@@ -327,14 +327,14 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
                 def sync_select() -> list[Feature]:
                     for fws in features_with_stats:
                         selector.add_feature(fws)
-                    return [fws.feature for fws in selector.select_final_features(problem, params.feature_count)]
+                    return [fws.feature for fws in selector.select_final_features(problem, params.max_features_to_select)]
 
                 return await asyncio.to_thread(sync_select)
 
             else:
                 for fws in features_with_stats:
                     await selector.aadd_feature(fws)
-                return [fws.feature for fws in await selector.aselect_final_features(problem, params.feature_count)]
+                return [fws.feature for fws in await selector.aselect_final_features(problem, params.max_features_to_select)]
 
         else:
             # selector is EnrichedFeatureSelector. The first enriched table also contains the target column.
@@ -343,11 +343,11 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
             if isinstance(selector, SyncEnrichedFeatureSelector):
                 with conn.cursor() as cursor: # for new thread
                     def select() -> list[Feature]:
-                        return list(selector.select_features(candidate_features, params.feature_count, enriched_source, problem, cursor))
+                        return list(selector.select_features(candidate_features, params.max_features_to_select, enriched_source, problem, cursor))
                     return await asyncio.to_thread(select)
 
             else:
-                return list(await selector.aselect_features(candidate_features, params.feature_count, enriched_source, problem, conn))
+                return list(await selector.aselect_features(candidate_features, params.max_features_to_select, enriched_source, problem, conn))
 
     def _update_feature_defaults(self, feature: Feature, enriched: pl.Series) -> Feature:
         match feature:
