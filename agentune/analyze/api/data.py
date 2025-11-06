@@ -283,8 +283,8 @@ class BoundTable(BoundDatasetSource):
                     is_feature_eval_col_name: str = '_is_feature_eval') -> BoundSplitTable:
         """Split the table between train, test, feature search and feature eval subsets, referred to as 'splits'.
 
-        These are the four datasets needed to run the feature search. See `ops.run_feature_search`, `FeatureSearchInputData`
-        and `FeatureSearchRunner` for more details.
+        These are the four datasets needed to run the analyzer. See `ops.analyze`, `AnalyzeInputData`
+        and `AnalyzeRunner` for more details.
 
         Splitting is implemented by adding several columns to the table, indicating which split each row belongs to.
 

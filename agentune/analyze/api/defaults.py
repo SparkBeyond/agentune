@@ -23,14 +23,14 @@ from agentune.analyze.feature.recommend import ConversationActionRecommender
 from agentune.analyze.feature.select import FeatureSelector
 from agentune.analyze.feature.select.base import EnrichedFeatureSelector
 from agentune.analyze.feature.select.linear_pairwise import LinearPairWiseFeatureSelector
+from agentune.analyze.run.analysis.base import (
+    AnalyzeComponents,
+    AnalyzeParams,
+    AnalyzeRunner,
+)
+from agentune.analyze.run.analysis.impl import AnalyzeRunnerImpl
 from agentune.analyze.run.enrich.base import EnrichRunner
 from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
-from agentune.analyze.run.feature_search.base import (
-    FeatureSearchComponents,
-    FeatureSearchParams,
-    FeatureSearchRunner,
-)
-from agentune.analyze.run.feature_search.impl import FeatureSearchRunnerImpl
 from agentune.analyze.util.httpx_limit import AsyncLimitedTransport
 
 # Defaults similar to those of the openai client library
@@ -76,8 +76,8 @@ class BoundDefaults:
     def duckdb_batch_size(self) -> int:
         return default_duckdb_batch_size
 
-    def feature_search_params(self) -> FeatureSearchParams:
-        return FeatureSearchParams()
+    def analyze_params(self) -> AnalyzeParams:
+        return AnalyzeParams()
 
     def conversation_query_feature_generator(self) -> ConversationQueryFeatureGenerator:
         return ConversationQueryFeatureGenerator.default(self.run_context._llm_context)
@@ -94,11 +94,11 @@ class BoundDefaults:
     def enrich_runner(self) -> EnrichRunner:
         return EnrichRunnerImpl()
 
-    def feature_search_components(self) -> FeatureSearchComponents:
-        return FeatureSearchComponents(self.feature_generators(), self.feature_selector(), self.feature_computers())
+    def analyze_components(self) -> AnalyzeComponents:
+        return AnalyzeComponents(self.feature_generators(), self.feature_selector(), self.feature_computers())
 
-    def feature_search_runner(self) -> FeatureSearchRunner:
-        return FeatureSearchRunnerImpl()
+    def analyze_runner(self) -> AnalyzeRunner:
+        return AnalyzeRunnerImpl()
 
     def conversation_action_recommender(self) -> ConversationActionRecommender:
         return ConversationActionRecommender.default(self.run_context._llm_context)

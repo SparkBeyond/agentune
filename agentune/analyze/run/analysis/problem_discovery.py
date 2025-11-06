@@ -16,12 +16,12 @@ from agentune.analyze.feature.problem import (
     TableDescription,
     TargetKind,
 )
-from agentune.analyze.run.feature_search.base import FeatureSearchInputData
+from agentune.analyze.run.analysis.base import AnalyzeInputData
 
 _logger = logging.getLogger(__name__)
 
 
-def discover_problem(data: FeatureSearchInputData, description: ProblemDescription,
+def discover_problem(data: AnalyzeInputData, description: ProblemDescription,
                      conn: DuckDBPyConnection, max_classes: int,
                      target_kind_override: TargetKind | None = None) -> ClassificationProblem | RegressionProblem:
     """Determine the problem parameters: target kind, list of classes, etc.
@@ -113,7 +113,7 @@ def _validate_secondary_table(table: DuckdbTable, conn: DuckDBPyConnection, desc
 
 
 
-def validate_input(data: FeatureSearchInputData, problem: Problem, conn: DuckDBPyConnection) -> None:
+def validate_input(data: AnalyzeInputData, problem: Problem, conn: DuckDBPyConnection) -> None:
     """Fail if the target column in any input dataset has missing values,
        or non-finite values if it is a float column.
 
@@ -127,10 +127,10 @@ def validate_input(data: FeatureSearchInputData, problem: Problem, conn: DuckDBP
     This can take unbounded time, so it should be run on the threadpool.
     """
     if problem.problem_description.main_table is not None:
-        _validate_table_description(problem.problem_description.main_table, data.feature_search.schema, 'feature search input')
+        _validate_table_description(problem.problem_description.main_table, data.feature_search.schema, 'analysis input')
     for secondary_table in problem.problem_description.secondary_tables:
         if secondary_table not in data.join_strategies.tables:
-            raise ValueError(f'Description given for secondary table {secondary_table} but it does not exist in feature search input')
+            raise ValueError(f'Description given for secondary table {secondary_table} but it does not exist in analysis input')
     for secondary_table_with_join_strategies in data.join_strategies.tables.values():
         _validate_secondary_table(secondary_table_with_join_strategies.table, conn, problem.problem_description)
 

@@ -34,9 +34,9 @@ class TableDescription:
 
 @frozen
 class ProblemDescription:
-    """User input to feature search. Almost all parameters are optional. Some will be set automatically if absent.
+    """User input to the analyzer. Almost all parameters are optional. Some will be set automatically if absent.
 
-    Parameters which describe data (schema and/or values) are validated against the data inputs to feature search.
+    Parameters which describe data (schema and/or values) are validated against the data inputs to `analyze`.
     """
     target_column: str # Comes first because it's the only mandatory parameter
     problem_type: TargetKind | None = None

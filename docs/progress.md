@@ -60,7 +60,7 @@ When the root stage is removed (e.g. the context manager that created it ends), 
 
 1. Get periodic progress snapshots while the routine runs using a concurrent async loop. You are not guaranteed to get the very first or very last progress state published.
 2. Set your own stage wrapping the call to the routine. This makes the last published state persist after the routine returns. However, your progress reporter will need to ignore this outer stage in its reporting. 
-3. When using some built-in routines such as feature search, the last published state is also returned (in FeatureSearchResults).
+3. When using some built-in routines such as analyze, the last published state is also returned (in AnalyzeResults).
 
 ## Working with progress diffs
 

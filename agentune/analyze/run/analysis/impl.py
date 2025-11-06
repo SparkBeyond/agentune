@@ -39,13 +39,13 @@ from agentune.analyze.feature.select.base import (
 )
 from agentune.analyze.feature.stats import stats_calculators
 from agentune.analyze.feature.stats.base import FeatureWithFullStats, FullFeatureStats
-from agentune.analyze.run.feature_search import problem_discovery
-from agentune.analyze.run.feature_search.base import (
-    FeatureSearchComponents,
-    FeatureSearchInputData,
-    FeatureSearchParams,
-    FeatureSearchResults,
-    FeatureSearchRunner,
+from agentune.analyze.run.analysis import problem_discovery
+from agentune.analyze.run.analysis.base import (
+    AnalyzeComponents,
+    AnalyzeInputData,
+    AnalyzeParams,
+    AnalyzeResults,
+    AnalyzeRunner,
     NoFeaturesFoundError,
     UniqueTableName,
 )
@@ -54,8 +54,8 @@ from agentune.analyze.util.queue import Queue, ScopedQueue
 _logger = logging.getLogger(__name__)
 
 @frozen
-class FeatureSearchRunnerImpl(FeatureSearchRunner):
-    """The feature search process consists of:
+class AnalyzeRunnerImpl(AnalyzeRunner):
+    """The analysis process consists of:
 
     - Generate candidate features (from all generators)
     - Enrich and calculate stats on feature_search dataset
@@ -75,7 +75,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
     - The enriched feature_search dataset is discarded before enriching the feature_eval dataset,
       although they may share rows that could be reused
     - The enriched feature_eval and test data are discarded, and only the feature statistics are returned
-      (this is a limitation of the FeatureSearch API)
+      (this is a limitation of the analyzer API)
 
     Args:
         max_features_enrich_batch_size: Enrich at most these many features at once.
@@ -89,9 +89,9 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
     batch_size: int = default_duckdb_batch_size
 
     @override
-    async def run(self, ddb_manager: DuckdbManager, data: FeatureSearchInputData,
-                  params: FeatureSearchParams, components: FeatureSearchComponents,
-                  problem_description: ProblemDescription) -> FeatureSearchResults:
+    async def run(self, ddb_manager: DuckdbManager, data: AnalyzeInputData,
+                  params: AnalyzeParams, components: AnalyzeComponents,
+                  problem_description: ProblemDescription) -> AnalyzeResults:
 
         with ddb_manager.cursor() as conn:
             problem = await asyncio.to_thread(problem_discovery.discover_problem, data.copy_to_thread(),
@@ -165,10 +165,10 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                 if not params.store_enriched_test:
                     conn.execute(f'drop table {enriched_test_name}')
 
-                return FeatureSearchResults(problem,
-                                            tuple(features_with_eval_stats), tuple(features_with_test_stats),
-                                            DuckdbTable.from_duckdb(enriched_eval_name, conn) if params.store_enriched_train else None,
-                                            DuckdbTable.from_duckdb(enriched_test_name, conn) if params.store_enriched_test else None)
+                return AnalyzeResults(problem,
+                                      tuple(features_with_eval_stats), tuple(features_with_test_stats),
+                                      DuckdbTable.from_duckdb(enriched_eval_name, conn) if params.store_enriched_train else None,
+                                      DuckdbTable.from_duckdb(enriched_test_name, conn) if params.store_enriched_test else None)
         finally:
             with ddb_manager.cursor() as conn:
                 if not params.store_enriched_train:
@@ -196,7 +196,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                 for gen, new_name in zip(features, deduplicate_strings([gen.feature.name for gen in features],
                                                                        existing=existing_names), strict=False)]
 
-    async def _generate_features(self, conn: DuckDBPyConnection, data: FeatureSearchInputData,
+    async def _generate_features(self, conn: DuckDBPyConnection, data: AnalyzeInputData,
                                  generators: Sequence[FeatureGenerator], problem: Problem) -> list[GeneratedFeature]:
         async with ScopedQueue[GeneratedFeature](maxsize=0) as queue: # maxsize=0 means unlimited
             sync_generators = [generator for generator in generators if isinstance(generator, SyncFeatureGenerator)]
@@ -214,7 +214,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
             queue.close() # so that iteration will terminate when producing the list()
             return list(queue)
 
-    async def _generate_sync(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: FeatureSearchInputData,
+    async def _generate_sync(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: AnalyzeInputData,
                              generators: list[SyncFeatureGenerator], problem: Problem) -> None:
         if not generators:
             return
@@ -230,7 +230,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                     _logger.debug(f'Generated {count} features with {generator=}')
             await asyncio.to_thread(sync_generate)
 
-    async def _generate_async(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: FeatureSearchInputData,
+    async def _generate_async(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: AnalyzeInputData,
                               generators: list[FeatureGenerator], problem: Problem) -> None:
         async def agenerate(generator: FeatureGenerator) -> None:
             _logger.debug(f'Generating features with {generator=}')
@@ -248,7 +248,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
 
     async def _enrich_in_batches_and_update_defaults(self, features: list[GeneratedFeature], dataset_source: DatasetSource,
                                                      ddb_manager: DuckdbManager,
-                                                     components: FeatureSearchComponents, target_table_base_name: str,
+                                                     components: AnalyzeComponents, target_table_base_name: str,
                                                      target_column: str) -> tuple[list[DuckdbTable], list[Feature]]:
         """Enrich these features in batches of size up to self.max_features_enrich_batch_size,
         and return a table per batch. The first table also has the target column; the rest don't.
@@ -311,7 +311,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
 
     async def _select_features(self, candidate_features: list[Feature], feature_eval: DatasetSource,
                                enriched_groups: list[DuckdbTable], problem: Problem,
-                               params: FeatureSearchParams, components: FeatureSearchComponents,
+                               params: AnalyzeParams, components: AnalyzeComponents,
                                conn: DuckDBPyConnection) -> list[Feature]:
         selector = components.selector
         if isinstance(selector, FeatureSelector):

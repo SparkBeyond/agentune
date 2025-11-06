@@ -140,7 +140,7 @@ class ConversationActionRecommender(ActionRecommender):
             case RegressionProblem():
                 return BalancedNumericSampler(
                     target_field=problem.target_column,
-                    num_bins=5,  # Same as feature search default
+                    num_bins=5,  # Same as analyze default
                 )
             case _:
                 raise ValueError(f'Unsupported problem type: {type(problem)}')

@@ -7,7 +7,7 @@ from typing import Any, override
 
 from attrs import frozen
 from duckdb import DuckDBPyConnection
-from tests.agentune.analyze.run.feature_search.toys import ToySyncFeature
+from tests.agentune.analyze.run.analysis.toys import ToySyncFeature
 
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbName, DuckdbTable

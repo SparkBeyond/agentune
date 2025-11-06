@@ -88,7 +88,7 @@ def secondary_tables(self) -> Sequence[DuckdbTable]
 def join_strategies(self) -> Sequence[JoinStrategy]
 ```
 
-These are subsets of the data that was available during feature search when the feature was created.
+These are subsets of the data that were available during analysis when the feature was created.
 Specifying what the feature uses lets users run Enrich on new data without providing columns or tables
 that no selected features use.
 
@@ -97,7 +97,7 @@ if it uses those objects to access data. Both can be specified.
 
 When `Feature.compute` variants are called, only the data declared in `params` is actually passed in the `args`
 parameter. The `args` are passed in the order in which they were declared in `params`, which may be different
-from the order of these columns in the feature search input dataset. Similarly, the dataset passed to `compute_batch`
+from the order of these columns in the analysis input dataset. Similarly, the dataset passed to `compute_batch`
 includes only the columns declared in `params`. The data available through the DuckDB connection includes only the 
 `secondary_tables` (and only the columns listed for them in `secondary_tables`), as well as any tables and columns
 referenced by the declared `join_strategies`.
@@ -164,8 +164,8 @@ such as EnrichRunner may, in the future, add support for returning the output wi
 When a `FeatureGenerator` generates a feature, it returns a wrapper class `GeneratedFeature`, which contains an attribute
 `has_good_defaults: bool`. If it is True, the default value attributes on the feature are not changed. 
 
-If it is False the feature search substitutes 'default default' values, which are calculated on the feature's outputs 
-on the feature search dataset, as follows:
+If it is False the analysis substitutes 'default default' values, which are calculated on the feature's outputs 
+on the analysis dataset, as follows:
 
 1. For Bool features, False
 2. For Categorical features, CategoricalFeature.other_category

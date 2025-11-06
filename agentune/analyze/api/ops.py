@@ -19,12 +19,12 @@ from agentune.analyze.feature.base import Feature
 from agentune.analyze.feature.problem import ProblemDescription
 from agentune.analyze.feature.recommend import ActionRecommender, RecommendationsReport
 from agentune.analyze.join.base import JoinStrategy, TablesWithJoinStrategies
-from agentune.analyze.run.feature_search.base import (
-    FeatureSearchComponents,
-    FeatureSearchInputData,
-    FeatureSearchParams,
-    FeatureSearchResults,
-    FeatureSearchRunner,
+from agentune.analyze.run.analysis.base import (
+    AnalyzeComponents,
+    AnalyzeInputData,
+    AnalyzeParams,
+    AnalyzeResults,
+    AnalyzeRunner,
 )
 from agentune.analyze.run.ingest.sampling import SplitDuckdbTable
 
@@ -34,17 +34,17 @@ class BoundOps:
     """Methods for running high-level operations, bound to a context instance."""
     run_context: RunContext
 
-    async def search_for_features(self, problem_description: ProblemDescription,
-                                  main_input: FeatureSearchInputData | SplitDuckdbTable | BoundSplitTable,
-                                  test_input: str | DuckdbName | DuckdbTable | BoundTable | DatasetSource | BoundDatasetSource | Dataset | pl.DataFrame | None = None,
-                                  secondary_tables: Sequence[str | DuckdbName | DuckdbTable | BoundTable] = (),
-                                  join_strategies: Sequence[JoinStrategy] = (),
-                                  params: FeatureSearchParams | None = None,
-                                  runner: FeatureSearchRunner | None = None,
-                                  components: FeatureSearchComponents | None = None) -> FeatureSearchResults:
+    async def analyze(self, problem_description: ProblemDescription,
+                      main_input: AnalyzeInputData | SplitDuckdbTable | BoundSplitTable,
+                      test_input: str | DuckdbName | DuckdbTable | BoundTable | DatasetSource | BoundDatasetSource | Dataset | pl.DataFrame | None = None,
+                      secondary_tables: Sequence[str | DuckdbName | DuckdbTable | BoundTable] = (),
+                      join_strategies: Sequence[JoinStrategy] = (),
+                      params: AnalyzeParams | None = None,
+                      runner: AnalyzeRunner | None = None,
+                      components: AnalyzeComponents | None = None) -> AnalyzeResults:
         """Generate, evaluate and select features.
 
-        The feature search process proceeds roughly as follows:
+        The analysis process proceeds roughly as follows:
         - Validate the input and determine the problem characteristics. E.g., decide if it is a regression or classification
           problem (if not specified by the user) and collect the target class values.
           An instance of class `Problem` is created; it incorporates the `problem_description`.
@@ -60,7 +60,7 @@ class BoundOps:
             problem_description: defines the target column and allows providing optional metadata about the problem
                                  and data.
             main_input: the primary input data, split into four parts (train, test, feature search and feature evaluation).
-                        Passing a FeatureSearchInputData instance allows full control over the splits; in this case
+                        Passing a AnalyzeInputData instance allows full control over the splits; in this case
                         the required invariants are not checked, e.g. the train and test can overlap.
                         This also allows passing in DatasetSources for some of the splits that read an external data source
                         and not a duckdb table; this is not recommended, and good performance cannot be guaranteed.
@@ -75,12 +75,12 @@ class BoundOps:
             join_strategies: optional predefined strategies for joining the secondary tables to the main input.
                              Features are not limited by the join strategies in the ways they use the secondary tables,
                              but some feature generators require join strategies to be specified.
-            params:          all other parameters affecting the feature search.
-            runner:          a FeatureSearchRunner instance, allowing to use a custom or wrapped implementation.
-                             If None, the default is used, given by ctx.defaults.feature_search_runner().
+            params:          all other parameters affecting the analyzer.
+            runner:          a AnalyzeRunner instance, allowing to use a custom or wrapped implementation.
+                             If None, the default is used, given by ctx.defaults.analyze_runner().
             components:      instances of all other components (feature generators, the feature selector, etc)
-                             used by the feature search. If None, the default is used, given by
-                             ctx.defaults.feature_search_components().
+                             used by the analyzer. If None, the default is used, given by
+                             ctx.defaults.analyze_components().
         """
         tables_with_join_strategies = TablesWithJoinStrategies.unflatten(
             [self._ref_to_table(ref) for ref in secondary_tables], join_strategies)
@@ -88,11 +88,11 @@ class BoundOps:
         with self.run_context._ddb_manager.cursor() as conn:
             match main_input:
                 case SplitDuckdbTable() as split:
-                    input_data = FeatureSearchInputData.from_split_table(split, tables_with_join_strategies, conn)
+                    input_data = AnalyzeInputData.from_split_table(split, tables_with_join_strategies, conn)
                 case BoundSplitTable() as split:
-                    input_data = FeatureSearchInputData.from_split_table(split.splits, tables_with_join_strategies,
+                    input_data = AnalyzeInputData.from_split_table(split.splits, tables_with_join_strategies,
                                                                          conn)
-                case FeatureSearchInputData() as inputs:
+                case AnalyzeInputData() as inputs:
                     if len(join_strategies) > 0 and inputs.join_strategies != tables_with_join_strategies:
                         raise ValueError('Values of params join_strategies and main_input.join_strategies must match. '
                                          'You can leave the parameter join_strategies empty if you want to use the value '
@@ -102,9 +102,9 @@ class BoundOps:
             if test_input is not None:
                 input_data = attrs.evolve(input_data, test=self._input_to_data_source(test_input))
 
-            params = params or self.run_context.defaults.feature_search_params()
-            components = components or self.run_context.defaults.feature_search_components()
-            runner = runner or self.run_context.defaults.feature_search_runner()
+            params = params or self.run_context.defaults.analyze_params()
+            components = components or self.run_context.defaults.analyze_components()
+            runner = runner or self.run_context.defaults.analyze_runner()
             return await runner.run(self.run_context._ddb_manager, input_data, params, components, problem_description)
 
     def _ref_to_table(self, ref: str | DuckdbName | DuckdbTable | BoundTable) -> DuckdbTable:
@@ -148,10 +148,11 @@ class BoundOps:
                      deduplicate_names: bool = True) -> Dataset:
         """Enrich a dataset using previously found features. One column per feature will be added.
 
-        The secondary tables used by these features must be present under the same names as during the feature search.
+        The secondary tables used by these features must be present under the same names as during the analysis when the
+        features were created.
 
         Args:
-             input: a dataset with a schema compatible with that of the main input during the feature search when these
+             input: a dataset with a schema compatible with that of the main input during the analysis when these
                     features were constructed.
                     Columns present in the original main input that are not used by any of the given features can be omitted.
                     The columns' order does not have to match the original order.
@@ -203,30 +204,30 @@ class BoundOps:
                                                                        conn, keep_input_columns, deduplicate_names)
 
     async def recommend_conversation_actions(self,
-                                             feature_search_input: FeatureSearchInputData | SplitDuckdbTable | BoundSplitTable,
-                                             feature_search_results: FeatureSearchResults) -> RecommendationsReport | None:
-        return await self.recommend_actions(feature_search_input, feature_search_results,
+                                             analyze_input: AnalyzeInputData | SplitDuckdbTable | BoundSplitTable,
+                                             analyze_results: AnalyzeResults) -> RecommendationsReport | None:
+        return await self.recommend_actions(analyze_input, analyze_results,
                                             self.run_context.defaults.conversation_action_recommender())
 
     async def recommend_actions(self,
-                                feature_search_input: FeatureSearchInputData | SplitDuckdbTable | BoundSplitTable,
-                                feature_search_results: FeatureSearchResults,
+                                analyze_input: AnalyzeInputData | SplitDuckdbTable | BoundSplitTable,
+                                analyze_results: AnalyzeResults,
                                 recommender: ActionRecommender) -> RecommendationsReport | None:
-        """Recommend actions using the inputs and results of a feature search run.
+        """Recommend actions using the inputs and results of an analysis run.
 
         Args:
-            feature_search_input: the original inputs to the feature search.
-                                  Only the feature search split is used; this argument type is meant for the convenience
-                                  of calling this method immediately after a feature search run.
-            feature_search_results: the results of the feature search run.
-            recommender:        the action recommender to use. Different recommenders support different features and
-                                produce different report types.
+            analyze_input: the original inputs to the analysis.
+                           Only the feature search split is used; this argument type is meant for the convenience
+                           of calling this method immediately after an analysis run.
+            analyze_results: the results of the analysis run.
+            recommender:     the action recommender to use. Different recommenders support different features and
+                             produce different report types.
 
         Returns:
             None if the given recommender is unable to produce a report for the given problem and features.
         """
-        match feature_search_input:
-            case FeatureSearchInputData() as input_data:
+        match analyze_input:
+            case AnalyzeInputData() as input_data:
                 dataset_source = input_data.feature_eval
             case SplitDuckdbTable() as split:
                 dataset_source = split.feature_eval()
@@ -235,4 +236,4 @@ class BoundOps:
         with self.run_context._ddb_manager.cursor() as conn:
             dataset = await asyncio.to_thread(dataset_source.copy_to_thread().to_dataset, conn)
         with self.run_context._ddb_manager.cursor() as conn:
-            return await recommender.arecommend(feature_search_results.problem, feature_search_results.features_with_train_stats, dataset, conn)
+            return await recommender.arecommend(analyze_results.problem, analyze_results.features_with_train_stats, dataset, conn)

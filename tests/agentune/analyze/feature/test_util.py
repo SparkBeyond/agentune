@@ -2,7 +2,7 @@ import math
 
 import polars as pl
 from duckdb import DuckDBPyConnection
-from tests.agentune.analyze.run.feature_search.toys import ToySyncFeature
+from tests.agentune.analyze.run.analysis.toys import ToySyncFeature
 
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.feature import util

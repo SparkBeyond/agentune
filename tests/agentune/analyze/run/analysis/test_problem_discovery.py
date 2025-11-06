@@ -16,7 +16,7 @@ from agentune.analyze.feature.problem import (
     TableDescription,
 )
 from agentune.analyze.join.base import TablesWithJoinStrategies, TableWithJoinStrategies
-from agentune.analyze.run.feature_search import problem_discovery
+from agentune.analyze.run.analysis import problem_discovery
 
 from .test_impl import input_data_from_df
 
@@ -206,7 +206,7 @@ def test_table_descriptions(ddb_manager: DuckdbManager, conn: DuckDBPyConnection
     )
     problem_discovery.validate_input(input_data, problem, conn) # Description of main table column - OK
 
-    with pytest.raises(ValueError, match='column y but it does not exist in feature search input'):
+    with pytest.raises(ValueError, match='column y but it does not exist in analysis input'):
         problem = RegressionProblem(
             ProblemDescription('target', main_table=TableDescription(column_descriptions={'y': 'y column'})),
             input_data.feature_search.schema['target']
@@ -225,7 +225,7 @@ def test_table_descriptions(ddb_manager: DuckdbManager, conn: DuckDBPyConnection
     )
     problem_discovery.validate_input(input_data, problem, conn) # Description of secondary table column - OK
 
-    with pytest.raises(ValueError, match='it does not exist in feature search input'):
+    with pytest.raises(ValueError, match='it does not exist in analysis input'):
         problem = RegressionProblem(
             ProblemDescription('target', secondary_tables={DuckdbName.qualify('tertiary', conn): TableDescription('secondary table', column_descriptions={'y': 'y column'})}),
             input_data.feature_search.schema['target']

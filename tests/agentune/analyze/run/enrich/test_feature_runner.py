@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 from attrs import frozen
 from duckdb import DuckDBPyConnection
-from tests.agentune.analyze.run.feature_search.toys import (
+from tests.agentune.analyze.run.analysis.toys import (
     ToyAsyncFeature,
     ToySyncFeature,
 )

@@ -148,7 +148,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         random_seed=random_seed
     )
 
-    # imitate the feature search
+    # imitate the analysis
     conversation_strategies = feature_generator.find_conversation_strategies(strategies)
 
     for conversation_strategy in conversation_strategies:

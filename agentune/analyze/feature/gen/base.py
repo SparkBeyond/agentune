@@ -17,7 +17,7 @@ from agentune.analyze.util.queue import Queue
 class GeneratedFeature:
     feature: Feature
     has_good_defaults: bool
-    # If False, the feature search will replace the feature's default values using some default logic;
+    # If False, the analyzer will replace the feature's default values using some default logic;
     # if True, it will leave the existing defaults in place.
 
 

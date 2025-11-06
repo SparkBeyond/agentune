@@ -29,7 +29,7 @@ from agentune.analyze.run.ingest.sampling import SplitDuckdbTable
 
 @final
 @frozen
-class FeatureSearchInputData(CopyToThread):
+class AnalyzeInputData(CopyToThread):
     feature_search: Dataset # Small dataset for feature generators, held in memory
     feature_eval: DatasetSource 
     train: DatasetSource # Includes the feature_search and feature_eval datasets
@@ -47,8 +47,8 @@ class FeatureSearchInputData(CopyToThread):
     @staticmethod
     def from_split_table(split_table: SplitDuckdbTable,
                          join_strategies: TablesWithJoinStrategies,
-                         conn: DuckDBPyConnection) -> FeatureSearchInputData:
-        return FeatureSearchInputData(
+                         conn: DuckDBPyConnection) -> AnalyzeInputData:
+        return AnalyzeInputData(
             feature_search=split_table.feature_search().to_dataset(conn),
             train=split_table.train(), 
             test=split_table.test(),
@@ -57,7 +57,7 @@ class FeatureSearchInputData(CopyToThread):
         )
 
     def copy_to_thread(self) -> Self:
-        return FeatureSearchInputData(
+        return AnalyzeInputData(
             self.feature_search.copy_to_thread(),
             self.feature_eval.copy_to_thread(),
             self.train.copy_to_thread(),
@@ -71,19 +71,18 @@ class UniqueTableName:
     basename: str | DuckdbName
 
 @frozen
-class FeatureSearchParams:
-    """Non-data arguments to feature search.
+class AnalyzeParams:
+    """Non-data arguments to the analyzer.
 
     Args:
         store_enriched_train: if not None, the final features computed on the train dataset will be stored in the named table
-                              and remain available after the feature search completes. If this table already exists,
+                              and remain available after the analysis completes. If this table already exists,
                               it will be replaced.
                               If a UniqueTableName is passed, a random suffix will be appended to its `basename`
                               to make sure the table does not replace an existing one.
-                              If None, the data will be stored in a temporary table and deleted before feature search
-                              completes.
+                              If None, the data will be stored in a temporary table and deleted before analysis completes.
 
-                              This is the data that FeatureSearchResults.features_with_train_stats is computed on.
+                              This is the data that AnalyzeResults.features_with_train_stats is computed on.
         store_enriched_test:  as above, for the test dataset.
     """
     store_enriched_train: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_train')
@@ -92,7 +91,7 @@ class FeatureSearchParams:
     feature_count: int = 60
 
 @frozen
-class FeatureSearchComponents:
+class AnalyzeComponents:
     generators: tuple[FeatureGenerator, ...]
     selector: FeatureSelector | EnrichedFeatureSelector
     # Must always include at least one feature computer willing to handle every feature generated.
@@ -103,9 +102,9 @@ class FeatureSearchComponents:
 
 
 @frozen
-class FeatureSearchResults:
+class AnalyzeResults:
     """Args:
-    enriched_train: if FeatureSearchParams.store_enriched_train was given, this is the table where the data was stored.
+    enriched_train: if `AnalyzeParams.store_enriched_train` was given, this is the table where the data was stored.
                     This is the data that features_with_train_stats was computed on.
                     This table includes the target column and the enriched feature columns, but not the other
                     columns of the original input.
@@ -126,17 +125,17 @@ class FeatureSearchResults:
         return tuple(f.feature for f in self.features_with_test_stats)
 
 
-class FeatureSearchRunner(ABC):
+class AnalyzeRunner(ABC):
     @abstractmethod
-    async def run(self, ddb_manager: DuckdbManager, data: FeatureSearchInputData,
-                  params: FeatureSearchParams, components: FeatureSearchComponents,
-                  problem_description: ProblemDescription) -> FeatureSearchResults:
-        """The feature search algorithm composes the components in `params`:
+    async def run(self, ddb_manager: DuckdbManager, data: AnalyzeInputData,
+                  params: AnalyzeParams, components: AnalyzeComponents,
+                  problem_description: ProblemDescription) -> AnalyzeResults:
+        """The analysis algorithm composes the components in `params`:
 
         1. Generate candidate features using `params.generators` on `data.feature_search`
-        2. Impute default values, using the feature search dataset, if the generator didn't provide default values
-        3. Select the final features using `params.selector` using the enriched feature search dataset
-        4. Enrich `data.feature_evaluation` and `data.test` and calculate statistics on those two datasets
+        2. Impute default values, using the feature search dataset split, if the generator didn't provide default values
+        3. Select the final features using `params.selector` using the enriched feature search dataset split
+        4. Enrich `data.feature_evaluation` and `data.test` and calculate statistics on those two splits
 
         Raises:
             NoFeaturesFoundError: if no generator returned any candidate features

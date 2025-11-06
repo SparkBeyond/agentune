@@ -31,7 +31,7 @@ class JoinStrategy(ABC, UseTypeTag):
     @abstractmethod
     def name(self) -> str: 
         """The join strategy name; not the same as the backing table name.
-        Strategy names are expected to be unique within some scope, e.g. a feature search run,
+        Strategy names are expected to be unique within some scope, e.g. an analyze run,
         even when defining multiple strategies on the same table.
         """
         ...
