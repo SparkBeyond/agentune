@@ -10,7 +10,6 @@ import polars as pl
 from attrs import field, frozen
 from duckdb import DuckDBPyConnection
 
-import agentune.analyze.util.copy
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
@@ -23,13 +22,10 @@ from agentune.analyze.feature.base import (
     NumericFeature,
     SyncFloatFeature,
 )
-from agentune.analyze.feature.describe.base import FeatureDescriber, SyncFeatureDescriber
 from agentune.analyze.feature.gen.base import (
     FeatureGenerator,
-    FeatureTransformer,
     GeneratedFeature,
     SyncFeatureGenerator,
-    SyncFeatureTransformer,
 )
 from agentune.analyze.feature.problem import Problem
 from agentune.analyze.feature.select.base import (
@@ -161,36 +157,6 @@ class ToyPrebuiltFeaturesGenerator(SyncFeatureGenerator):
         for feature in self.features:
             yield GeneratedFeature(feature, True)
 
-class ToySyncFeatureTransformer(SyncFeatureTransformer):
-    @override
-    def transform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                  conn: DuckDBPyConnection, feature: Feature) -> list[Feature]:
-        if hash(str(feature)) < 2**16:
-            return []
-        else:
-            return [agentune.analyze.util.copy.replace(feature, name=f'{feature.name}, transformed')]
-
-class ToyAsyncFeatureTransformer(FeatureTransformer):
-    @override
-    async def atransform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                         conn: DuckDBPyConnection, feature: Feature) -> list[Feature]:
-        await asyncio.sleep(0)
-        if hash(str(feature)) < 2**16:
-            return []
-        else:
-            return [agentune.analyze.util.copy.replace(feature, name=f'{feature.name}, transformed')]
-
-class ToySyncFeatureDescriber(SyncFeatureDescriber):
-    @override
-    def description(self, feature: Feature) -> str:
-        return f'{feature.name} described'
-
-class ToyAsyncFeatureDescriber(FeatureDescriber):
-    @override
-    async def adescription(self, feature: Feature) -> str:
-        await asyncio.sleep(0)
-        return f'{feature.name} described'
-    
 
 @frozen
 class ToySyncFeatureSelector(SyncFeatureSelector):

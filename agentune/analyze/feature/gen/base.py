@@ -1,6 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator
 from typing import override
 
 from attrs import frozen
@@ -42,27 +42,3 @@ class SyncFeatureGenerator(FeatureGenerator):
             async for item in queue:
                 yield item
             await task
-
-
-class FeatureTransformer(ABC):
-    """Builds new features on top of an existing one.
-
-    For example, it could transform float features to boolean ones by fitting cutoffs and ranges to a numeric feature.
-    """
-    @abstractmethod
-    async def atransform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                         conn: DuckDBPyConnection, feature: Feature) -> Sequence[Feature] : ...
-
-
-class SyncFeatureTransformer(FeatureTransformer):
-    @abstractmethod
-    def transform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                  conn: DuckDBPyConnection, feature: Feature) -> Sequence[Feature] : ...
-
-    @override
-    async def atransform(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
-                         conn: DuckDBPyConnection, feature: Feature) -> Sequence[Feature]:
-        with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.transform, feature_search.copy_to_thread(), problem,
-                                           join_strategies, cursor, feature)
-
