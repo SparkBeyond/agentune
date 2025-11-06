@@ -13,7 +13,7 @@ from agentune.analyze.util.asyncmap import KVStore
 class SerializingKVStore(KVStore[LLMCacheKey, ChatResponse | CompletionResponse]):
     """Hash cache keys and serialize cache values, storing them in a wrapped store which can be out-of-core.
 
-    The values are serialized with pickle, which Pydantic officially suports. This results in larger values
+    The values are serialized with pickle, which Pydantic officially supports. This results in larger values
     (at least when most of the size is class data and not large strings) than json, but json doesn't work
     because some ChatResponse fields have type dict[str, Any] with values which are Pydantic models;
     Pydantic serializes these values as json dicts but has no way to recover the original type when deserializing.

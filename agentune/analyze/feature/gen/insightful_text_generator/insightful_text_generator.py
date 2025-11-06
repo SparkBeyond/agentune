@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from typing import ClassVar
 
 import polars as pl
 from attrs import define
@@ -8,6 +11,7 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
 from agentune.analyze.core.dataset import Dataset
+from agentune.analyze.core.llm import LLMContext, LLMSpec
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.gen.base import FeatureGenerator, GeneratedFeature
 from agentune.analyze.feature.gen.insightful_text_generator.dedup.base import QueryDeduplicator
@@ -52,10 +56,11 @@ logger = logging.getLogger(__name__)
 SEED_OFFSET = 17
 
 
+
 @define
 class ConversationQueryFeatureGenerator(FeatureGenerator):
     """A feature generator that creates insightful features from conversation data using LLM-based query generation.
-    
+
     This generator works in multiple phases:
     1. Generates analytical queries about conversations using LLMs
     2. Enriches the queries with additional conversation context
@@ -78,7 +83,16 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         max_categorical: Maximum number of unique values allowed for categorical features
         max_empty_percentage: Maximum percentage of empty/None values allowed in features
     """
-    
+    default_query_generation_model: ClassVar[LLMSpec] = LLMSpec('openai', 'o3')
+    default_query_enrichment_model: ClassVar[LLMSpec] = LLMSpec('openai', 'gpt-4o-mini')
+
+    @staticmethod
+    def default(llm_context: LLMContext) -> ConversationQueryFeatureGenerator:
+        return ConversationQueryFeatureGenerator(
+            query_generator_model=LLMWithSpec(ConversationQueryFeatureGenerator.default_query_generation_model, llm_context.from_spec(ConversationQueryFeatureGenerator.default_query_generation_model)),
+            query_enrich_model=LLMWithSpec(ConversationQueryFeatureGenerator.default_query_enrichment_model, llm_context.from_spec(ConversationQueryFeatureGenerator.default_query_enrichment_model)),
+        )
+
     # LLM and generation settings
     query_generator_model: LLMWithSpec
     query_enrich_model: LLMWithSpec
@@ -89,7 +103,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
     num_features_per_round: int = 20
     num_actionable_rounds: int = 2
     num_creative_features: int = 20
-    
+
     random_seed: int | None = 42
     max_categorical: int = 9  # Max unique values for a categorical field
     max_empty_percentage: float = 0.5  # Max percentage of empty/None values allowed
@@ -289,7 +303,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             )
             logger.debug(f'Generated {len(creative_queries)} creative queries')
             queries.extend(creative_queries)
-        
+
         # Final deduplication on all queries from both phases
         deduplicator = self._get_deduplicator()
         unique_queries = await deduplicator.deduplicate(queries)

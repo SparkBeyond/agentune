@@ -42,8 +42,8 @@ from agentune.analyze.feature.select.base import (
     FeatureSelector,
 )
 from agentune.analyze.join.base import JoinStrategy, TablesWithJoinStrategies
-from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.feature_search.base import (
+    FeatureSearchComponents,
     FeatureSearchInputData,
     FeatureSearchParams,
     NoFeaturesFoundError,
@@ -158,32 +158,33 @@ def input_data(input_data_csv_path: Path, ddb_manager: DuckdbManager) -> Feature
         input_data = FeatureSearchInputData.from_split_table(split, TablesWithJoinStrategies.from_list([]), conn)
         return input_data
 
-async def _test_feature_search(input_data: FeatureSearchInputData, run_context: RunContext,
-                               params: FeatureSearchParams) -> None:
+async def _test_feature_search(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager,
+                               params: FeatureSearchParams, components: FeatureSearchComponents,
+                               problem_description: ProblemDescription) -> None:
     # Limit the batch size to make sure multiple batches are tested
     feature_search_runner = FeatureSearchRunnerImpl(max_features_enrich_batch_size=5)
 
-    with run_context.ddb_manager.cursor() as conn:
+    with ddb_manager.cursor() as conn:
         orig_table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
 
-    results = await feature_search_runner.run(run_context, input_data, params)
+    results = await feature_search_runner.run(ddb_manager, input_data, params, components, problem_description)
     assert results.enriched_train is None
     assert results.enriched_test is None
 
     # Regression test - check that all components are reusable and don't keep state from the last run
     # Don't require the order of the features to stay the same
-    results2 = await feature_search_runner.run(run_context, input_data, params)
+    results2 = await feature_search_runner.run(ddb_manager, input_data, params, components, problem_description)
     assert set(results2.features_with_train_stats) == set(results.features_with_train_stats)
     assert set(results2.features_with_test_stats) == set(results.features_with_test_stats)
     assert attrs.evolve(results2, features_with_train_stats=results.features_with_train_stats,
                         features_with_test_stats=results.features_with_test_stats) == results
 
-    with run_context.ddb_manager.cursor() as conn:
+    with ddb_manager.cursor() as conn:
         table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
         assert set(orig_table_names) == set(table_names), 'No new tables left in DB (temporary or otherwise)'
 
 
-async def test_feature_search(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
+async def test_feature_search(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
     selectors: list[FeatureSelector | EnrichedFeatureSelector] = [ToySyncFeatureSelector(), ToyAsyncFeatureSelector(),
                                                                   ToySyncEnrichedFeatureSelector(), ToyAsyncEnrichedFeatureSelector()]
     # Repeat the same generators so that identical features are generated and need to be deduplicated
@@ -191,53 +192,45 @@ async def test_feature_search(input_data: FeatureSearchInputData, run_context: R
     # because instances of ToySyncFeature and ToyAsyncFeature can't equal each other.
     generators = (ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator(), ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator())
     for selector in selectors:
+        components = FeatureSearchComponents(generators, selector)
         _logger.info(f'Running regression with selector {selector}')
         regression_params = FeatureSearchParams(
-            ProblemDescription('target', 'regression'),
-            generators=generators,
-            selector=selector,
             store_enriched_test=None, store_enriched_train=None
         )
-        await _test_feature_search(input_data, run_context, regression_params)
+        await _test_feature_search(input_data, ddb_manager, regression_params, components, ProblemDescription('target', 'regression'))
         _logger.info(f'Running classification with selector {selector}')
         classification_params = FeatureSearchParams(
-            ProblemDescription('target', 'classification'),
-            generators=generators,
-            selector=selector,
             store_enriched_test=None, store_enriched_train=None
         )
-        await _test_feature_search(input_data, run_context, classification_params)
+        await _test_feature_search(input_data, ddb_manager, classification_params, components, ProblemDescription('target', 'classification'))
 
-async def _test_feature_name_collision(input_data: FeatureSearchInputData, run_context: RunContext,
+async def _test_feature_name_collision(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager,
                                        features: tuple[Feature, ...]) -> None:
     feature_search_runner = FeatureSearchRunnerImpl()
 
     generator = ToyPrebuiltFeaturesGenerator(features)
     selector = ToyAllFeatureSelector()
-    params = FeatureSearchParams(
-        ProblemDescription('target', 'regression'),
-        generators=(generator,),
-        selector=selector
-    )
+    components = FeatureSearchComponents((generator,), selector)
+    params = FeatureSearchParams()
 
-    result = await feature_search_runner.run(run_context, input_data, params)
+    result = await feature_search_runner.run(ddb_manager, input_data, params, components, ProblemDescription('target', 'regression'))
     expected_features = deduplicate_feature_names(features, ['target'])
     assert result.features == tuple(expected_features)
 
-async def test_feature_has_same_name_as_input_column(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
-    await _test_feature_name_collision(input_data, run_context, (
+async def test_feature_has_same_name_as_input_column(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
+    await _test_feature_name_collision(input_data, ddb_manager, (
         ToySyncFeature('x', 'y', 'x', '', ''),
         ToySyncFeature('x', 'y', 'y', '', '')
     ))
 
-async def test_feature_has_same_name_as_target_column(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
-    await _test_feature_name_collision(input_data, run_context, (
+async def test_feature_has_same_name_as_target_column(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
+    await _test_feature_name_collision(input_data, ddb_manager, (
         ToySyncFeature('x', 'y', 'x+y', '', ''),
         ToySyncFeature('x', 'y', 'target', '', '')
     ))
 
-async def test_two_features_have_the_same_name(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
-    await _test_feature_name_collision(input_data, run_context, (
+async def test_two_features_have_the_same_name(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
+    await _test_feature_name_collision(input_data, ddb_manager, (
         ToySyncFeature('x', 'y', 'x+y', '', ''),
         ToySyncFeature('x', 'y', 'x+y', '', '')
     ))
@@ -271,18 +264,15 @@ def test_update_feature_defaults() -> None:
     assert adjusted_categorical_feature.default_for_missing == CategoricalFeature.other_category
     assert type(adjusted_categorical_feature) is type(categorical_feature)
 
-async def test_correct_features_have_defaults_updated(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
+async def test_correct_features_have_defaults_updated(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
     runner = FeatureSearchRunnerImpl()
 
     feature = ToySyncFeature('x', 'y', 'x+y', '', '')
     generator = SimplePrebuiltFeaturesGenerator((GeneratedFeature(feature, False), GeneratedFeature(feature, True)))
     selector = ToyAllFeatureSelector()
-    params = FeatureSearchParams(
-        ProblemDescription('target', 'regression'),
-        generators=(generator,),
-        selector=selector
-    )
-    results = await runner.run(run_context, input_data, params)
+    components = FeatureSearchComponents((generator,), selector)
+    params = FeatureSearchParams()
+    results = await runner.run(ddb_manager, input_data, params, components, ProblemDescription('target', 'regression'))
 
     expected_features = deduplicate_feature_names([
         runner._update_feature_defaults(feature, input_data.feature_search.data.select((pl.col('x') + pl.col('y')).alias('x+y'))['x+y']),
@@ -291,35 +281,34 @@ async def test_correct_features_have_defaults_updated(input_data: FeatureSearchI
     assert results.features == tuple(expected_features)
 
 
-def input_data_from_df(run_context: RunContext, df: pl.DataFrame) -> FeatureSearchInputData:
-    with run_context.ddb_manager.cursor() as conn:
+def input_data_from_df(ddb_manager: DuckdbManager, df: pl.DataFrame) -> FeatureSearchInputData:
+    with ddb_manager.cursor() as conn:
         conn.register('df', df)
         conn.execute('create or replace table input as from df')
         table = DuckdbTable.from_duckdb('input', conn)
         split = sampling.split_duckdb_table(conn, table.name)
         return FeatureSearchInputData.from_split_table(split, TablesWithJoinStrategies.from_list([]), conn)
 
-async def test_keep_enrich_output(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
-    with run_context.ddb_manager.cursor() as conn:
+async def test_keep_enrich_output(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
+    with ddb_manager.cursor() as conn:
         runner = FeatureSearchRunnerImpl()
 
         feature = ToySyncFeature('x', 'y', 'x+y', '', '')
         generator = SimplePrebuiltFeaturesGenerator((GeneratedFeature(feature, False), GeneratedFeature(feature, True)))
         selector = ToyAllFeatureSelector()
+        components = FeatureSearchComponents((generator,), selector)
+        problem_description = ProblemDescription('target', 'regression')
 
         async def do_test(store_enriched_train: str | DuckdbName | UniqueTableName | None,
                           store_enriched_test: str | DuckdbName | UniqueTableName | None) -> None:
             orig_table_names = conn.execute('select database_name, schema_name, table_name from duckdb_tables()').fetchall()
 
             params = FeatureSearchParams(
-                ProblemDescription('target', 'regression'),
-                generators=(generator,),
-                selector=selector,
                 store_enriched_train=store_enriched_train,
                 store_enriched_test=store_enriched_test
             )
-            results = await runner.run(run_context, input_data, params)
-            
+            results = await runner.run(ddb_manager, input_data, params, components, problem_description)
+
             def test_correct_stored(requested: str | DuckdbName | UniqueTableName | None,
                                     result: DuckdbTable | None,
                                     matching_input: DatasetSource) -> None:
@@ -365,7 +354,7 @@ async def test_keep_enrich_output(input_data: FeatureSearchInputData, run_contex
                 conn.execute(f'truncate {results.enriched_train.name}')
                 conn.execute(f'truncate {results.enriched_test.name}')
 
-                results2 = await runner.run(run_context, input_data, params)
+                results2 = await runner.run(ddb_manager, input_data, params, components, problem_description)
                 assert results2.features_with_train_stats == results.features_with_train_stats, 'Same features selected, same stats calculated'
                 assert results2.features_with_test_stats == results.features_with_test_stats
 
@@ -382,16 +371,13 @@ async def test_keep_enrich_output(input_data: FeatureSearchInputData, run_contex
         await do_test('bar', UniqueTableName('base'))
         await do_test(None, None)
 
-async def test_zero_generated_features(input_data: FeatureSearchInputData, run_context: RunContext) -> None:
+async def test_zero_generated_features(input_data: FeatureSearchInputData, ddb_manager: DuckdbManager) -> None:
     runner = FeatureSearchRunnerImpl()
     generator = SimplePrebuiltFeaturesGenerator(())
     selectors: list[FeatureSelector | EnrichedFeatureSelector] = [ToyAllFeatureSelector(), ToySyncEnrichedFeatureSelector()]
     for selector in selectors:
-        params = FeatureSearchParams(
-            ProblemDescription('target', 'regression'),
-            generators=(generator,),
-            selector=selector
-        )
+        components = FeatureSearchComponents((generator,), selector)
+        params = FeatureSearchParams()
         with pytest.raises(NoFeaturesFoundError):
-            await runner.run(run_context, input_data, params)
+            await runner.run(ddb_manager, input_data, params, components, ProblemDescription('target', 'regression'))
 

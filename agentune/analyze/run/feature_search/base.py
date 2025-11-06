@@ -6,7 +6,7 @@ from typing import Self, final
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.core.database import DuckdbName, DuckdbTable
+from agentune.analyze.core.database import DuckdbManager, DuckdbName, DuckdbTable
 from agentune.analyze.core.dataset import Dataset, DatasetSource
 from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.feature.base import Feature
@@ -22,7 +22,6 @@ from agentune.analyze.feature.stats.base import (
     FeatureWithFullStats,
 )
 from agentune.analyze.join.base import TablesWithJoinStrategies
-from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.enrich.base import EnrichRunner
 from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
 from agentune.analyze.run.ingest.sampling import SplitDuckdbTable
@@ -87,7 +86,13 @@ class FeatureSearchParams:
                               This is the data that FeatureSearchResults.features_with_train_stats is computed on.
         store_enriched_test:  as above, for the test dataset.
     """
-    problem_description: ProblemDescription
+    store_enriched_train: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_train')
+    store_enriched_test: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_test')
+    max_classes: int = 20
+    feature_count: int = 60
+
+@frozen
+class FeatureSearchComponents:
     generators: tuple[FeatureGenerator, ...]
     selector: FeatureSelector | EnrichedFeatureSelector
     # Must always include at least one feature computer willing to handle every feature generated.
@@ -95,9 +100,7 @@ class FeatureSearchParams:
     # Feature computeres are tried in the order in which they appear.
     feature_computers: tuple[type[FeatureComputer], ...] = (UniversalSyncFeatureComputer, UniversalAsyncFeatureComputer)
     enrich_runner: EnrichRunner = EnrichRunnerImpl()
-    store_enriched_train: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_train')
-    store_enriched_test: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_test')
-    max_classes: int = 20
+
 
 @frozen
 class FeatureSearchResults:
@@ -124,13 +127,10 @@ class FeatureSearchResults:
 
 
 class FeatureSearchRunner(ABC):
-    """The current implementation is not specialized per TargetKind, but including the type parameter in the class signature
-    makes the code much simpler than passing it to every method along the way.
-    """
-
     @abstractmethod
-    async def run(self, run_context: RunContext, data: FeatureSearchInputData,
-                  params: FeatureSearchParams) -> FeatureSearchResults:
+    async def run(self, ddb_manager: DuckdbManager, data: FeatureSearchInputData,
+                  params: FeatureSearchParams, components: FeatureSearchComponents,
+                  problem_description: ProblemDescription) -> FeatureSearchResults:
         """The feature search algorithm composes the components in `params`:
 
         1. Generate candidate features using `params.generators` on `data.feature_search`

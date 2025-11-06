@@ -5,7 +5,7 @@ actionable recommendations based on feature importance.
 """
 
 from collections.abc import Sequence
-from typing import override
+from typing import ClassVar, override
 
 import attrs
 import polars as pl
@@ -13,6 +13,7 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.dataset import Dataset
+from agentune.analyze.core.llm import LLMContext, LLMSpec
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.gen.insightful_text_generator.features import InsightfulTextFeature
 from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
@@ -105,6 +106,16 @@ class ConversationActionRecommender(ActionRecommender):
     5. Formats conversations using ConversationFormatter
     6. Generates LLM-based recommendations
     """
+
+    default_model: ClassVar[LLMSpec] = LLMSpec('openai', 'o3')
+    default_structuring_model: ClassVar[LLMSpec] = LLMSpec('openai', 'gpt-4o')
+
+    @staticmethod
+    def default(llm_context: LLMContext) -> 'ConversationActionRecommender':
+        return ConversationActionRecommender(
+            model=LLMWithSpec(ConversationActionRecommender.default_model, llm_context.from_spec(ConversationActionRecommender.default_model)),
+            structuring_model=LLMWithSpec(ConversationActionRecommender.default_structuring_model, llm_context.from_spec(ConversationActionRecommender.default_structuring_model)),
+        )
     
     model: LLMWithSpec
     num_samples: int = 40

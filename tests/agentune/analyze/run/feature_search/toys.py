@@ -205,7 +205,7 @@ class ToySyncFeatureSelector(SyncFeatureSelector):
         return float(len(stats.support))
 
     @override
-    def select_final_features(self, problem: Problem) -> list[FeatureWithFullStats]:
+    def select_final_features(self, problem: Problem, feature_count: int) -> list[FeatureWithFullStats]:
         average_metric = math.nan if len(self.features) == 0 \
             else sum(ToySyncFeatureSelector.some_metric(x.stats.feature) for x in self.features) / len(self.features)
         selected = [x for x in self.features if ToySyncFeatureSelector.some_metric(x.stats.feature) >= average_metric]
@@ -222,7 +222,7 @@ class ToyAsyncFeatureSelector(FeatureSelector):
         self.features.append(feature_with_stats)
 
     @override
-    async def aselect_final_features(self, problem: Problem) -> list[FeatureWithFullStats]:
+    async def aselect_final_features(self, problem: Problem, feature_count: int) -> list[FeatureWithFullStats]:
         await asyncio.sleep(0)
         average_metric = math.nan if len(self.features) == 0 \
             else sum(ToySyncFeatureSelector.some_metric(x.stats.feature) for x in self.features) / len(self.features)
@@ -239,7 +239,7 @@ class ToyAllFeatureSelector(SyncFeatureSelector):
         self._added_features.append(feature_with_stats)
 
     @override
-    def select_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats]:
+    def select_final_features(self, problem: Problem, feature_count: int) -> Sequence[FeatureWithFullStats]:
         selected = tuple(self._added_features)
         self._added_features.clear() # Prepare for reuse
         return selected
@@ -257,7 +257,7 @@ class ToyAsyncEnrichedFeatureSelector(EnrichedFeatureSelector):
             raise TypeError(f'Unknown feature type: {type(feature)}')
 
     @override
-    async def aselect_features(self, features: Sequence[Feature],
+    async def aselect_features(self, features: Sequence[Feature], feature_count: int,
                                enriched_data: DatasetSource, problem: Problem,
                                conn: DuckDBPyConnection) -> Sequence[Feature]:
         await asyncio.sleep(0)
@@ -282,7 +282,7 @@ class ToySyncEnrichedFeatureSelector(SyncEnrichedFeatureSelector):
             raise TypeError(f'Unknown feature type: {type(feature)}')
 
     @override
-    def select_features(self, features: Sequence[Feature],
+    def select_features(self, features: Sequence[Feature], feature_count: int,
                         enriched_data: DatasetSource, problem: Problem,
                         conn: DuckDBPyConnection) -> Sequence[Feature]:
         assert set(enriched_data.schema.names) == set([feature.name for feature in features] + [problem.target_column.name])

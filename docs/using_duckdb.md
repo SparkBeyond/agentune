@@ -21,7 +21,7 @@ Example:
 ```python
 name: DuckdbName = ...
 column: str = 'col1'
-conn.sql(f'SELECT "{column}" from {name}')
+conn.from_sql(f'SELECT "{column}" from {name}')
 ```
 
 ## Naming duckdb databases

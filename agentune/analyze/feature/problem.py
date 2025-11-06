@@ -10,6 +10,7 @@ from agentune.analyze.core.database import DuckdbName
 from agentune.analyze.core.schema import Field
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.util.attrutil import frozendict_converter
+from agentune.analyze.util.cattrutil import UseTypeTag
 
 type TargetKind = Literal['classification', 'regression']
 type Classification = Literal['classification']
@@ -58,7 +59,7 @@ class ProblemDescription:
 
 
 @frozen
-class Problem(ABC):
+class Problem(ABC, UseTypeTag):
     """Final information about the problem.
 
     The ProblemDescription is the original one provided by the user; its attributes (when set) are guaranteed to be

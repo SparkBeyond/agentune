@@ -21,7 +21,7 @@ class FeatureSelector(ABC):
     async def aadd_feature(self, feature_with_stats: FeatureWithFullStats) -> None: ...
 
     @abstractmethod
-    async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats]: ...
+    async def aselect_final_features(self, problem: Problem, feature_count: int,) -> Sequence[FeatureWithFullStats]: ...
 
 class SyncFeatureSelector(FeatureSelector):
     @abstractmethod
@@ -32,11 +32,11 @@ class SyncFeatureSelector(FeatureSelector):
         await asyncio.to_thread(self.add_feature, feature_with_stats)
 
     @abstractmethod
-    def select_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats]: ...
+    def select_final_features(self, problem: Problem, feature_count: int,) -> Sequence[FeatureWithFullStats]: ...
 
     @override
-    async def aselect_final_features(self, problem: Problem) -> Sequence[FeatureWithFullStats]:
-        return await asyncio.to_thread(self.select_final_features, problem)
+    async def aselect_final_features(self, problem: Problem, feature_count: int,) -> Sequence[FeatureWithFullStats]:
+        return await asyncio.to_thread(self.select_final_features, problem, feature_count)
 
 class EnrichedFeatureSelector(ABC):
     """A FeatureSelector that requires the entire enriched feature output, not only statistics.
@@ -49,24 +49,25 @@ class EnrichedFeatureSelector(ABC):
     """
 
     @abstractmethod
-    async def aselect_features(self, features: Sequence[Feature],
+    async def aselect_features(self, features: Sequence[Feature], feature_count: int,
                                enriched_data: DatasetSource, problem: Problem,
                                conn: DuckDBPyConnection) -> Sequence[Feature]:
-        """enriched_data contains a column for each feature; the column's name is the feature.name.
-
-        It also contains the target column.
+        """Args:
+        enriched_data: contains a column for each feature; the column's name is the feature.name.
+                       It also contains the target column.
+        feature_count: number of features to select and return.
         """
         ...
 
 class SyncEnrichedFeatureSelector(EnrichedFeatureSelector):
     @abstractmethod
-    def select_features(self, features: Sequence[Feature],
+    def select_features(self, features: Sequence[Feature], feature_count: int,
                         enriched_data: DatasetSource, problem: Problem,
                         conn: DuckDBPyConnection) -> Sequence[Feature]: ...
 
     @override
-    async def aselect_features(self, features: Sequence[Feature],
+    async def aselect_features(self, features: Sequence[Feature], feature_count: int,
                                enriched_data: DatasetSource, problem: Problem,
                                conn: DuckDBPyConnection) -> Sequence[Feature]:
         with conn.cursor() as cursor:
-            return await asyncio.to_thread(self.select_features, features, enriched_data, problem, cursor)
+            return await asyncio.to_thread(self.select_features, features, feature_count, enriched_data, problem, cursor)

@@ -227,13 +227,13 @@ class DuckdbDatabase(ABC):
     def read_only(self) -> bool: ...
 
 @frozen
-class DuckdbInMemoryDatabase(DuckdbDatabase):
-    """An in-memory database. 
+class DuckdbInMemory(DuckdbDatabase):
+    """Create a new in-memory database.
     
-    Not a named in-memory database in the duckdb sense, i.e. you can't reconnect to it from another connection.
+    Does not refer to a named in-memory database in the duckdb sense, i.e. you can't reconnect to it from another connection.
 
     Passing an instance of this class to DuckdbManager.attach() creates a new database every time;
-    you can keep the instance in order to detach that specific database later.
+    you can use the instance to detach that specific database later.
     """
     @property
     @override
@@ -246,8 +246,8 @@ class DuckdbInMemoryDatabase(DuckdbDatabase):
         return False
 
 @frozen
-class DuckdbFilesystemDatabase(DuckdbDatabase):
-    """A file-backed database we can create or open."""
+class DuckdbOnDisk(DuckdbDatabase):
+    """Open or create a file-backed database."""
     path: Path
     read_only: bool = False
 
@@ -377,9 +377,9 @@ class DuckdbManager:
         agentune.analyze.core.setup.setup()
 
         match main_database:
-            case DuckdbInMemoryDatabase():
+            case DuckdbInMemory():
                 self._conn = duckdb.connect(':memory:', config=config.to_config_dict())
-            case DuckdbFilesystemDatabase(path, read_only):
+            case DuckdbOnDisk(path, read_only):
                 self._conn = duckdb.connect(path, read_only, config=config.to_config_dict())
         self._conn_lock = threading.Lock()
         self._databases = {main_database.default_name: main_database}
@@ -438,12 +438,12 @@ class DuckdbManager:
             raise ValueError(f'A database with the same name ({name}) is already attached.')
         
         options = []
-        if isinstance(db, DuckdbFilesystemDatabase) and db.read_only:
+        if isinstance(db, DuckdbOnDisk) and db.read_only:
             options.append('READ_ONLY')
-        if isinstance(db, DuckdbFilesystemDatabase):
+        if isinstance(db, DuckdbOnDisk):
             options.append(f"STORAGE_VERSION '{required_db_version}'")
         options_str = '' if not options else '(' + ', '.join(options) + ')' # empty '()' is invalid
-        target = db.path if isinstance(db, DuckdbFilesystemDatabase) else ':memory:'
+        target = db.path if isinstance(db, DuckdbOnDisk) else ':memory:'
         with self._conn_lock:
             self._conn.execute(f'''ATTACH DATABASE '{target}' AS "{name}" {options_str}''')
             self._databases[name] = db
@@ -467,7 +467,8 @@ class DuckdbManager:
     def close(self) -> None:
         with self._conn_lock:
             try:
-                self._conn.execute(f'drop schema "{DuckdbManager.temp_schema_name}" cascade')
+                if not self._main_database.read_only:
+                    self._conn.execute(f'drop schema "{DuckdbManager.temp_schema_name}" cascade')
             except duckdb.ConnectionException as e:
                 if 'Connection already closed' not in str(e):
                     raise
@@ -477,12 +478,12 @@ class DuckdbManager:
 
     @staticmethod
     def in_memory(config: DuckdbConfig = DuckdbConfig()) -> DuckdbManager:
-        return DuckdbManager(DuckdbInMemoryDatabase(), config)
+        return DuckdbManager(DuckdbInMemory(), config)
 
     @staticmethod
     def on_disk(path: Path, read_only: bool = False,
                 config: DuckdbConfig = DuckdbConfig()) -> DuckdbManager:
-        return DuckdbManager(DuckdbFilesystemDatabase(path, read_only), config)
+        return DuckdbManager(DuckdbOnDisk(path, read_only), config)
 
     def get_table(self, name: DuckdbName) -> DuckdbTable:
         with self.cursor() as conn:

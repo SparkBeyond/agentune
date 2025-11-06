@@ -42,7 +42,7 @@ TRIANGLE_OVERRIDE_PROB = 0.6
 DATA_FILE_PATH_TITANIC = str((Path(__file__).parent / 'data' / 'titanic_300_features_anonymized.csv').resolve())
 DATA_FILE_PATH_TITANIC_WITH_EMBARKED = str((Path(__file__).parent / 'data' / 'titanic_300_features_anonymized_with_embarked.csv').resolve())
 TARGET_COLUMN_TITANIC = 'survived'
-TOP_K_FEATURES = 20
+FEATURE_COUNT = 20
 
 
 # Helpers to reduce duplication in tests below
@@ -78,11 +78,12 @@ def enrich_as_categorical(
 def select_feature_names(
     selector: LinearPairWiseFeatureSelector,
     features: Sequence[object],
+    feature_count: int,
     source: DatasetSource,
     target_col: str,
     conn: duckdb.DuckDBPyConnection
 ) -> tuple[list[str], Sequence[object]]:
-    selected = selector.select_features(features, source, target_col, conn)  # type: ignore[arg-type]
+    selected = selector.select_features(features, feature_count, source, target_col, conn)  # type: ignore[arg-type]
     return [f.name for f in selected], selected
 
 def overlap_stats(a: Sequence[str], b: Sequence[str], top_k: int) -> tuple[float, set[str]]:
@@ -99,7 +100,7 @@ def log_and_assert_overlap(
 ) -> None:
     """Log and assert feature selection overlap statistics."""
     common_features = set(selected_a) & set(selected_b)
-    overlap_ratio = len(common_features) / TOP_K_FEATURES
+    overlap_ratio = len(common_features) / FEATURE_COUNT
     feature_selected = feature_to_check in selected_b if feature_to_check else False
 
 
@@ -115,7 +116,7 @@ def run_selection_on_df(
     categorical_info: tuple[str, list[str]] | None = None,
 ) -> list[str]:
     """Run feature selection on a DataFrame and return selected feature names."""
-    selector = LinearPairWiseFeatureSelector(top_k=TOP_K_FEATURES)
+    selector = LinearPairWiseFeatureSelector()
 
     if categorical_info:
         col_name, categories = categorical_info
@@ -126,7 +127,7 @@ def run_selection_on_df(
         features = list(features_seq)
 
     problem = ClassificationProblem(ProblemDescription(target_col), Field(target_col, types.int64), (0, 1))
-    selected = selector.select_features(features, source, problem, conn)
+    selected = selector.select_features(features, FEATURE_COUNT, source, problem, conn)
     return [f.name for f in selected]
  
 
@@ -263,9 +264,9 @@ def test_categorical_selection_regression(conn: duckdb.DuckDBPyConnection) -> No
     builder = EnrichedBuilder()
     features, source = builder.build(df_reg, 'target')
     
-    selector = LinearPairWiseFeatureSelector(top_k=2)
+    selector = LinearPairWiseFeatureSelector()
     problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
-    selected = selector.select_features(features, source, problem, conn)
+    selected = selector.select_features(features, 2, source, problem, conn)
 
     selected_names = [f.name for f in selected]
     # Features should be returned in selection order (good_num selected first due to strong linear relationship)
@@ -307,9 +308,9 @@ def test_categorical_selection_multiclass(conn: duckdb.DuckDBPyConnection) -> No
     builder = EnrichedBuilder()
     features, source = builder.build(df_mc, 'target')
     
-    selector = LinearPairWiseFeatureSelector(top_k=2)
+    selector = LinearPairWiseFeatureSelector()
     problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.string), tuple(sorted(targets)))
-    selected = selector.select_features(features, source, problem, conn)
+    selected = selector.select_features(features, 2, source, problem, conn)
 
     selected_names = [f.name for f in selected]
     assert selected_names == ['color', 'shape']
@@ -344,9 +345,9 @@ def test_other_bucket_handling(conn: duckdb.DuckDBPyConnection) -> None:
     builder = EnrichedBuilder()
     features, source = builder.build(df, 'target')
     
-    selector = LinearPairWiseFeatureSelector(top_k=1)
+    selector = LinearPairWiseFeatureSelector()
     problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
-    selected = selector.select_features(features, source, problem, conn)
+    selected = selector.select_features(features, 1, source, problem, conn)
     
     assert len(selected) == 1
     assert selected[0].name == 'many_categories', 'OTHER bucket signal should make categorical win'
@@ -464,9 +465,9 @@ def test_titanic_multiclass_embarked_categorical_comparison(conn: duckdb.DuckDBP
     )
 
     # Additional assertions for this specific test
-    binary_multiclass_overlap = len(set(selected_names_original) & set(selected_names_multiclass)) / TOP_K_FEATURES
+    binary_multiclass_overlap = len(set(selected_names_original) & set(selected_names_multiclass)) / FEATURE_COUNT
     assert binary_multiclass_overlap >= 0.4, f'Binary-multiclass overlap ({binary_multiclass_overlap:.2f}) should be at least 40%'
 
-    assert len(selected_names_original) == TOP_K_FEATURES
-    assert len(selected_names_multiclass) == TOP_K_FEATURES
-    assert len(selected_names_multiclass_embarked) == TOP_K_FEATURES
+    assert len(selected_names_original) == FEATURE_COUNT
+    assert len(selected_names_multiclass) == FEATURE_COUNT
+    assert len(selected_names_multiclass_embarked) == FEATURE_COUNT

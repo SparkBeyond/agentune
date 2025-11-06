@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Sequence
+from typing import override
 
 import numpy as np
 from duckdb import DuckDBPyConnection
@@ -36,26 +37,25 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
     """
     def __init__(
         self,
-        top_k: int = 10,
         min_marginal_reduction_threshold: float = 1e-8
     ):
         """Initialize selector.
 
         Args:
-            top_k: Number of features to select.
             min_marginal_reduction_threshold: Minimum marginal error reduction required to add a feature.
                 Features with lower marginal improvement will not be selected.
         """
-        self.top_k = top_k
         self.min_marginal_reduction_threshold = min_marginal_reduction_threshold
 
         # No internal model; selector is model-agnostic
         self.final_importances_: dict[str, list] | None = None
         self._selected_feature_names: list[str] | None = None
 
+    @override
     def select_features(
         self,
         features: Sequence[Feature],
+        feature_count: int,
         enriched_data: DatasetSource,
         problem: Problem,
         conn: DuckDBPyConnection,
@@ -91,7 +91,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
             self.final_importances_ = {'feature': [], 'importance': []}
             return []
 
-        selected_feature_names, feature_scores = self._select_best_features(feature_values, target, baseline_stats)
+        selected_feature_names, feature_scores = self._select_best_features(feature_values, target, baseline_stats, feature_count)
         
         # Return features in selection order (not importance order)
         feature_by_name = {f.name: f for f in features}
@@ -203,7 +203,8 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         x = values[:, None] if values.ndim == 1 else values
         return np.repeat(x, n_targets, axis=1) if x.shape[1] == 1 else x
 
-    def _select_best_features(self, feature_values: dict[str, np.ndarray], target: np.ndarray, baseline_stats: TargetStats) -> tuple[list[str], list[float]]:
+    def _select_best_features(self, feature_values: dict[str, np.ndarray], target: np.ndarray, baseline_stats: TargetStats,
+                              feature_count: int) -> tuple[list[str], list[float]]:
         """Two-phase feature selection: single feature scoring, then pairwise marginalization."""
         remaining_feature_names = list(feature_values.keys())
         selected_feature_names: list[str] = []
@@ -247,7 +248,7 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         norm_feature_values: dict[str, np.ndarray] = {
             name: self._normalize_to_targets(vals, n_targets) for name, vals in feature_values.items()
         }
-        while len(selected_feature_names) < self.top_k and viable_features:
+        while len(selected_feature_names) < feature_count and viable_features:
             last_selected_name = selected_feature_names[-1]
             # Update candidate's marginal only against the newly selected feature
             # Normalize Z once to (n_samples, n_targets)

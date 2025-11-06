@@ -9,7 +9,17 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from agentune.analyze.core import types
 from agentune.analyze.core.database import DuckdbName
-from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource
+from agentune.analyze.core.dataset import (
+    Dataset,
+    DatasetSink,
+    DatasetSource,
+    ReadCsvParams,
+    ReadNdjsonParams,
+    ReadParquetParams,
+    WriteCsvParams,
+    WriteParquetParams,
+)
+from agentune.analyze.core.duckdbio import IfTargetExists
 from agentune.analyze.core.schema import Field, Schema
 
 
@@ -66,7 +76,7 @@ def test_dataset_from_csv_basic(conn: DuckDBPyConnection, temp_dir: Path) -> Non
     csv_content_pipe = 'id|name|value\n1|Alice|100\n2|Bob|200'
     csv_path_pipe.write_text(csv_content_pipe)
 
-    source_pipe = DatasetSource.from_csv(csv_path_pipe, conn, delimiter='|')
+    source_pipe = DatasetSource.from_csv(csv_path_pipe, conn, ReadCsvParams(delimiter='|'))
     dataset_pipe = source_pipe.to_dataset(conn)
 
     assert len(dataset_pipe) == 2
@@ -88,6 +98,9 @@ def test_dataset_from_csv_string(conn: DuckDBPyConnection) -> None:
     assert dataset.data['price'].to_list() == [999.99, 149.50, 12.99]
     assert dataset.data['category'].to_list() == ['Electronics', 'Furniture', 'Education']
 
+    dataset2 = source.to_dataset(conn)
+    assert dataset.data.equals(dataset2.data), 'Can be read again'
+
 
 def test_dataset_from_parquet_basic(conn: DuckDBPyConnection, temp_dir: Path, sample_dataset: Dataset) -> None:
     """Test basic Parquet reading functionality and kwargs passthrough."""
@@ -103,7 +116,7 @@ def test_dataset_from_parquet_basic(conn: DuckDBPyConnection, temp_dir: Path, sa
     assert dataset.data['age'].to_list() == [25, 30, 35, 28, 32]
     assert dataset.data['salary'].to_list() == [50000.0, 60000.0, 75000.0, 55000.0, 62000.0]
 
-    source_with_kwargs = DatasetSource.from_parquet(parquet_path, conn, filename=True)
+    source_with_kwargs = DatasetSource.from_parquet(parquet_path, conn, ReadParquetParams(filename=True))
     dataset_with_kwargs = source_with_kwargs.to_dataset(conn)
 
     assert len(dataset_with_kwargs) == 5
@@ -119,7 +132,7 @@ def test_dataset_from_json_basic(conn: DuckDBPyConnection, temp_dir: Path) -> No
     ]'''
     json_path.write_text(json_content)
 
-    source = DatasetSource.from_json(json_path, conn)
+    source = DatasetSource.from_ndjson(json_path, conn)
     dataset = source.to_dataset(conn)
 
     assert len(dataset) == 3
@@ -127,7 +140,7 @@ def test_dataset_from_json_basic(conn: DuckDBPyConnection, temp_dir: Path) -> No
     assert dataset.data['name'].to_list() == ['Alice', 'Bob', 'Charlie']
     assert dataset.data['active'].to_list() == [True, False, True]
 
-    source_with_format = DatasetSource.from_json(json_path, conn, format='array')
+    source_with_format = DatasetSource.from_ndjson(json_path, conn, ReadNdjsonParams(format='array'))
     dataset_with_format = source_with_format.to_dataset(conn)
 
     assert len(dataset_with_format) == 3
@@ -147,11 +160,11 @@ def test_dataset_into_csv(conn: DuckDBPyConnection, temp_dir: Path, sample_datas
     assert roundtrip_dataset.data.equals(sample_dataset.data), 'CSV roundtrip data mismatch'
 
     csv_path_pipe = temp_dir / 'output_pipe.csv'
-    sink_pipe = DatasetSink.into_csv(csv_path_pipe, sep='|')
+    sink_pipe = DatasetSink.into_csv(csv_path_pipe, WriteCsvParams(sep='|'))
     sink_pipe.write(sample_dataset.as_source(), conn)
     assert csv_path_pipe.exists()
     
-    source_pipe = DatasetSource.from_csv(csv_path_pipe, conn, delimiter='|')
+    source_pipe = DatasetSource.from_csv(csv_path_pipe, conn, ReadCsvParams(delimiter='|'))
     roundtrip_pipe_dataset = source_pipe.to_dataset(conn)
     
     assert len(roundtrip_pipe_dataset) == len(sample_dataset), 'Pipe-separated CSV roundtrip length mismatch'
@@ -173,7 +186,7 @@ def test_dataset_into_parquet(conn: DuckDBPyConnection, temp_dir: Path, sample_d
     assert roundtrip_dataset.data.equals(sample_dataset.data), 'Parquet roundtrip data mismatch'
 
     parquet_path_compressed = temp_dir / 'output_compressed.parquet'
-    sink_compressed = DatasetSink.into_parquet(parquet_path_compressed, compression='gzip')
+    sink_compressed = DatasetSink.into_parquet(parquet_path_compressed, WriteParquetParams(compression='gzip'))
     sink_compressed.write(sample_dataset.as_source(), conn)
     assert parquet_path_compressed.exists()
     
@@ -202,7 +215,7 @@ def test_dataset_into_duckdb_table(conn: DuckDBPyConnection, sample_dataset: Dat
     assert roundtrip_dataset.data.equals(sample_dataset.data), 'Table roundtrip data mismatch'
 
     sink_append = DatasetSink.into_duckdb_table(
-        table_name, create_table=False, delete_contents=False
+        table_name, create_if_not_exists=False, if_exists=IfTargetExists.APPEND
     )
     sink_append.write(sample_dataset.as_source(), conn)
 
@@ -218,7 +231,7 @@ def test_dataset_into_duckdb_table(conn: DuckDBPyConnection, sample_dataset: Dat
     assert all(count == 2 for count in name_counts.values()), 'Each name should appear twice after append'
 
     sink_replace = DatasetSink.into_duckdb_table(
-        table_name, create_table=False, delete_contents=True
+        table_name, create_if_not_exists=False, if_exists=IfTargetExists.REPLACE
     )
     sink_replace.write(sample_dataset.as_source(), conn)
 
@@ -368,7 +381,7 @@ def test_from_csv_separator_override(conn: DuckDBPyConnection) -> None:
 3|Charlie|300.75'''
     csv_io = StringIO(csv_content)
     
-    source = DatasetSource.from_csv(csv_io, conn, delimiter='|')
+    source = DatasetSource.from_csv(csv_io, conn, ReadCsvParams(delimiter='|'))
     dataset = source.to_dataset(conn)
     
     assert len(dataset) == 3
@@ -385,7 +398,7 @@ def test_from_csv_separator_mismatch(conn: DuckDBPyConnection) -> None:
 3,Charlie,300.75'''
     csv_io = StringIO(csv_content)
     
-    source = DatasetSource.from_csv(csv_io, conn, delimiter='|')
+    source = DatasetSource.from_csv(csv_io, conn, ReadCsvParams(delimiter='|'))
     dataset = source.to_dataset(conn)
     
     # With wrong delimiter, should parse as single column
@@ -402,7 +415,7 @@ def test_from_json_stringio(conn: DuckDBPyConnection) -> None:
 {"id": 3, "name": "Charlie", "active": true}'''
     json_io = StringIO(json_content)
     
-    source = DatasetSource.from_json(json_io, conn)
+    source = DatasetSource.from_ndjson(json_io, conn)
     dataset = source.to_dataset(conn)
     
     assert len(dataset) == 3

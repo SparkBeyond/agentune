@@ -3,14 +3,17 @@ from __future__ import annotations
 import itertools
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from enum import StrEnum, auto
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, override
+
+import attrs
 
 from agentune.analyze.core.types import Dtype
 
 if TYPE_CHECKING:
-    from agentune.analyze.core.duckdbio import DuckdbTableSink
+    from agentune.analyze.core.duckdbio import DuckdbTableSink, DuckdbTableSource
 
 import httpx
 import polars as pl
@@ -23,6 +26,14 @@ from agentune.analyze.core.database import DuckdbName, DuckdbTable
 from agentune.analyze.core.schema import Field, Schema, restore_df_types, restore_relation_types
 from agentune.analyze.core.threading import CopyToThread
 from agentune.analyze.util.polarutil import df_field
+
+
+# This class is in this module to avoid circular imports
+class IfTargetExists(StrEnum):
+    """Behavior when writing to data a table that already exists."""
+    REPLACE = auto()
+    APPEND = auto()
+    FAIL = auto()
 
 
 @frozen
@@ -123,6 +134,133 @@ class Dataset(CopyToThread):
     def copy_to_thread(self) -> Dataset:
         return Dataset(self.schema, self.data.clone())
 
+@frozen
+class ReadCsvParams:
+    """CSV reading is implemented by duckdb and is configurable.
+
+    The arguments are documented at https://duckdb.org/docs/stable/data/csv/overview.html
+    and match the signature of `duckdb.read_csv`.
+    """
+    header: bool | int | None = None
+    compression: str | None = None
+    sep: str | None = None
+    delimiter: str | None = None
+    dtype: dict[str, str] | list[str] | None = None
+    na_values: str | list[str] | None = None
+    skiprows: int | None = None
+    quotechar: str | None = None
+    escapechar: str | None = None
+    encoding: str | None = None
+    parallel: bool | None = None
+    date_format: str | None = None
+    timestamp_format: str | None = None
+    sample_size: int | None = None
+    all_varchar: bool | None = None
+    normalize_names: bool | None = None
+    null_padding: bool | None = None
+    names: list[str] | None = None
+    lineterminator: str | None = None
+    columns: dict[str, str] | None = None
+    auto_type_candidates: list[str] | None = None
+    max_line_size: int | None = None
+    ignore_errors: bool | None = None
+    store_rejects: bool | None = None
+    rejects_table: str | None = None
+    rejects_scan: str | None = None
+    rejects_limit: int | None = None
+    force_not_null: list[str] | None = None
+    buffer_size: int | None = None
+    decimal: str | None = None
+    allow_quoted_nulls: bool | None = None
+    hive_partitioning: bool | None = None
+    union_by_name: bool | None = None
+    hive_types: dict[str, str] | None = None
+    hive_types_autocast: bool | None = None
+
+
+@frozen
+class WriteCsvParams:
+    """CSV writing is implemented by duckdb and is highly configurable.
+
+    The arguments are documented at https://duckdb.org/docs/stable/clients/python/relational_api#write_csv
+    and match the signature of `duckdb.Connection.write_csv`.
+    """
+    sep: str | None = None # Default ','
+    na_rep: str | None = None # Default ''
+    header: bool | None = None # Default True
+    quotechar: str | None = None # Default '"'
+    escapechar: str | None = None # Default '"'
+    date_format: str | None = None
+    timestamp_format: str | None = None
+    quoting: int | None = None # Only supported values are csv.QUOTE_ALL and None which means csv.QUOTE_MINIMAL
+    encoding: str | None = None # Default 'utf-8'
+    compression: str | None = None # Default 'auto'
+    overwrite: bool | None = None # Default False
+    per_thread_output: bool | None = None # Default False
+    use_tmp_file: bool | None =  None # Default False
+    partition_by: list[str] | None = None
+    write_partition_columns: bool | None = None # Default False
+
+
+@frozen
+class ReadParquetParams:
+    """Parquet reading is implemented by duckdb and is configurable.
+
+    The arguments are documented at https://duckdb.org/docs/stable/data/parquet/overview.html
+    and match the signature of `read_parquet`.
+    """
+    binary_as_string: bool = False
+    file_row_number: bool = False
+    filename: bool = False
+    hive_partitioning: bool = False
+    union_by_name: bool = False
+    compression: str | None = None
+
+@frozen
+class WriteParquetParams:
+    """Parquet writing is implemented by duckdb and is configurable.
+
+    The arguments are documented https://duckdb.org/docs/stable/clients/python/relational_api#write_parquet
+    and match the signature of `write_parquet`.
+    """
+    compression: str | None = None # Default is 'snappy'
+    field_ids: object | None = None
+    row_group_size_bytes: str | int | None = None
+    row_group_size: int | None = None # Actual default is 122880 but we shouldn't hardcode that on our side
+    overwrite: bool | None = None # Seems to do nothing, see https://github.com/duckdb/duckdb-python/issues/156
+    per_thread_output: bool | None = None # Default: False
+    use_tmp_file: bool | None = None # Default: False
+    partition_by: list[str] | None = None
+    write_partition_columns: bool | None = None # Default: False
+    append: bool | None = None
+
+@frozen
+class ReadNdjsonParams:
+    """NdJson (newline-delimited json records) reading is implemented by duckdb and is configurable.
+
+    The arguments are documented at https://duckdb.org/docs/stable/data/json/overview.html
+    and match the signature of `read_json`.
+    """
+    columns: dict[str, str] | None = None
+    sample_size: int | None = None
+    maximum_depth: int | None = None
+    records: str | None = None
+    format: str | None = None
+    date_format: str | None = None
+    timestamp_format: str | None = None
+    compression: str | None = None
+    maximum_object_size: int | None = None
+    ignore_errors: bool | None = None
+    convert_strings_to_integers: bool | None = None
+    field_appearance_threshold: float | None = None
+    map_inference_threshold: int | None = None
+    maximum_sample_files: int | None = None
+    filename: bool | str | None = None
+    hive_partitioning: bool | None = None
+    union_by_name: bool | None = None
+    hive_types: dict[str, str] | None = None
+    hive_types_autocast: bool | None = None
+    
 
 class DatasetSource(CopyToThread):
     """A source of a dataset stream which can be read multiple times, and whose schema is known ahead of time."""
@@ -173,7 +311,7 @@ class DatasetSource(CopyToThread):
         return DatasetSourceFromIterable(schema, datasets)
 
     @staticmethod
-    def from_table(table: DuckdbTable, batch_size: int = default_duckdb_batch_size) -> DatasetSource:
+    def from_table(table: DuckdbTable, batch_size: int = default_duckdb_batch_size) -> DuckdbTableSource:
         # Local import to avoid circle
         from agentune.analyze.core.duckdbio import DuckdbTableSource
         return DuckdbTableSource(table, batch_size)
@@ -201,28 +339,9 @@ class DatasetSource(CopyToThread):
 
     @staticmethod
     def from_csv(path: Path | httpx.URL | str | StringIO, conn: DuckDBPyConnection,
-                 header: bool | int | None = None, compression: str | None = None, sep: str | None = None,
-                 delimiter: str | None = None, dtype: dict[str, str] | list[str] | None = None,
-                 na_values: str | list[str] | None = None, skiprows: int | None = None,
-                 quotechar: str | None = None, escapechar: str | None = None, encoding: str | None = None,
-                 parallel: bool | None = None, date_format: str | None = None,
-                 timestamp_format: str | None = None, sample_size: int | None = None,
-                 all_varchar: bool | None = None, normalize_names: bool | None = None,
-                 null_padding: bool | None = None, names: list[str] | None = None,
-                 lineterminator: str | None = None, columns: dict[str, str] | None = None,
-                 auto_type_candidates: list[str] | None = None, max_line_size: int | None = None,
-                 ignore_errors: bool | None = None, store_rejects: bool | None = None,
-                 rejects_table: str | None = None, rejects_scan: str | None = None,
-                 rejects_limit: int | None = None, force_not_null: list[str] | None = None,
-                 buffer_size: int | None = None, decimal: str | None = None,
-                 allow_quoted_nulls: bool | None = None, filename: bool | str | None = None,
-                 hive_partitioning: bool | None = None, union_by_name: bool | None = None,
-                 hive_types: dict[str, str] | None = None, hive_types_autocast: bool | None = None,
+                 read_csv_params: ReadCsvParams = ReadCsvParams(),
                  batch_size: int = default_duckdb_batch_size) -> DatasetSource:
         """Read CSV data from a local path or remote URL, or from in-memory data represented with StringIO.
-
-        CSV reading is implemented by duckdb and is configurable. The arguments are documented at
-        https://duckdb.org/docs/stable/data/csv/overview.html, and match the signature of `duckdb.read_csv`.
 
         Note that duckdb supports reading any text stream (i.e. TextIOBase), but a DatasetSource can be read
         multiple times, so it can't use a stream that is only consumable once. If you need to read a text stream,
@@ -230,102 +349,49 @@ class DatasetSource(CopyToThread):
         """
         from agentune.analyze.core.duckdbio import sniff_schema
         
-        # Helper function to avoid parameter duplication 
-        def make_csv_reader(connection: DuckDBPyConnection, file_path: Any) -> DuckDBPyRelation:
-            return connection.read_csv(file_path,
-                                      header=header, compression=compression, sep=sep,
-                                      delimiter=delimiter, dtype=dtype, na_values=na_values,
-                                      skiprows=skiprows, quotechar=quotechar, escapechar=escapechar,
-                                      encoding=encoding, parallel=parallel, date_format=date_format,
-                                      timestamp_format=timestamp_format, sample_size=sample_size,
-                                      all_varchar=all_varchar, normalize_names=normalize_names,
-                                      null_padding=null_padding, names=names,
-                                      lineterminator=lineterminator, columns=columns,
-                                      auto_type_candidates=auto_type_candidates, max_line_size=max_line_size,
-                                      ignore_errors=ignore_errors, store_rejects=store_rejects,
-                                      rejects_table=rejects_table, rejects_scan=rejects_scan,
-                                      rejects_limit=rejects_limit, force_not_null=force_not_null,
-                                      buffer_size=buffer_size, decimal=decimal,
-                                      allow_quoted_nulls=allow_quoted_nulls, filename=filename,
-                                      hive_partitioning=hive_partitioning, union_by_name=union_by_name,
-                                      hive_types=hive_types, hive_types_autocast=hive_types_autocast)
-        
         if isinstance(path, Path | httpx.URL):
             path = str(path)
         elif isinstance(path, StringIO):
             # For StringIO, we need to capture the content and create new instances each time
             content = path.getvalue()
-            return sniff_schema(lambda conn: make_csv_reader(conn, StringIO(content)),
+            return sniff_schema(lambda conn: conn.read_csv(StringIO(content), **attrs.asdict(read_csv_params)), # type: ignore[arg-type]
                                 conn, batch_size=batch_size)
         
-        return sniff_schema(lambda conn: make_csv_reader(conn, path),
+        return sniff_schema(lambda conn: conn.read_csv(path, **attrs.asdict(read_csv_params)),
                             conn, batch_size=batch_size)
 
     @staticmethod
     def from_parquet(path: Path | httpx.URL | str, conn: DuckDBPyConnection,
-                     binary_as_string: bool = False, file_row_number: bool = False, filename: bool = False,
-                     hive_partitioning: bool = False, union_by_name: bool = False, compression: str | None = None,
+                     read_parquet_params: ReadParquetParams = ReadParquetParams(),
                      batch_size: int = default_duckdb_batch_size) -> DatasetSource:
-        """Read Parquet, from a local path or remote URL or from in-memory data or a stream.
-
-        Parquet reading is implemented by duckdb and is configurable. The arguments are documented at
-        https://duckdb.org/docs/stable/data/parquet/overview.html, and match the signature of `duckdb.read_parquet`.
-        """
+        """Read Parquet, from a local path or remote URL or from in-memory data or a stream."""
         from agentune.analyze.core.duckdbio import sniff_schema
         if isinstance(path, Path | httpx.URL):
             path = str(path)
-        return sniff_schema(lambda conn: conn.read_parquet(path,
-                                                           binary_as_string=binary_as_string, file_row_number=file_row_number,
-                                                           filename=filename, hive_partitioning=hive_partitioning,
-                                                           union_by_name=union_by_name, compression=compression),
+        return sniff_schema(lambda conn: conn.read_parquet(path, **attrs.asdict(read_parquet_params)),
                             conn, batch_size=batch_size)
 
     @staticmethod
-    def from_json(path: Path | httpx.URL | str | StringIO, conn: DuckDBPyConnection,
-                  columns: dict[str, str] | None = None, sample_size: int | None = None,
-                  maximum_depth: int | None = None, records: str | None = None, format: str | None = None,
-                  date_format: str | None = None, timestamp_format: str | None = None,
-                  compression: str | None = None, maximum_object_size: int | None = None,
-                  ignore_errors: bool | None = None, convert_strings_to_integers: bool | None = None,
-                  field_appearance_threshold: float | None = None, map_inference_threshold: int | None = None,
-                  maximum_sample_files: int | None = None, filename: bool | str | None = None,
-                  hive_partitioning: bool | None = None, union_by_name: bool | None = None,
-                  hive_types: dict[str, str] | None = None, hive_types_autocast: bool | None = None,
-                  batch_size: int = default_duckdb_batch_size) -> DatasetSource:
+    def from_ndjson(path: Path | httpx.URL | str | StringIO, conn: DuckDBPyConnection,
+                    read_ndjson_params: ReadNdjsonParams = ReadNdjsonParams(),
+                    batch_size: int = default_duckdb_batch_size) -> DatasetSource:
         """Read ndjson (newline-delimited json records), from a local path or remote URL or from in-memory data or a stream.
-
-        Json reading is implemented by duckdb and is configurable. The arguments are documented at
-        https://duckdb.org/docs/stable/data/json/overview.html, and match the signature of `duckdb.read_json`.
 
         Note that duckdb supports reading any text stream (i.e. TextIOBase), but a DatasetSource can be read
         multiple times, so it can't use a stream that is only consumable once. If you need to read a text stream,
         please use duckdb directly.
         """
         from agentune.analyze.core.duckdbio import sniff_schema
-        
-        # Helper function to avoid parameter duplication 
-        def make_json_reader(connection: DuckDBPyConnection, file_path: Any) -> DuckDBPyRelation:
-            return connection.read_json(file_path,
-                                       columns=columns, sample_size=sample_size,
-                                       maximum_depth=maximum_depth, records=records, format=format,
-                                       date_format=date_format, timestamp_format=timestamp_format,
-                                       compression=compression, maximum_object_size=maximum_object_size,
-                                       ignore_errors=ignore_errors, convert_strings_to_integers=convert_strings_to_integers,
-                                       field_appearance_threshold=field_appearance_threshold,
-                                       map_inference_threshold=map_inference_threshold,
-                                       maximum_sample_files=maximum_sample_files, filename=filename,
-                                       hive_partitioning=hive_partitioning, union_by_name=union_by_name,
-                                       hive_types=hive_types, hive_types_autocast=hive_types_autocast)
-        
+
         if isinstance(path, Path | httpx.URL):
             path = str(path)
         elif isinstance(path, StringIO):
             # For StringIO, we need to capture the content and create new instances each time
             content = path.getvalue()
-            return sniff_schema(lambda conn: make_json_reader(conn, StringIO(content)),
+            return sniff_schema(lambda conn: conn.read_json(StringIO(content), **attrs.asdict(read_ndjson_params)), # type: ignore[arg-type]
                                 conn, batch_size=batch_size)
         
-        return sniff_schema(lambda conn: make_json_reader(conn, path),
+        return sniff_schema(lambda conn: conn.read_json(path, **attrs.asdict(read_ndjson_params)),
                             conn, batch_size=batch_size)
 
 @define
@@ -418,19 +484,19 @@ class DatasetSink(ABC):
 
     @staticmethod
     def into_duckdb_table(table_name: DuckdbName,
-                          create_table: bool = True,
-                          or_replace: bool = True, delete_contents: bool = True) -> "DuckdbTableSink":
+                          create_if_not_exists: bool = True,
+                          if_exists: IfTargetExists = IfTargetExists.REPLACE) -> "DuckdbTableSink":
         """See DuckdbDatasetSink for the arguments."""
         # Local import to avoid circle
         from agentune.analyze.core.duckdbio import DuckdbTableSink
-        return DuckdbTableSink(table_name, create_table, or_replace, delete_contents)
+        return DuckdbTableSink(table_name, create_if_not_exists, if_exists)
 
     @staticmethod
     def into_unqualified_duckdb_table(table_name: str, conn: DuckDBPyConnection,
-                                      create_table: bool = True,
-                                      or_replace: bool = True, delete_contents: bool = True) -> "DuckdbTableSink":
+                                      create_if_not_exists: bool = True,
+                                      if_exists: IfTargetExists = IfTargetExists.REPLACE) -> "DuckdbTableSink":
         """See DuckdbDatasetSink for the arguments."""
-        return DatasetSink.into_duckdb_table(DuckdbName.qualify(table_name, conn), create_table, or_replace, delete_contents)
+        return DatasetSink.into_duckdb_table(DuckdbName.qualify(table_name, conn), create_if_not_exists, if_exists)
 
     @staticmethod
     def into_duckdb(writer: Callable[[DuckDBPyRelation], None]) -> DatasetSink:
@@ -439,32 +505,20 @@ class DatasetSink(ABC):
         return DatasetSinkToDuckdb(writer)
 
     @staticmethod
-    def into_csv(path: Path | str, **kwargs: Any) -> DatasetSink:
-        """Write to a CSV local file or files.
-
-        CSV writing is implemented by duckdb and is highly configurable. You can read about the
-        possible arguments (that go in the **kwargs) at
-        https://duckdb.org/docs/stable/sql/statements/copy.html#csv-options,
-        and the Python API of `duckdb.Connection.write_csv`.
-        """
+    def into_csv(path: Path | str, params: WriteCsvParams = WriteCsvParams()) -> DatasetSink:
+        """Write to a CSV local file or files."""
         from agentune.analyze.core.duckdbio import DatasetSinkToDuckdb
         if isinstance(path, Path):
             path = str(path)
-        return DatasetSinkToDuckdb(lambda relation: relation.write_csv(path, **kwargs))
+        return DatasetSinkToDuckdb(lambda relation: relation.write_csv(path, **attrs.asdict(params)))
 
     @staticmethod
-    def into_parquet(path: Path | str, **kwargs: Any) -> DatasetSink:
-        """Write to a Parquet local file or files.
-
-        Parquet writing is implemented by duckdb and is configurable. You can read about the
-        possible arguments (that go in the **kwargs) at
-        https://duckdb.org/docs/stable/sql/statements/copy.html#parquet-options,
-        and the Python API of `duckdb.Connection.write_parquet`.
-        """
+    def into_parquet(path: Path | str, params: WriteParquetParams = WriteParquetParams()) -> DatasetSink:
+        """Write to a Parquet local file or files."""
         from agentune.analyze.core.duckdbio import DatasetSinkToDuckdb
         if isinstance(path, Path):
             path = str(path)
-        return DatasetSinkToDuckdb(lambda relation: relation.write_parquet(path, **kwargs))
+        return DatasetSinkToDuckdb(lambda relation: relation.write_parquet(path, **attrs.asdict(params)))
 
 
 def duckdb_to_dataset_iterator(relation: DuckDBPyRelation, batch_size: int = 10000) -> Iterator[Dataset]:

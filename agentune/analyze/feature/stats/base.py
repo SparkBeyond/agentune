@@ -10,6 +10,7 @@ from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.feature.base import Feature
 from agentune.analyze.feature.problem import Problem
 from agentune.analyze.util.attrutil import frozendict_converter
+from agentune.analyze.util.cattrutil import UseTypeTag
 
 # Type aliases
 CategoryClassMatrix = tuple[tuple[float, ...], ...]
@@ -26,7 +27,7 @@ class BinningInfo:
 
 # --- Generic base classes ---
 @frozen
-class FeatureStats:
+class FeatureStats(UseTypeTag):
     """Base class for all feature statistics."""
 
     n_total: int  # total number of data points (including missing)
@@ -38,7 +39,7 @@ class FeatureStats:
 
 
 @frozen
-class RelationshipStats:
+class RelationshipStats(UseTypeTag):
     """Base class for statistics that describe the relationship between a feature and a target.
 
     For numeric features, values are automatically binned into quantile-based categories

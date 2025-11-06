@@ -97,12 +97,16 @@ def _add_train_sample(conn: DuckDBPyConnection, table_name: DuckdbName, is_train
                      )''', [count])
     conn.execute(f'ALTER TABLE {table_name} ALTER COLUMN "{new_col_name}" DROP DEFAULT')
 
+default_feature_search_size = 1000
+default_feature_eval_size = 1000
+
 def split_duckdb_table(conn: DuckDBPyConnection, table_name: DuckdbName | str,
-                       train_fraction: float = 0.8, feature_search_size: int = 1000,
-                       feature_eval_size: int = 1000,
+                       train_fraction: float = 0.8,
+                       feature_search_size: int = default_feature_search_size,
+                       feature_eval_size: int = default_feature_eval_size,
                        is_train_col_name: str = '_is_train',
                        is_feature_search_col_name: str = '_is_feature_search',
-                       is_feature_eval_col_name: str = '_is_feature_eval',) -> SplitDuckdbTable:
+                       is_feature_eval_col_name: str = '_is_feature_eval') -> SplitDuckdbTable:
     """Add split columns to an existing table, so that:
     1. Mark train_fraction of the rows as train (the rest are test)
     2. Out of train, mark feature_search_size rows as feature_search (this is an absolute cap, not a fraction)

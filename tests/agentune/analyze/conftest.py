@@ -9,11 +9,13 @@ import httpx
 import pytest
 from duckdb import DuckDBPyConnection
 
+from agentune.analyze.api.defaults import create_default_httpx_async_client
 from agentune.analyze.core.database import DuckdbManager
+from agentune.analyze.core.llm import LLMContext
+from agentune.analyze.core.sercontext import SerializationContext
 from agentune.analyze.llmcache.base import LLMCacheBackend
 from agentune.analyze.llmcache.serializing_kvstore import SerializingKVStore
 from agentune.analyze.llmcache.sqlite_lru import SqliteLru, threadlocal_connections
-from agentune.analyze.run.base import RunContext, default_httpx_async_client
 from agentune.analyze.util.lrucache import LRUCache
 
 
@@ -32,16 +34,9 @@ def conn(ddb_manager: DuckdbManager) -> Iterator[DuckDBPyConnection]:
 
 
 @pytest.fixture
-async def run_context(ddb_manager: DuckdbManager, httpx_async_client: httpx.AsyncClient) -> AsyncIterator[RunContext]:
-    """Create a default RunContext backed by an in-memory DuckDBManager."""
-    async with contextlib.aclosing(RunContext.create_default_context(ddb_manager, httpx_async_client)) as run_context:
-        yield run_context
-
-
-@pytest.fixture
 async def httpx_async_client() -> AsyncIterator[httpx.AsyncClient]:
     """Create an httpx client """
-    async with default_httpx_async_client() as client:
+    async with create_default_httpx_async_client() as client:
         yield client
 
 @pytest.fixture
@@ -65,3 +60,22 @@ def memory_llm_cache() -> LLMCacheBackend:
 @pytest.fixture
 def disk_llm_cache(sqlite_lru: SqliteLru) -> LLMCacheBackend:
     return SerializingKVStore(sqlite_lru)
+
+@pytest.fixture
+def test_data_dir() -> Path:
+    return Path(__file__).parent / 'data'
+
+@pytest.fixture
+def test_data_conversations(test_data_dir: Path) -> dict[str, Path]:
+    return {
+        'main_csv': test_data_dir / 'conversations' / 'example_main.csv',
+        'conversations_csv': test_data_dir / 'conversations' / 'example_conversations_secondary.csv'
+    }
+
+@pytest.fixture
+def llm_context(httpx_async_client: httpx.AsyncClient, memory_llm_cache: LLMCacheBackend) -> LLMContext:
+    return LLMContext(httpx_async_client, cache_backend=memory_llm_cache)
+
+@pytest.fixture
+def ser_context(llm_context: LLMContext) -> SerializationContext:
+    return SerializationContext(llm_context)

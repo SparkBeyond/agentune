@@ -90,6 +90,12 @@ class TablesWithJoinStrategies:
             for name, group in itertools.groupby(join_strategies, lambda c: c.table.name)
         }))
 
+    @staticmethod
+    def unflatten(tables: Sequence[DuckdbTable], join_strategies: Sequence[JoinStrategy]) -> TablesWithJoinStrategies:
+        strategies_by_table_name = { k: list(v) for k, v in itertools.groupby(join_strategies, lambda c: c.table.name) }
+        tables_with_strategies = [TableWithJoinStrategies(table, { strat.name: strat for strat in strategies_by_table_name.get(table.name, [])}) for table in tables]
+        return TablesWithJoinStrategies.from_list(tables_with_strategies)
+
 
     def __getitem__(self, name: DuckdbName) -> TableWithJoinStrategies:
         return self.tables[name]

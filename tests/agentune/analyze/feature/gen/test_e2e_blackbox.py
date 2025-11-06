@@ -33,22 +33,11 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def test_data_paths() -> dict[str, Path]:
-    """Get the test data directory."""
-    test_data_dir = Path(__file__).parent.parent.parent / 'data' / 'conversations'
-    paths_dict = {
-        'main_csv': test_data_dir / 'example_main.csv',
-        'conversations_csv': test_data_dir / 'example_conversations_secondary.csv'
-    }
-    return paths_dict
-
-
-@pytest.fixture
-def test_dataset_with_strategy(test_data_paths: dict[str, Path], conn: DuckDBPyConnection) -> tuple[Dataset, str, TablesWithJoinStrategies]:
+def test_dataset_with_strategy(test_data_conversations: dict[str, Path], conn: DuckDBPyConnection) -> tuple[Dataset, str, TablesWithJoinStrategies]:
     """Load and prepare test data for ConversationQueryGenerator."""
     # Load CSV files
-    main_df = pl.read_csv(test_data_paths['main_csv'])
-    conversations_df = pl.read_csv(test_data_paths['conversations_csv'])
+    main_df = pl.read_csv(test_data_conversations['main_csv'])
+    conversations_df = pl.read_csv(test_data_conversations['conversations_csv'])
     
     # Create schemas
     main_schema = Schema((

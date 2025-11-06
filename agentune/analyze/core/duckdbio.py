@@ -7,7 +7,7 @@ from typing import Self, override
 
 import pyarrow as pa
 from attrs import frozen
-from duckdb import DuckDBPyConnection, DuckDBPyRelation
+from duckdb import CatalogException, DuckDBPyConnection, DuckDBPyRelation
 
 from agentune.analyze.core import default_duckdb_batch_size
 from agentune.analyze.core.database import DuckdbName, DuckdbTable
@@ -15,6 +15,7 @@ from agentune.analyze.core.dataset import (
     Dataset,
     DatasetSink,
     DatasetSource,
+    IfTargetExists,
     duckdb_to_dataset_iterator,
 )
 from agentune.analyze.core.schema import Schema
@@ -134,18 +135,13 @@ class DuckdbTableSink(DatasetSink):
 
     Args:
         table_name: table to insert data into
-        create_table: if True, creates the target table.
-                      This will fail if it already exists and or_replace is False.
-        or_replace: when creating the table, replace any existing table.
-                    Has no effect if create_table is True.
-        delete_contents: when writing to an existing table, delete all its contents first.
-                         If False, the new data will be appended instead.
-                         Has no effect if create_table is True.
+        create_if_not_exists: if the table does not exist, creates it if True, or fails if False.
+        if_exists: if the table already exists, whether to replace it (atomically), append to it, or fail.
+                   Replacement and appending are both atomic.
     """
     table_name: DuckdbName
-    create_table: bool = True
-    or_replace: bool = True
-    delete_contents: bool = True
+    create_if_not_exists: bool = True
+    if_exists: IfTargetExists = IfTargetExists.REPLACE
 
     @override
     def write(self, dataset_source: DatasetSource, conn: DuckDBPyConnection) -> None:
@@ -158,17 +154,25 @@ class DuckdbTableSink(DatasetSink):
 
             cursor.register(input_relation_name, input_relation)
 
-            if self.create_table:
-                replace = 'OR REPLACE' if self.or_replace else ''
-                cursor.execute(f'CREATE {replace} TABLE {self.table_name} AS SELECT * FROM "{input_relation_name}"')
-            else:
+            try:
                 existing_table = DuckdbTable.from_duckdb(self.table_name, cursor)
+            except CatalogException as e:
+                if 'does not exist' in str(e):
+                    existing_table = None
+                    if not self.create_if_not_exists:
+                        raise ValueError(f'Table does not exist: {self.table_name}') from e
+                else:
+                    raise
+
+            if existing_table is None or self.if_exists == IfTargetExists.REPLACE:
+                cursor.execute(f'CREATE OR REPLACE TABLE {self.table_name} AS SELECT * FROM "{input_relation_name}"')
+            elif self.if_exists == IfTargetExists.APPEND:
                 if existing_table.schema != dataset_source.schema:
-                    raise ValueError(f'Cannot write data with schema {dataset_source.schema} to table {self.table_name} '
-                                     f'which has the schema {existing_table.schema}')
-                if self.delete_contents:
-                    cursor.execute(f'DELETE FROM {self.table_name}')
+                    raise ValueError(f'Cannot append to table {self.table_name} due to schema mismatch: source schema is {dataset_source.schema},'
+                                     f'destination schema is {existing_table.schema}')
                 cursor.execute(f'INSERT INTO {self.table_name} SELECT * FROM "{input_relation_name}"')
+            else:
+                raise ValueError(f'Table already exists: {self.table_name}')
 
     def as_table(self, conn: DuckDBPyConnection) -> DuckdbTable:
         return DuckdbTable.from_duckdb(self.table_name, conn)

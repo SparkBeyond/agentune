@@ -15,10 +15,10 @@ from agentune.analyze.core import database, types
 from agentune.analyze.core.database import (
     ArtIndex,
     DuckdbConfig,
-    DuckdbFilesystemDatabase,
-    DuckdbInMemoryDatabase,
+    DuckdbInMemory,
     DuckdbManager,
     DuckdbName,
+    DuckdbOnDisk,
     DuckdbTable,
 )
 from agentune.analyze.core.dataset import Dataset, DatasetSink, DatasetSource
@@ -62,7 +62,7 @@ def test_duckdb_manager(tmp_path: Path) -> None:
             conn.execute('CREATE TABLE main (id INTEGER)')
             conn.execute('INSERT INTO main (id) VALUES (1)')
 
-        ddb_manager.attach(DuckdbFilesystemDatabase(dbpath), name='testdb')
+        ddb_manager.attach(DuckdbOnDisk(dbpath), name='testdb')
         
         def assert_correct() -> None:
             with ddb_manager.cursor() as conn:
@@ -78,7 +78,7 @@ def test_duckdb_manager(tmp_path: Path) -> None:
         asyncio.run(async_test())
 
         # Second in-memory database
-        memory2 = DuckdbInMemoryDatabase()
+        memory2 = DuckdbInMemory()
         ddb_manager.attach(memory2, name='memory2')
 
         with ddb_manager.cursor() as conn:
@@ -163,7 +163,7 @@ def test_qualified_names() -> None:
 
     # Reconnect to get a clean main database
     with contextlib.closing(DuckdbManager.in_memory()) as ddb_manager, ddb_manager.cursor() as conn:
-        ddb_manager.attach(DuckdbInMemoryDatabase(), name='memory two')
+        ddb_manager.attach(DuckdbInMemory(), name='memory two')
         conn.execute('CREATE SCHEMA "memory two"."custom schema"')
         dotest(conn, 'memory two', 'custom schema')
 
@@ -229,7 +229,7 @@ def test_temp_schema(tmp_path: Path) -> None:
             ('db', temp_schema_name, name1.name),
         }
 
-        ddb_manager.attach(DuckdbInMemoryDatabase(), name='newdb')
+        ddb_manager.attach(DuckdbInMemory(), name='newdb')
         schemas = conn.execute("select schema_name from duckdb_schemas() where database_name='newdb'").fetchall()
         assert schemas == [('main',)], 'Temp schema not created in secondary database'
 
@@ -267,6 +267,6 @@ def test_db_storage_version(tmp_path: Path) -> None:
         with ddb_manager.cursor() as conn:
             # We set version eg 'v1.2.0' and the version reported back is 'v1.2.0+'
             assert get_storage_version(conn, 'duck') == database.required_db_version + '+'
-        ddb_manager.attach(DuckdbFilesystemDatabase(tmp_path / 'duck2.db'))
+        ddb_manager.attach(DuckdbOnDisk(tmp_path / 'duck2.db'))
         with ddb_manager.cursor() as conn:
             assert get_storage_version(conn, 'duck2') == database.required_db_version + '+'

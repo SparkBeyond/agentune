@@ -313,7 +313,7 @@ class SqliteLru(KVStore[bytes, bytes], ConnectionProvider):
         """Open or create an sqlite database to use as a cache, and wrap it to de/serialize LLM cache values.
 
         An SqliteLru instance MUST be closed, to stop the associated thread and close all connections.
-        Use this function as a context manager to do so.
+        Use this function's return value as a context manager to do so.
         """
         sqlite_lru = SqliteLru(path, maxsize, cleanup_interval, connection_provider_factory)
         try:

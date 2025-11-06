@@ -6,7 +6,7 @@ import pytest
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
-from agentune.analyze.core.database import DuckdbName, DuckdbTable
+from agentune.analyze.core.database import DuckdbManager, DuckdbName, DuckdbTable
 from agentune.analyze.core.schema import Field
 from agentune.analyze.feature.problem import (
     ClassificationProblem,
@@ -16,15 +16,14 @@ from agentune.analyze.feature.problem import (
     TableDescription,
 )
 from agentune.analyze.join.base import TablesWithJoinStrategies, TableWithJoinStrategies
-from agentune.analyze.run.base import RunContext
 from agentune.analyze.run.feature_search import problem_discovery
 
 from .test_impl import input_data_from_df
 
 _logger = logging.getLogger(__name__)
 
-def test_discover_problem_int_target(run_context: RunContext, conn: DuckDBPyConnection) -> None:
-    input_data = input_data_from_df(run_context, pl.DataFrame({
+def test_discover_problem_int_target(ddb_manager: DuckdbManager, conn: DuckDBPyConnection) -> None:
+    input_data = input_data_from_df(ddb_manager, pl.DataFrame({
         'x': [float(x % 10) for x in range(1, 1000)],
         'target': [int(t % 3) for t in range(1, 1000)],
     }))
@@ -51,8 +50,8 @@ def test_discover_problem_int_target(run_context: RunContext, conn: DuckDBPyConn
         dotest(ProblemDescription('target'), True, 2)
 
 
-def test_discover_problem_float_target(run_context: RunContext, conn: DuckDBPyConnection) -> None:
-    input_data = input_data_from_df(run_context, pl.DataFrame({
+def test_discover_problem_float_target(ddb_manager: DuckdbManager, conn: DuckDBPyConnection) -> None:
+    input_data = input_data_from_df(ddb_manager, pl.DataFrame({
         'x': [float(x % 10) for x in range(1, 1000)],
         'target': [float(t % 3 + 0.1) for t in range(1, 1000)],
     }))
@@ -72,11 +71,11 @@ def test_discover_problem_float_target(run_context: RunContext, conn: DuckDBPyCo
         dotest(ProblemDescription('target', target_desired_outcome=1))
 
 
-def test_discover_problem_str_target(run_context: RunContext, conn: DuckDBPyConnection) -> None:
+def test_discover_problem_str_target(ddb_manager: DuckdbManager, conn: DuckDBPyConnection) -> None:
     # Use non-numeric string classes to ensure validation doesn't rely on float casting
     labels = ('A', 'B', 'C')
     num_labels = len(labels)
-    input_data = input_data_from_df(run_context, pl.DataFrame({
+    input_data = input_data_from_df(ddb_manager, pl.DataFrame({
         'x': [float(x % 10) for x in range(1, 1000)],
         'target': [labels[t % num_labels] for t in range(1, 1000)],
     }))
@@ -96,8 +95,8 @@ def test_discover_problem_str_target(run_context: RunContext, conn: DuckDBPyConn
         dotest(ProblemDescription('target', target_desired_outcome=RegressionDirection.up))
 
 
-def test_target_dtype_preserved(run_context: RunContext, conn: DuckDBPyConnection) -> None:
-    input_data = input_data_from_df(run_context, pl.DataFrame({
+def test_target_dtype_preserved(ddb_manager: DuckdbManager, conn: DuckDBPyConnection) -> None:
+    input_data = input_data_from_df(ddb_manager, pl.DataFrame({
         'x': [float(x % 10) for x in range(1, 1000)],
         'target': [int(t % 3) for t in range(1, 1000)],
     }, schema_overrides={'target': types.int16.polars_type}))
@@ -105,9 +104,9 @@ def test_target_dtype_preserved(run_context: RunContext, conn: DuckDBPyConnectio
     assert problem.target_column.dtype == types.int16, 'Correct target column dtype'
 
 
-def test_fail_on_invalid_int_target_values(run_context: RunContext) -> None:
-    with run_context.ddb_manager.cursor() as conn:
-        input_data = input_data_from_df(run_context, pl.DataFrame({
+def test_fail_on_invalid_int_target_values(ddb_manager: DuckdbManager) -> None:
+    with ddb_manager.cursor() as conn:
+        input_data = input_data_from_df(ddb_manager, pl.DataFrame({
             'x': [float(x % 10) for x in range(1, 1000)],
             'target': [int(t % 3) for t in range(1, 1000)],
         }))
@@ -141,9 +140,9 @@ def test_fail_on_invalid_int_target_values(run_context: RunContext) -> None:
             problem_discovery.validate_input(input_data, problem, conn)
 
 
-def test_fail_on_invalid_float_target_values(run_context: RunContext) -> None:
-    with run_context.ddb_manager.cursor() as conn:
-        input_data = input_data_from_df(run_context, pl.DataFrame({
+def test_fail_on_invalid_float_target_values(ddb_manager: DuckdbManager) -> None:
+    with ddb_manager.cursor() as conn:
+        input_data = input_data_from_df(ddb_manager, pl.DataFrame({
             'x': [float(x % 10) for x in range(1, 1000)],
             'target': [float(t % 3) for t in range(1, 1000)],
         }))
@@ -183,11 +182,11 @@ def test_fail_on_invalid_float_target_values(run_context: RunContext) -> None:
             conn.execute(f'delete from input where target {operator} {invalid_value}')
             assert conn.fetchone() == (1,)
 
-def test_table_descriptions(run_context: RunContext, conn: DuckDBPyConnection) -> None:
+def test_table_descriptions(ddb_manager: DuckdbManager, conn: DuckDBPyConnection) -> None:
     conn.execute('create table secondary(y int)')
     secondary_table = DuckdbTable.from_duckdb('secondary', conn)
 
-    input_data = input_data_from_df(run_context, pl.DataFrame({
+    input_data = input_data_from_df(ddb_manager, pl.DataFrame({
         'x': [float(x % 10) for x in range(1, 1000)],
         'target': [float(t % 3) for t in range(1, 1000)],
     }))

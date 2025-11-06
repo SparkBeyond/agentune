@@ -31,7 +31,7 @@ from agentune.analyze.feature.gen.base import (
     GeneratedFeature,
     SyncFeatureGenerator,
 )
-from agentune.analyze.feature.problem import Problem
+from agentune.analyze.feature.problem import Problem, ProblemDescription
 from agentune.analyze.feature.select.base import (
     FeatureSelector,
     SyncEnrichedFeatureSelector,
@@ -39,11 +39,9 @@ from agentune.analyze.feature.select.base import (
 )
 from agentune.analyze.feature.stats import stats_calculators
 from agentune.analyze.feature.stats.base import FeatureWithFullStats, FullFeatureStats
-from agentune.analyze.run.base import RunContext
-from agentune.analyze.run.enrich.base import EnrichRunner
-from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
 from agentune.analyze.run.feature_search import problem_discovery
 from agentune.analyze.run.feature_search.base import (
+    FeatureSearchComponents,
     FeatureSearchInputData,
     FeatureSearchParams,
     FeatureSearchResults,
@@ -88,20 +86,20 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
 
     max_features_enrich_batch_size: int = 1000
     run_generators_concurrently: bool = True
-    enrich_runner: EnrichRunner = EnrichRunnerImpl()
     batch_size: int = default_duckdb_batch_size
 
     @override
-    async def run(self, run_context: RunContext, data: FeatureSearchInputData,
-                  params: FeatureSearchParams) -> FeatureSearchResults:
+    async def run(self, ddb_manager: DuckdbManager, data: FeatureSearchInputData,
+                  params: FeatureSearchParams, components: FeatureSearchComponents,
+                  problem_description: ProblemDescription) -> FeatureSearchResults:
 
-        with run_context.ddb_manager.cursor() as conn:
+        with ddb_manager.cursor() as conn:
             problem = await asyncio.to_thread(problem_discovery.discover_problem, data.copy_to_thread(),
-                                              params.problem_description, conn, params.max_classes)
+                                              problem_description, conn, params.max_classes)
             await asyncio.to_thread(problem_discovery.validate_input, data.copy_to_thread(), problem, conn)
 
-        with run_context.ddb_manager.cursor() as conn:
-            candidate_features = await self._generate_features(conn, data, params.generators, problem)
+        with ddb_manager.cursor() as conn:
+            candidate_features = await self._generate_features(conn, data, components.generators, problem)
 
         if len(candidate_features) == 0:
             raise NoFeaturesFoundError
@@ -113,17 +111,17 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
         # Compute candidate features on the feature_search dataset, storing the results in the temp schema.
         (enriched_feature_eval_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
             deduplicated_candidate_features, data.feature_eval,
-            run_context.ddb_manager, params, 'enriched_feature_search',
+            ddb_manager, components, 'enriched_feature_search',
             problem.target_column.name
         )
         try:
-            with run_context.ddb_manager.cursor() as conn:
+            with ddb_manager.cursor() as conn:
                 selected_features = await self._select_features(features_with_updated_defaults,
                                                                 data.feature_eval, enriched_feature_eval_group_tables,
-                                                                problem, params, conn)
+                                                                problem, params, components, conn)
                 _logger.debug(f'Selected {len(selected_features)} features out of {len(features_with_updated_defaults)}')
         finally:
-            with run_context.ddb_manager.cursor() as conn:
+            with ddb_manager.cursor() as conn:
                 for table in enriched_feature_eval_group_tables:
                     conn.execute(f'drop table {table.name}')
 
@@ -138,14 +136,14 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
         selected_features_with_original_names = [attrs.evolve(feature, name=original_name(feature)) for feature in selected_features]
         deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[problem.target_column.name])
 
-        enriched_eval_name = self._enriched_table_name(run_context.ddb_manager, params.store_enriched_train, 'enriched_eval')
-        enriched_test_name = self._enriched_table_name(run_context.ddb_manager, params.store_enriched_test, 'enriched_test')
+        enriched_eval_name = self._enriched_table_name(ddb_manager, params.store_enriched_train, 'enriched_eval')
+        enriched_test_name = self._enriched_table_name(ddb_manager, params.store_enriched_test, 'enriched_test')
 
         try:
-            with run_context.ddb_manager.cursor() as conn:
+            with ddb_manager.cursor() as conn:
                 enriched_eval_sink = DatasetSink.into_duckdb_table(enriched_eval_name)
-                await params.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval,
-                                                      enriched_eval_sink, params.feature_computers, conn,
+                await components.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval,
+                                                      enriched_eval_sink, components.feature_computers, conn,
                                                       keep_input_columns=(problem.target_column.name,),
                                                       deduplicate_names=False)
                 features_with_eval_stats: list[FeatureWithFullStats] = \
@@ -156,8 +154,8 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                     conn.execute(f'drop table {enriched_eval_name}')
 
                 enriched_test_sink = DatasetSink.into_duckdb_table(enriched_test_name)
-                await params.enrich_runner.run_stream(deduplicated_selected_features, data.test,
-                                                      enriched_test_sink, params.feature_computers, conn,
+                await components.enrich_runner.run_stream(deduplicated_selected_features, data.test,
+                                                      enriched_test_sink, components.feature_computers, conn,
                                                       keep_input_columns=(problem.target_column.name,),
                                                       deduplicate_names=False)
                 features_with_test_stats: list[FeatureWithFullStats] = \
@@ -172,7 +170,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                                             DuckdbTable.from_duckdb(enriched_eval_name, conn) if params.store_enriched_train else None,
                                             DuckdbTable.from_duckdb(enriched_test_name, conn) if params.store_enriched_test else None)
         finally:
-            with run_context.ddb_manager.cursor() as conn:
+            with ddb_manager.cursor() as conn:
                 if not params.store_enriched_train:
                     conn.execute(f'drop table if exists {enriched_eval_name}')
                 if not params.store_enriched_test:
@@ -250,7 +248,7 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
 
     async def _enrich_in_batches_and_update_defaults(self, features: list[GeneratedFeature], dataset_source: DatasetSource,
                                                      ddb_manager: DuckdbManager,
-                                                     params: FeatureSearchParams, target_table_base_name: str,
+                                                     components: FeatureSearchComponents, target_table_base_name: str,
                                                      target_column: str) -> tuple[list[DuckdbTable], list[Feature]]:
         """Enrich these features in batches of size up to self.max_features_enrich_batch_size,
         and return a table per batch. The first table also has the target column; the rest don't.
@@ -267,10 +265,10 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                     keep_input_columns = (target_column,) if index == 0 else ()
                     group_table_name = ddb_manager.temp_random_name(target_table_base_name)
                     dataset_sink = DatasetSink.into_duckdb_table(group_table_name)
-                    await params.enrich_runner.run_stream([gen.feature for gen in feature_group],
-                                                          dataset_source, dataset_sink, params.feature_computers,
-                                                          conn, keep_input_columns=keep_input_columns,
-                                                          deduplicate_names=False)
+                    await components.enrich_runner.run_stream([gen.feature for gen in feature_group],
+                                                              dataset_source, dataset_sink, components.feature_computers,
+                                                              conn, keep_input_columns=keep_input_columns,
+                                                              deduplicate_names=False)
                     table = DuckdbTable.from_duckdb(group_table_name, conn)
                     tables.append(table)
 
@@ -313,8 +311,9 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
 
     async def _select_features(self, candidate_features: list[Feature], feature_eval: DatasetSource,
                                enriched_groups: list[DuckdbTable], problem: Problem,
-                               params: FeatureSearchParams, conn: DuckDBPyConnection) -> list[Feature]:
-        selector = params.selector
+                               params: FeatureSearchParams, components: FeatureSearchComponents,
+                               conn: DuckDBPyConnection) -> list[Feature]:
+        selector = components.selector
         if isinstance(selector, FeatureSelector):
             target_series = feature_eval.select(problem.target_column.name).to_dataset(conn).data[problem.target_column.name]
             features_with_data: list[tuple[Feature, DatasetSource]] = [
@@ -328,14 +327,14 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
                 def sync_select() -> list[Feature]:
                     for fws in features_with_stats:
                         selector.add_feature(fws)
-                    return [fws.feature for fws in selector.select_final_features(problem)]
+                    return [fws.feature for fws in selector.select_final_features(problem, params.feature_count)]
 
                 return await asyncio.to_thread(sync_select)
 
             else:
                 for fws in features_with_stats:
                     await selector.aadd_feature(fws)
-                return [fws.feature for fws in await selector.aselect_final_features(problem)]
+                return [fws.feature for fws in await selector.aselect_final_features(problem, params.feature_count)]
 
         else:
             # selector is EnrichedFeatureSelector. The first enriched table also contains the target column.
@@ -344,11 +343,11 @@ class FeatureSearchRunnerImpl(FeatureSearchRunner):
             if isinstance(selector, SyncEnrichedFeatureSelector):
                 with conn.cursor() as cursor: # for new thread
                     def select() -> list[Feature]:
-                        return list(selector.select_features(candidate_features, enriched_source, problem, cursor))
+                        return list(selector.select_features(candidate_features, params.feature_count, enriched_source, problem, cursor))
                     return await asyncio.to_thread(select)
 
             else:
-                return list(await selector.aselect_features(candidate_features, enriched_source, problem, conn))
+                return list(await selector.aselect_features(candidate_features, params.feature_count, enriched_source, problem, conn))
 
     def _update_feature_defaults(self, feature: Feature, enriched: pl.Series) -> Feature:
         match feature:

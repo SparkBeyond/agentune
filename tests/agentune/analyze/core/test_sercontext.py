@@ -28,13 +28,14 @@ from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.join.conversation import ConversationJoinStrategy
 from agentune.analyze.join.lookup import LookupJoinStrategy
 from agentune.analyze.join.timeseries import KtsJoinStrategy
-from agentune.analyze.run.base import RunContext
 
 _logger = logging.getLogger(__name__)
 
 @pytest.fixture
-def converter(run_context: RunContext) -> JsonConverter:
-    return run_context.ser_context.converter
+def converter(httpx_async_client: httpx.AsyncClient) -> JsonConverter:
+    llm_context = LLMContext(httpx_async_client)
+    ser_context = SerializationContext(llm_context)
+    return ser_context.converter
 
 async def test_llm_serialization(httpx_async_client: httpx.AsyncClient) -> None:
     llm_context = LLMContext(httpx_async_client)

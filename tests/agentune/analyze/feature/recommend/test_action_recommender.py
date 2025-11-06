@@ -13,13 +13,13 @@ from cattrs import Converter
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core.database import (
-    DuckdbInMemoryDatabase,
+    DuckdbInMemory,
     DuckdbManager,
 )
 from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.llm import LLMContext, LLMSpec
 from agentune.analyze.core.schema import Field, Schema
-from agentune.analyze.core.sercontext import LLMWithSpec
+from agentune.analyze.core.sercontext import LLMWithSpec, SerializationContext
 from agentune.analyze.core.types import EnumDtype
 from agentune.analyze.feature.problem import ClassificationProblem, ProblemDescription
 from agentune.analyze.feature.recommend import (
@@ -31,7 +31,6 @@ from agentune.analyze.feature.recommend.action_recommender import (
 )
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
 from agentune.analyze.join.conversation import Conversation, Message
-from agentune.analyze.run.base import RunContext
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +122,7 @@ def _reconstruct_features_with_stats(
 async def test_action_recommender(
     real_llm_with_spec: LLMWithSpec,
     structuring_llm_with_spec: LLMWithSpec,
-    run_context: RunContext,
+    ser_context: SerializationContext,
 ) -> None:
     """End-to-end test of ConversationActionRecommender (action recommender) with real data."""
     # Check for API key
@@ -137,7 +136,7 @@ async def test_action_recommender(
     features_file_path = data_dir / 'features_with_stats.json'
     
     # Get cattrs converter from run_context (as per docs/serialization.md)
-    converter = run_context.ser_context.converter
+    converter = ser_context.converter
     
     # Load features and extract problem info
     features_and_stats = _load_features_stats(features_file_path)
@@ -146,7 +145,7 @@ async def test_action_recommender(
     # Load main dataset from normalized CSV (much simpler!)
     dataset = _load_main_dataset(main_csv_path)
     
-    ddb_manager = DuckdbManager(DuckdbInMemoryDatabase())
+    ddb_manager = DuckdbManager(DuckdbInMemory())
     with ddb_manager.cursor() as conn:
         # Load conversations from normalized CSV
         _load_conversations_from_normalized_csv(conversations_csv_path, conn)
@@ -211,7 +210,7 @@ async def test_action_recommender(
     logger.info(f'Analysis summary: {report.analysis_summary[:200]}...')
     logger.info(f'Number of recommendations: {len(report.recommendations)}')
     logger.info(f'Number of conversations referenced: {len(report.conversations)}')
-    
+
     # Verify recommendation structure
     for rec in report.recommendations:
         assert len(rec.title) > 0, 'Recommendation title should not be empty'
@@ -222,29 +221,29 @@ async def test_action_recommender(
         for feat_ref in rec.supporting_features:
             assert isinstance(feat_ref.sse_reduction, float), 'SSE reduction should be a float'
             # Note: SSE reduction can be negative (temporary errors), so we don't assert > 0
-    
+
     # Verify ConversationWithMetadata structure
     assert len(report.conversations) > 0, 'Should have at least one conversation referenced'
-    
+
     for display_num, conv_metadata in report.conversations.items():
         # Verify all required fields are present
         assert conv_metadata.actual_id is not None, f'Conversation {display_num} missing actual_id'
         assert conv_metadata.conversation is not None, f'Conversation {display_num} missing conversation content'
         assert conv_metadata.outcome is not None, f'Conversation {display_num} missing outcome'
-        
+
         # Verify conversation has messages
         assert len(conv_metadata.conversation.messages) > 0, f'Conversation {display_num} has no messages'
-        
+
         # Format actual_id for display (handle both string UUIDs and integers)
         actual_id_display = str(conv_metadata.actual_id)[:20] + '...' if len(str(conv_metadata.actual_id)) > 20 else str(conv_metadata.actual_id)
         logger.info(f'Conversation {display_num}: ID={actual_id_display}, Outcome={conv_metadata.outcome}, Messages={len(conv_metadata.conversation.messages)}')
-    
+
     logger.info('✅ All conversation metadata verified successfully!')
 
 
 def test_conversation_id_mapping() -> None:
     """Test that conversation IDs are correctly mapped to display numbers.
-    
+
     This test verifies that the implicit mapping through list positions works correctly:
     - Display number N corresponds to conversation_ids[N-1]
     - The same position in conversations tuple
@@ -253,7 +252,7 @@ def test_conversation_id_mapping() -> None:
     # Simulate the data structures as they would be in arecommend()
     conversation_ids = ['conv_abc', 'conv_def', 'conv_ghi', 'conv_jkl', 'conv_mno']
     outcomes = ['positive', 'negative', 'positive', 'negative', 'positive']
-    
+
     # Create mock conversations
     conversations = tuple(
         Conversation(messages=(
@@ -261,10 +260,10 @@ def test_conversation_id_mapping() -> None:
         ))
         for conv_id in conversation_ids
     )
-    
+
     # Simulate LLM referencing conversations 2, 4, and 5
     llm_referenced_indices = {2, 4, 5}
-    
+
     # Build conversations dict as done in _convert_pydantic_to_attrs
     conversations_dict = {
         idx: ConversationWithMetadata(
@@ -274,28 +273,28 @@ def test_conversation_id_mapping() -> None:
         )
         for idx in llm_referenced_indices
     }
-    
+
     # Verify the mapping is correct
     assert len(conversations_dict) == 3, 'Should have 3 conversations'
-    
+
     # Verify Conversation 2 maps correctly
     assert 2 in conversations_dict
     assert conversations_dict[2].actual_id == 'conv_def'  # conversation_ids[1]
     assert conversations_dict[2].outcome == 'negative'  # outcomes[1]
     assert 'conv_def' in conversations_dict[2].conversation.messages[0].content
-    
+
     # Verify Conversation 4 maps correctly
     assert 4 in conversations_dict
     assert conversations_dict[4].actual_id == 'conv_jkl'  # conversation_ids[3]
     assert conversations_dict[4].outcome == 'negative'  # outcomes[3]
     assert 'conv_jkl' in conversations_dict[4].conversation.messages[0].content
-    
+
     # Verify Conversation 5 maps correctly
     assert 5 in conversations_dict
     assert conversations_dict[5].actual_id == 'conv_mno'  # conversation_ids[4]
     assert conversations_dict[5].outcome == 'positive'  # outcomes[4]
     assert 'conv_mno' in conversations_dict[5].conversation.messages[0].content
-    
+
     # Verify conversations 1 and 3 are NOT in the dict (not referenced by LLM)
     assert 1 not in conversations_dict
     assert 3 not in conversations_dict
