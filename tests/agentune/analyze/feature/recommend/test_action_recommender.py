@@ -5,6 +5,8 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import cast
+from unittest.mock import Mock
 
 import httpx
 import polars as pl
@@ -29,6 +31,7 @@ from agentune.analyze.feature.recommend import (
 from agentune.analyze.feature.recommend.action_recommender import (
     ConversationWithMetadata,
 )
+from agentune.analyze.feature.recommend.prompts import RecommendationRaw, StructuredReport
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
 from agentune.analyze.join.conversation import Conversation, Message
 
@@ -105,27 +108,27 @@ def _load_conversations_from_normalized_csv(csv_path: Path, conn: DuckDBPyConnec
 
 def _load_long_conversations_from_normalized_csv(csv_path: Path, conn: DuckDBPyConnection, duplication_factor: int = 10) -> tuple[int, int]:
     """Load conversations from normalized CSV and duplicate them to create very long conversations.
-    
+
     Args:
         csv_path: Path to the original conversations CSV
         conn: DuckDB connection
         duplication_factor: How many times to duplicate each conversation
-        
+
     Returns:
         Tuple of (first_conversation_id, last_conversation_id) for testing
     """
     df = pl.read_csv(csv_path)
-    
+
     # Parse timestamps
     df = df.with_columns(
         pl.col('timestamp').str.to_datetime('%Y-%m-%dT%H:%M:%SZ')
     )
-    
+
     # Get the original conversation IDs for tracking
     original_ids = sorted(df['id'].unique().to_list())
     first_id = original_ids[0]
     last_id = original_ids[-1]
-    
+
     # Duplicate the conversations multiple times to make them very long
     duplicated_dfs = []
     for i in range(duplication_factor):
@@ -137,16 +140,16 @@ def _load_long_conversations_from_normalized_csv(csv_path: Path, conn: DuckDBPyC
                                 f'and should trigger token sampling when there are many conversations like this]'
         ])
         duplicated_dfs.append(df_copy)
-    
+
     # Concatenate all duplicated conversations
     long_df = pl.concat(duplicated_dfs, how='vertical')
-    
+
     # Register and create table
     conn.execute('DROP TABLE IF EXISTS conversations')
     conn.register('conversations_df', long_df)
     conn.execute('CREATE TABLE conversations AS SELECT * FROM conversations_df')
     conn.unregister('conversations_df')
-    
+
     return first_id, last_id
 
 
@@ -355,7 +358,7 @@ async def test_action_recommender_with_long_conversations_token_sampling(
     ser_context: SerializationContext,
 ) -> None:
     """Test ConversationActionRecommender with very long conversations to verify token sampling works.
-    
+
     This test creates artificially long conversations by duplicating the original data,
     then verifies that:
     1. No token limit errors occur
@@ -366,7 +369,7 @@ async def test_action_recommender_with_long_conversations_token_sampling(
     # Check for API key
     if not os.getenv('OPENAI_API_KEY'):
         pytest.skip('OPENAI_API_KEY not set')
-    
+
     # Load test data from centralized data directory (normalized CSVs)
     data_dir = Path(__file__).parent.parent.parent / 'data' / 'conversations'
     main_csv_path = data_dir / 'example_main.csv'
@@ -379,28 +382,28 @@ async def test_action_recommender_with_long_conversations_token_sampling(
     # Load features and extract problem info
     features_and_stats = _load_features_stats(features_file_path)
     target_column, desired_target_class = _extract_problem_info(features_and_stats)
-    
+
     # Load main dataset from normalized CSV
     dataset = _load_main_dataset(main_csv_path)
-    
+
     ddb_manager = DuckdbManager(DuckdbInMemory())
     with ddb_manager.cursor() as conn:
         # Load LONG conversations from normalized CSV (duplicated 15 times to make them very long)
         first_conv_id, last_conv_id = _load_long_conversations_from_normalized_csv(
             conversations_csv_path, conn, duplication_factor=15
         )
-        
+
         logger.info(f'Created long conversations - first ID: {first_conv_id}, last ID: {last_conv_id}')
-        
+
         target_field = dataset.schema[target_column]
         classes_in_data = tuple(sorted(dataset.data[target_column].unique().drop_nulls().to_list()))
-        
+
         problem_description = ProblemDescription(
             target_column=target_column,
             problem_type='classification',
             target_desired_outcome=desired_target_class,
         )
-        
+
         problem = ClassificationProblem(
             problem_description=problem_description,
             target_column=target_field,
@@ -412,7 +415,7 @@ async def test_action_recommender_with_long_conversations_token_sampling(
         features_and_stats,
         converter,
     )
-    
+
     # Create recommender with smaller max_samples to force token sampling
     recommender = ConversationActionRecommender(
         model=real_llm_with_spec,
@@ -420,7 +423,7 @@ async def test_action_recommender_with_long_conversations_token_sampling(
         max_samples=15,  # Smaller to force token limit issues with long conversations
         top_k_features=20,  # Smaller to focus on the token sampling behavior
     )
-    
+
     with ddb_manager.cursor() as conn:
         # This should NOT raise any token limit errors due to the token sampling logic
         report = await recommender.arecommend(
@@ -429,47 +432,280 @@ async def test_action_recommender_with_long_conversations_token_sampling(
             dataset=dataset,
             conn=conn,
         )
-    
+
     if report is None:
         pytest.skip('No conversation features found')
-    
+
     # Verify that the recommender still produced valid results
     assert isinstance(report, RecommendationsReport)
     assert len(report.analysis_summary) > 50
     assert len(report.recommendations) > 0
-    
+
     # Check that some conversations were included but not all
     # The raw_report should contain some conversation content but not all conversations
     raw_report_lower = report.raw_report.lower()
-    
+
     # Verify that some conversation content is included (first conversation should be there)
     assert 'conversation' in raw_report_lower, 'Report should contain conversation content'
-    
+
     # Log information about what was included
     first_id_str = str(first_conv_id)
     last_id_str = str(last_conv_id)
-    
+
     first_conv_in_report = first_id_str in report.raw_report
     last_conv_in_report = last_id_str in report.raw_report
-    
+
     logger.info(f'First conversation (ID {first_conv_id}) in report: {first_conv_in_report}')
     logger.info(f'Last conversation (ID {last_conv_id}) in report: {last_conv_in_report}')
     logger.info(f'Report length: {len(report.raw_report)} characters')
-    
+
     # We expect that due to token sampling:
     # 1. The first conversation should likely be included (as token reduction starts from the end)
     # 2. The last conversation might be excluded if token limits are hit
     # Note: We can't guarantee exact behavior as it depends on the actual token counts,
     # but we can verify that the system didn't crash and produced valid results
-    
+
     logger.info('============= Token Sampling Test Results =============')
     logger.info(f'Dataset shape: {dataset.data.shape}')
     logger.info(f'Features analyzed: {len(features_with_stats)}')
     logger.info(f'Number of recommendations: {len(report.recommendations)}')
     logger.info('Test completed successfully - no token limit errors occurred!')
-    
+
     # Verify basic structure is still intact
     for rec in report.recommendations:
         assert len(rec.title) > 0, 'Recommendation title should not be empty'
         assert len(rec.description) > 0, 'Recommendation description should not be empty'
         assert len(rec.rationale) > 0, 'Recommendation rationale should not be empty'
+
+
+def test_feature_filtering_removes_recommendations_without_features(caplog: pytest.LogCaptureFixture) -> None:
+    """Test that recommendations with no supporting features are completely filtered out."""
+    # Create a mock recommender
+    recommender = ConversationActionRecommender(
+        model=Mock(),
+        max_samples=10,
+        top_k_features=5,
+    )
+
+    # Create mock features with proper structure
+    mock_feature = Mock()
+    mock_feature.description = 'Valid feature'
+    mock_relationship = Mock()
+    mock_relationship.sse_reduction = 0.8
+    mock_stats = Mock()
+    mock_stats.relationship = mock_relationship
+
+    features_with_stats = cast(
+        list[FeatureWithFullStats],
+        [Mock(feature=mock_feature, stats=mock_stats)],
+    )
+
+    # Create a Pydantic report with a recommendation that has NO supporting features
+    mock_pydantic_report = StructuredReport(
+        analysis_summary='Test analysis',
+        recommendations=[
+            RecommendationRaw(
+                title='Recommendation Without Features',
+                description='This recommendation has no supporting features',
+                rationale='Should be filtered out',
+                evidence='No features',
+                supporting_features=[],  # Empty list
+                supporting_conversations=[],
+            ),
+        ]
+    )
+
+    # Call the conversion and filtering methods
+    unfiltered = recommender._pydantic_to_attrs(
+        mock_pydantic_report,
+        features_with_stats,
+        (),  # conversations
+        [],  # conversation_ids
+        [],  # outcomes
+        'raw report'
+    )
+    result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
+
+    # Verify the recommendation was filtered out
+    assert len(result.recommendations) == 0
+
+    # Verify logging
+    assert any('Filtered out' in record.message for record in caplog.records)
+    assert any('Recommendation Without Features' in record.message for record in caplog.records)
+
+
+def test_feature_filtering_removes_features_with_zero_sse() -> None:
+    """Test that features with 0.0 SSE reduction are filtered out."""
+    # Create a mock recommender
+    recommender = ConversationActionRecommender(
+        model=Mock(),
+        max_samples=10,
+        top_k_features=5,
+    )
+
+    # Create mock features: one with high SSE, one with 0.0 SSE
+    mock_feature_high = Mock()
+    mock_feature_high.description = 'High SSE feature'
+    mock_relationship_high = Mock()
+    mock_relationship_high.sse_reduction = 0.8
+    mock_stats_high = Mock()
+    mock_stats_high.relationship = mock_relationship_high
+
+    mock_feature_zero = Mock()
+    mock_feature_zero.description = 'Zero SSE feature'
+    mock_relationship_zero = Mock()
+    mock_relationship_zero.sse_reduction = 0.0
+    mock_stats_zero = Mock()
+    mock_stats_zero.relationship = mock_relationship_zero
+
+    features_with_stats = cast(
+        list[FeatureWithFullStats],
+        [
+            Mock(feature=mock_feature_high, stats=mock_stats_high),
+            Mock(feature=mock_feature_zero, stats=mock_stats_zero),
+        ],
+    )
+
+    # Create a recommendation that references both features
+    mock_pydantic_report = StructuredReport(
+        analysis_summary='Test analysis',
+        recommendations=[
+            RecommendationRaw(
+                title='Mixed Features Recommendation',
+                description='Has both high and zero SSE features',
+                rationale='Test filtering',
+                evidence='Test evidence',
+                supporting_features=[
+                    'High SSE feature',
+                    'Zero SSE feature',  # Should be filtered out
+                ],
+                supporting_conversations=[],
+            ),
+        ]
+    )
+
+    # Call the conversion and filtering methods
+    unfiltered = recommender._pydantic_to_attrs(
+        mock_pydantic_report,
+        features_with_stats,
+        (),  # conversations
+        [],  # conversation_ids
+        [],  # outcomes
+        'raw report'
+    )
+    result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
+
+    # Verify only 1 recommendation remains (with only the high SSE feature)
+    assert len(result.recommendations) == 1
+    rec = result.recommendations[0]
+
+    # Should only have 1 feature (the one with high SSE)
+    assert len(rec.supporting_features) == 1
+    assert rec.supporting_features[0].name == 'High SSE feature'
+    assert rec.supporting_features[0].sse_reduction == 0.8
+
+    # Verify the zero SSE feature is not included
+    feature_names = [f.name for f in rec.supporting_features]
+    assert 'Zero SSE feature' not in feature_names
+
+
+def test_feature_filtering_removes_hallucinated_features(caplog: pytest.LogCaptureFixture) -> None:
+    """Test that hallucinated (non-existent) features are filtered out."""
+    # Create a mock recommender
+    recommender = ConversationActionRecommender(
+        model=Mock(),
+        max_samples=10,
+        top_k_features=5,
+    )
+
+    # Create mock features - only define real features
+    mock_feature_1 = Mock()
+    mock_feature_1.description = 'Real feature 1'
+    mock_relationship_1 = Mock()
+    mock_relationship_1.sse_reduction = 0.9
+    mock_stats_1 = Mock()
+    mock_stats_1.relationship = mock_relationship_1
+
+    mock_feature_2 = Mock()
+    mock_feature_2.description = 'Real feature 2'
+    mock_relationship_2 = Mock()
+    mock_relationship_2.sse_reduction = 0.7
+    mock_stats_2 = Mock()
+    mock_stats_2.relationship = mock_relationship_2
+
+    features_with_stats = cast(
+        list[FeatureWithFullStats],
+        [
+            Mock(feature=mock_feature_1, stats=mock_stats_1),
+            Mock(feature=mock_feature_2, stats=mock_stats_2),
+        ],
+    )
+
+    # Create recommendations with hallucinated features
+    mock_pydantic_report = StructuredReport(
+        analysis_summary='Test analysis',
+        recommendations=[
+            RecommendationRaw(
+                title='Recommendation with Hallucinations',
+                description='Has real and hallucinated features',
+                rationale='Test filtering',
+                evidence='Test evidence',
+                supporting_features=[
+                    'Real feature 1',
+                    "Hallucinated feature that doesn't exist",  # Should be filtered (SSE=0)
+                    'Real feature 2',
+                    'Another fake feature',  # Should be filtered (SSE=0)
+                ],
+                supporting_conversations=[],
+            ),
+            RecommendationRaw(
+                title='Only Hallucinations',
+                description='All features are hallucinated',
+                rationale='Should be removed entirely',
+                evidence='No valid features',
+                supporting_features=[
+                    'Fake feature 1',
+                    'Fake feature 2',
+                    'Fake feature 3',
+                ],
+                supporting_conversations=[],
+            ),
+        ]
+    )
+
+    # Call the conversion and filtering methods
+    unfiltered = recommender._pydantic_to_attrs(
+        mock_pydantic_report,
+        features_with_stats,
+        (),  # conversations
+        [],  # conversation_ids
+        [],  # outcomes
+        'raw report'
+    )
+    result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
+
+    # Verify only 1 recommendation remains (the one with some real features)
+    assert len(result.recommendations) == 1
+    rec = result.recommendations[0]
+
+    # Verify it's the correct recommendation
+    assert rec.title == 'Recommendation with Hallucinations'
+
+    # Should only have the 2 real features
+    assert len(rec.supporting_features) == 2
+    feature_names = [f.name for f in rec.supporting_features]
+    assert 'Real feature 1' in feature_names
+    assert 'Real feature 2' in feature_names
+
+    # Verify hallucinated features are not included
+    assert "Hallucinated feature that doesn't exist" not in feature_names
+    assert 'Another fake feature' not in feature_names
+
+    # Verify SSE values are correct for real features
+    sse_values = {f.name: f.sse_reduction for f in rec.supporting_features}
+    assert sse_values['Real feature 1'] == 0.9
+    assert sse_values['Real feature 2'] == 0.7
+
+    # Verify the recommendation with only hallucinations was filtered out
+    assert any('Filtered out' in record.message for record in caplog.records)
+    assert any('Only Hallucinations' in record.message for record in caplog.records)
