@@ -4,8 +4,6 @@ import pytest
 
 from agentune.analyze.util.lrucache import LRUCache
 
-# ruff: noqa: PT018
-
 
 def test_basic_functionality() -> None:
     """Test basic cache operations."""

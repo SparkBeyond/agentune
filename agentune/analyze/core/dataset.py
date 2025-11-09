@@ -37,7 +37,7 @@ class IfTargetExists(StrEnum):
 
 
 @frozen
-class Dataset(CopyToThread):
+class Dataset(CopyToThread): #noqa: PLW1641 # polars DF is not hashable
     """A dataframe with a schema.
     
     This class exists because our Schema might evolve to contain more information than the pl.Schema available on the dataframe.

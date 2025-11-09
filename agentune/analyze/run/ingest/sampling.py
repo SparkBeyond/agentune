@@ -149,7 +149,7 @@ def split_duckdb_table(conn: DuckDBPyConnection, table_name: DuckdbName | str,
             conn.execute(f'ALTER TABLE {table_name} DROP COLUMN IF EXISTS "{is_train_col_name}"')
             conn.execute(f'ALTER TABLE {table_name} DROP COLUMN IF EXISTS "{is_feature_search_col_name}"')
             conn.execute(f'ALTER TABLE {table_name} DROP COLUMN IF EXISTS "{is_feature_eval_col_name}"')
-        except Exception as e2: # noqa: BLE001
+        except Exception as e2:
             raise e2 from e
         raise
 

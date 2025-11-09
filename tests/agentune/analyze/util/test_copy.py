@@ -27,6 +27,8 @@ def test_replace() -> None:
             return C(**{**self.__dict__, **kwargs})
         def __eq__(self, other: object) -> bool:
             return isinstance(other, C) and self.a == other.a and self.b == other.b
+        def __hash__(self) -> int:
+            return hash((self.a, self.b))
         def __str__(self) -> str:
             return f'C({self.a}, {self.b})'
     
