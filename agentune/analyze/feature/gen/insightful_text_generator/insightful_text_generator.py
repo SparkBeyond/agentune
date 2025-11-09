@@ -243,13 +243,16 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         conversation_strategies = self.find_conversation_strategies(join_strategies)
 
         for conversation_strategy in conversation_strategies:
+            # filter feature_search to only rows where conversation exists
+            existing_ids = conversation_strategy.ids_exist(feature_search, conn)
+            filtered_feature_search = Dataset(schema=feature_search.schema, data=feature_search.data.filter(existing_ids))
 
             # 1. Generate queries
-            query_batch = await self._generate_queries(conversation_strategy, feature_search, problem, conn)
+            query_batch = await self._generate_queries(conversation_strategy, filtered_feature_search, problem, conn)
 
             # 2. Enrich the queries with additional conversation information
             sampler = self._get_sampler(problem)
-            sampled_data = sampler.sample(feature_search, self.num_samples_for_enrichment, self.random_seed)
+            sampled_data = sampler.sample(filtered_feature_search, self.num_samples_for_enrichment, self.random_seed)
             enrichment_formatter = self._get_formatter(conversation_strategy, problem, include_target=False)
             enriched_output = await self.enrich_queries(query_batch, enrichment_formatter, sampled_data, conn)
 

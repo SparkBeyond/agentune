@@ -364,7 +364,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
 
 @pytest.mark.integration
 async def test_feature_generation_with_long_conversations_token_sampling(
-    test_data_paths: dict[str, Path],
+    test_data_conversations: dict[str, Path],
     conn: DuckDBPyConnection,
     real_llm_with_spec: LLMWithSpec,
     problem: ClassificationProblem
@@ -379,7 +379,7 @@ async def test_feature_generation_with_long_conversations_token_sampling(
     """
     # Load test data with very long conversations (duplicated 5 times to make them long but not too extreme)
     main_dataset, target_col, strategies, first_conv_id, last_conv_id = _load_long_conversations_for_feature_gen(
-        test_data_paths, conn, duplication_factor=5
+        test_data_conversations, conn, duplication_factor=5
     )
     
     logger.info(f'Created very long conversations - first ID: {first_conv_id}, last ID: {last_conv_id}')
@@ -484,7 +484,7 @@ async def test_feature_generation_with_long_conversations_token_sampling(
 
 @pytest.mark.integration
 async def test_feature_generation_with_extremely_long_conversations_error_case(
-    test_data_paths: dict[str, Path],
+    test_data_conversations: dict[str, Path],
     conn: DuckDBPyConnection,
     real_llm_with_spec: LLMWithSpec,
     problem: ClassificationProblem
@@ -496,7 +496,7 @@ async def test_feature_generation_with_extremely_long_conversations_error_case(
     """
     # Load test data with extremely long conversations (duplicated 25 times to make them way too long)
     main_dataset, target_col, strategies, first_conv_id, last_conv_id = _load_long_conversations_for_feature_gen(
-        test_data_paths, conn, duplication_factor=25  # Very large duplication factor
+        test_data_conversations, conn, duplication_factor=25  # Very large duplication factor
     )
     
     logger.info(f'Created extremely long conversations - first ID: {first_conv_id}, last ID: {last_conv_id}')
@@ -522,7 +522,7 @@ async def test_feature_generation_with_extremely_long_conversations_error_case(
     logger.info('Testing query generation with extremely long conversations (expecting error)...')
     
     # This should raise a ValueError with a clear message about token limits
-    with pytest.raises(ValueError, match='Cannot fit prompt within token limit.*even with minimum.*samples'):
+    with pytest.raises(ValueError, match='Cannot fit the minimal amount of needed sample conversations.*within the LLM token limit.*Try providing shorter conversations as input'):
         await feature_generator._generate_queries(conversation_strategy, main_dataset, problem, conn)
     
     logger.info('✅ Correctly raised ValueError for extremely long conversations that exceed token limits!')

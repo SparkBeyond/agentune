@@ -486,26 +486,30 @@ class ConversationActionRecommender(ActionRecommender):
         sorted_features, conversation_strategy = conv_result
 
         # 2. Sample data
+        # Filter dataset to only rows where conversation exists
+        existing_ids = conversation_strategy.ids_exist(dataset, conn)
+        filtered_dataset = Dataset(schema=dataset.schema, data=dataset.data.filter(existing_ids))
+        
         sampler = self._get_sampler(problem)
-        sampled_data = sampler.sample(dataset, self.max_samples)
+        sampled_data = sampler.sample(filtered_dataset, self.max_samples)
 
         # 3. create prompt and get conversations used (adapting number of examples to token limit)
         prompt, conversations, conversation_ids = await self._create_prompt(
             problem, sorted_features, sampled_data, conversation_strategy, conn
         )
-
-        # 7. Call LLM to get raw text report
+        
+        # 4. Call LLM to get raw text report
         raw_report = await achat_raw(self.model, prompt)
 
-        # 8. Structure the report using LLM (returns Pydantic model)
+        # 5. Structure the report using LLM (returns Pydantic model)
         pydantic_report = await prompts.structure_report_with_llm(
             report=raw_report,
             sse_reduction_dict=self._format_sse_reduction_dict(sorted_features),
             model=self.model,
             structuring_model=self.structuring_model,
         )
-        
-        # 9. Convert Pydantic to attrs, enriching with SSE reduction and conversation data
+
+        # 6. Convert Pydantic to attrs, enriching with SSE reduction and conversation data
         # Extract outcomes as strings for metadata
         outcomes = [str(val) for val in sampled_data.data[problem.target_column.name].to_list()]
         

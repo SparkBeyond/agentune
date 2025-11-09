@@ -134,3 +134,42 @@ class ConversationJoinStrategy[K](JoinStrategy):
             conversations[conversation_id] = Conversation(tuple(messages))
 
         return tuple(conversations.get(id) for id in ids)
+    
+    def ids_exist(self, ids: list[K] | pl.Series | pl.DataFrame | Dataset, conn: DuckDBPyConnection) -> pl.Series:
+        """Check which conversation IDs exist in the conversation table.
+        
+        Args:
+            ids: a list or series of conversation IDs, or a dataframe or dataset with the column named by self.main_table_id_column
+
+        Returns:
+            A polars Series of booleans indicating whether each ID exists in the conversation table.
+        """
+        if isinstance(ids, Dataset):
+            ids = ids.data[self.main_table_id_column.name]
+        elif isinstance(ids, pl.DataFrame):
+            ids = ids[self.main_table_id_column.name]
+
+        if len(ids) == 0:
+            return pl.Series([], dtype=pl.Boolean)
+
+        # Register a dataframe with input IDs and explicit ordering
+        input_df = pl.DataFrame({
+            'id': ids
+        })
+        temp_table_name = f'{self.table.name.name}_ids_exist_temp'
+        conn.register(temp_table_name, input_df)
+
+        try:
+            # Use EXISTS to check for existence
+            output = conn.sql(f'''
+                SELECT EXISTS(
+                    SELECT * FROM {self.table.name}
+                    WHERE "{self.id_column.name}" = input.id
+                ) AS exists
+                FROM {temp_table_name} input
+            ''').pl()
+
+            return output['exists']
+        finally:
+            # Clean up the temporary registered table
+            conn.unregister(temp_table_name)

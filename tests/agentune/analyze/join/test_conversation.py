@@ -90,6 +90,35 @@ def test_conversation_join_strategy() -> None:
         for id, conversation in conversations.items():
             assert context2.get_conversation(conn, id) == conversation
 
+        # Test ids_exist function
+        conversation_ids = list(conversations.keys())
+        non_existent_ids = [1000, 2000, 3000]
+        mixed_ids = conversation_ids[:5] + non_existent_ids + conversation_ids[5:10]
+        
+        # Test empty list
+        assert strategy.ids_exist([], conn).is_empty()
+        
+        # Test all existing IDs
+        exists_all = strategy.ids_exist(conversation_ids[:10], conn)
+        assert exists_all.all()
+        assert len(exists_all) == 10
+        
+        # Test all non-existing IDs
+        exists_none = strategy.ids_exist(non_existent_ids, conn)
+        assert not exists_none.any()
+        assert len(exists_none) == 3
+        
+        # Test mixed existing and non-existing IDs
+        exists_mixed = strategy.ids_exist(mixed_ids, conn)
+        expected_mixed = [True] * 5 + [False] * 3 + [True] * 5
+        assert exists_mixed.to_list() == expected_mixed
+        
+        # Test duplicate IDs in input
+        duplicate_ids = conversation_ids[:3] + conversation_ids[:3] + [1000]
+        exists_duplicates = strategy.ids_exist(duplicate_ids, conn)
+        expected_duplicates = [True, True, True, True, True, True, False]
+        assert exists_duplicates.to_list() == expected_duplicates
+
         # Test with the role being some other type: should fail
         conn.execute('update conversation set role = null')
         conn.execute('alter table conversation alter role type int')
