@@ -147,6 +147,29 @@ class TestBasicTypeDetectors:
         result = detect_categorical_type(data, max_categorical=4, min_threshold_percentage=0.05, min_coverage=0.8, max_chars=30)
         assert isinstance(result, types.EnumDtype)
         assert len(result.values) == 4  # 4 categories
+    
+    def test_is_categorical_with_empty_string(self) -> None:
+        """Test categorical detection rejects data with empty string categories."""
+        # Create data where empty string is a frequent category (should be rejected)
+        data = pl.Series(['red'] * 30 + ['blue'] * 25 + [''] * 20 + ['green'] * 15)  # 90 total
+        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.05, min_coverage=0.8, max_chars=30)
+        assert result is None  # Should reject due to empty string
+    
+    def test_is_categorical_with_empty_string_rare(self) -> None:
+        """Test categorical detection handles rare empty strings properly."""
+        # Create data where empty string is rare (below threshold) - should not affect detection
+        data = pl.Series(['red'] * 40 + ['blue'] * 30 + ['green'] * 25 + [''] * 2)  # 97 total, empty string is ~2%
+        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.05, min_coverage=0.8, max_chars=30)
+        # Since empty string is below 5% threshold, it should be filtered out and detection should succeed
+        assert isinstance(result, types.EnumDtype)
+        assert '' not in result.values
+        assert len(result.values) == 3  # red, blue, green
+    
+    def test_is_categorical_only_empty_strings(self) -> None:
+        """Test categorical detection with only empty strings."""
+        data = pl.Series([''] * 100)
+        result = detect_categorical_type(data, max_categorical=5, min_threshold_percentage=0.05, min_coverage=0.8, max_chars=30)
+        assert result is None  # Should reject due to empty string
 
 
 class TestDecideDtype:
@@ -215,6 +238,26 @@ class TestDecideDtype:
         int_data = pl.Series(['1', '2', '3', '1', '2', '3'])
         result = decide_dtype(query, int_data, max_categorical=10)
         assert result == types.int32
+    
+    def test_decide_dtype_with_empty_strings(self) -> None:
+        """Test decide_dtype behavior with empty strings in categorical data."""
+        query = Query('test_empty_string', 'What is the category?', types.string)
+        
+        # Data with frequent empty strings should fall back to string
+        data = pl.Series(['red'] * 30 + ['blue'] * 25 + [''] * 20 + ['green'] * 15)
+        result = decide_dtype(query, data, max_categorical=5, min_categorical_coverage=0.8)
+        assert result == types.string  # Should fall back due to empty string rejection
+    
+    def test_decide_dtype_filters_out_empty_strings(self) -> None:
+        """Test decide_dtype filters out rare empty strings but still detects categories."""
+        query = Query('test_filtered_empty', 'What is the category?', types.string)
+        
+        # Data with rare empty strings should still work for categorical detection
+        data = pl.Series(['red'] * 40 + ['blue'] * 30 + ['green'] * 25 + [''] * 2)
+        result = decide_dtype(query, data, max_categorical=5, min_categorical_coverage=0.8, min_threshold_percentage=0.05)
+        assert isinstance(result, types.EnumDtype)
+        assert '' not in result.values
+        assert set(result.values) == {'red', 'blue', 'green'}
 
 
 @pytest.fixture
@@ -265,6 +308,35 @@ async def test_cast_to_categorical_with_real_llm(real_llm_with_spec: LLMWithSpec
     assert 'others' not in [v.lower() for v in updated_query.return_type.values]
 
 
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_cast_to_categorical_handles_empty_strings(real_llm_with_spec: LLMWithSpec) -> None:
+    """Integration test to ensure cast_to_categorical removes empty strings from LLM responses."""
+    original_query = Query(
+        name='sentiment',
+        query_text='What is the sentiment of this conversation?',
+        return_type=types.string
+    )
+    
+    # Create data with significant empty strings that might appear in LLM responses
+    # This includes actual empty strings in the data that could influence the LLM
+    sentiment_data = pl.Series([
+        'positive', 'negative', 'positive', '', 'neutral', 'positive',
+        'negative', '', 'neutral', 'positive', '', 'negative', 'neutral',
+        '', 'positive', 'negative', '', 'neutral', 'positive', ''
+    ])  # 20% empty strings (6 out of 20)
+    
+    updated_query = await cast_to_categorical(
+        original_query, sentiment_data, max_categorical=4, llm=real_llm_with_spec
+    )
+    
+    # Validate that no empty strings are in the final categories
+    assert isinstance(updated_query.return_type, types.EnumDtype)
+    assert '' not in updated_query.return_type.values
+    assert all(len(category.strip()) > 0 for category in updated_query.return_type.values)
+    assert len(updated_query.return_type.values) > 0  # Should have at least one category
+
+
 class TestEdgeCases:
     """Test edge cases and error conditions."""
     
@@ -290,12 +362,13 @@ class TestEdgeCases:
         """Test categorical detection with large number of categories."""
         query = Query('test_large_cat', 'What is the category?', types.string)
         # Create data with many categories but clear winners
-        data = pl.Series(
-            ['category_a'] * 1000
-            + ['category_b'] * 800
-            + ['category_c'] * 600
-            + [f'rare_{i}' for i in range(100)]
+        category_data = (
+            ['category_a'] * 1000 +
+            ['category_b'] * 800 +
+            ['category_c'] * 600 +
+            [f'rare_{i}' for i in range(100)]
         )
+        data = pl.Series(category_data)
         result = decide_dtype(query, data, max_categorical=5, min_categorical_coverage=0.8)
         assert isinstance(result, types.EnumDtype)
     
@@ -306,3 +379,56 @@ class TestEdgeCases:
         result = decide_dtype(query, data, max_categorical=5)
         assert isinstance(result, types.EnumDtype)
         assert 'constant' in result.values
+    
+    def test_empty_string_filtering_in_type_detection(self) -> None:
+        """Test that empty strings are properly filtered out during type detection."""
+        # Test with boolean-like data that includes empty strings
+        query = Query('test_bool_with_empty', 'Is this true?', types.string)
+        data = pl.Series(['true', 'false', 'true', '', 'false', 'true'])
+        # Should still detect as boolean since empty strings are dropped
+        result = decide_dtype(query, data, max_categorical=10, max_error_percentage=0.2)
+        assert result == types.boolean
+        
+        # Test with integer data that includes empty strings
+        query = Query('test_int_with_empty', 'What is the count?', types.string)
+        data = pl.Series(['1', '2', '3', '', '4', '5'])
+        # Should still detect as integer since empty strings are dropped
+        result = decide_dtype(query, data, max_categorical=10, max_error_percentage=0.2)
+        assert result == types.int32
+        
+        # Test with float data that includes empty strings
+        query = Query('test_float_with_empty', 'What is the value?', types.string)
+        data = pl.Series(['1.5', '2.7', '', '3.14', '4.2'])
+        # Should still detect as float since empty strings are dropped
+        result = decide_dtype(query, data, max_categorical=10, max_error_percentage=0.2)
+        assert result == types.float64
+    
+    def test_mixed_empty_strings_and_whitespace(self) -> None:
+        """Test handling of various forms of empty/whitespace strings."""
+        query = Query('test_whitespace', 'What is the category?', types.string)
+        
+        # Data with empty strings, whitespace, and valid categories
+        data = pl.Series([
+            'red', 'blue', '', 'green', '   ', 'red', 'blue',
+            '', 'green', 'red', '  ', 'blue', 'green'
+        ])
+        
+        # Should fall back to string since empty string handling rejects it
+        # Note: whitespace-only strings are not filtered out in current implementation
+        result = decide_dtype(query, data, max_categorical=5, min_categorical_coverage=0.8)
+        # This might detect as categorical if whitespace strings are treated as valid categories
+        # or fall back to string if coverage is insufficient
+        assert result in [types.string, types.EnumDtype('red', 'blue', 'green', '   ', '  ')]
+    
+    def test_decide_dtype_with_only_empty_strings_after_null_drop(self) -> None:
+        """Test decide_dtype when only empty strings remain after dropping nulls."""
+        query = Query('test_only_empty', 'What is the value?', types.string)
+        data = pl.Series(['', '', '', None, None])  # Mix of empty strings and nulls
+        
+        # After dropping nulls, we have only empty strings
+        # decide_dtype should handle this gracefully
+        result = decide_dtype(query, data, max_categorical=5)
+        # Since we drop nulls but not empty strings in decide_dtype,
+        # the empty strings will be processed and should result in string fallback
+        assert result == types.string
+

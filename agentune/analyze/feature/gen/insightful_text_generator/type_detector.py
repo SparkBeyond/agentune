@@ -101,6 +101,10 @@ def detect_categorical_type(data: pl.Series, max_categorical: int, min_threshold
     top_values = qualifying_values.head(max_categorical)
     column_name = top_values.columns[0]  # Get the actual column name
 
+    # If empty string is one of the categories, return None
+    if top_values.filter(pl.col(column_name) == '').height > 0:
+        return None
+
     # Check if any value exceeds max_chars
     if top_values.select(pl.col(column_name).str.len_chars().max()).item() > max_chars:
         return None
@@ -214,6 +218,10 @@ async def cast_to_categorical(query: Query, data: pl.Series, max_categorical: in
     messages = [ChatMessage(role='user', content=prompt)]
     response = await sllm.achat(messages)
     response_obj: CategoricalOptimizerResponse = response.raw
+
+    # remove empty string category if exists
+    if '' in response_obj.categories:
+        response_obj.categories.remove('')
 
     # Check response
     if not response_obj.query_name:
