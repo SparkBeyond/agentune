@@ -43,7 +43,7 @@ class LRUCache[K, V](MutableMapping[K, V]):
     def __contains__(self, key: object) -> bool:
         return key in self._cache
 
-    # Have to redeclare all overloads when overriding, or mypy complains :-(
+    # Have to redeclare all overloads when overriding or mypy complains
 
     @overload
     def get(self, key: K) -> V | None: ...

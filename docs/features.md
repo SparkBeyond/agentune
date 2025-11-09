@@ -1,14 +1,12 @@
-from agentune.analyze.join.base import JoinStrategy
-
 # Features (for developers)
 
 ## What is a feature?
 
-A feature - an instance of class Feature - is defined as: a function that calculates a value of a known type for a row of input data.
+A feature - an instance of class Feature - is defined as: a function that calculates a value of a known type for a row 
+in the main table. The return types supported are int, bool, float, and categorical string.
 
-There are other useful concepts and entities, which are not functions or are not per row or don't have a useful type.
-They are not called 'features' in this codebase. Talking about 'this is not what features should be like' is not productive;
-this is the definition of "feature".
+There are other useful concepts and entities which are not functions or are not per row or have a different type.
+They are not called 'features' in this codebase.
 
 ## Feature types
 
@@ -19,21 +17,20 @@ Categorical features return string values out of a known list (given by `feature
 given by `CategoricalFeature.other_category`. This is returned if there is an unexpected value or if there was a long tail
 of rare values that did not make it into the categories list. The special value is not itself included in the categories list.
 
-There are no 'open ended' string features right now.
-
-All features can return missing values (represented by None in scalars).
+All features can return missing values (`na` in polars, `null` in SQL, None in python scalar values). 
+Missing values are supported for all data types and are distinct from NaN values for floats.
 
 The type of a Feature instance can be determined by checking isinstance against the dedicated subclass: IntFeature, FloatFeature,
 BoolFeature, and CategoricalFeature; or by checking `feature.dtype` (this is less recommended). 
 
 ## Feature.compute signature
 
-There are two core methods implemented by Feature: row (scalar) compute and batch compute.
+There are two core methods implemented by each Feature: row (scalar) compute and batch compute.
 They should not be called by users directly; the rest of this document describes progressively 
 higher-level APIs. 
 
 ```python
-async def acompute(self, args: tuple[Any, ...], 
+async def acompute(self, args: tuple[Any, ...],  
                     conn: DuckDBPyConnection) -> T | None:
 async def acompute_batch(self, input: Dataset, 
                           conn: DuckDBPyConnection) -> pl.Series:
@@ -44,7 +41,7 @@ calls the other one. (The default implementation of `acompute_batch` may change 
 to enable better control of concurrent computation.)
 
 The main dataset is given either by `args` (for a single row) or by `input` (for a batch of rows).
-A future update will add support for implementing acompute by declaring the specific arguments used,
+A future update will add support for implementing row-wise `acompute` by declaring the specific arguments used,
 e.g. `async def acompute(self, id: int, name: str, conn: ...)` (#144).
 
 The secondary datasets are available in duckdb using `conn`. A feature can store any `JoinStrategy` instances
@@ -52,7 +49,7 @@ that were available during feature generation and use them to query the data, or
 they do not represent the availability of additional data.
 
 The main table can also be made available via `conn` to run queries that join it to secondary tables,
-by using `conn.register`; see `SqlFeature.compute_batch` for an example. 
+by using `conn.register`; see `SqlBackedFeature.compute_batch` in `test_sql.py` for an example. 
 
 All data, both input and output, can contain missing values (`na` in Polars, `null` in SQL).
 
@@ -64,9 +61,9 @@ Operations in duckdb and in polars are always synchronous.
 ### Feature.name
 
 This is the name given to the feature's outputs as a column in enriched datasets (including DB tables).
-All strings are currently valid, although of course feature generators are encouraged to use user-friendly names.
+All nonempty strings are currently valid, although of course feature generators are encouraged to use user-friendly names.
 
-If several features being enriched in the same dataset have the same name, the outupt names will be deduplicated
+If several features being enriched in the same dataset have the same name, the output names will be deduplicated
 by adding one or more underscores as a suffix; see `dedup_names.py`.
 
 ### Feature.description and Feature.technical_description
@@ -75,8 +72,6 @@ Both of these are meant for humans to read. The first describes what the feature
 which can be imprecise; the second describes how it does it in more detail, possibly with code or pseudocode.
 
 For example, a feature's description might say "is male" and the technical description "name contains 'mr.'". 
-
-The design discussion is ongoing in #62.
 
 ### Feature schema metadata
 
@@ -89,7 +84,7 @@ def join_strategies(self) -> Sequence[JoinStrategy]
 ```
 
 These are subsets of the data that were available during analysis when the feature was created.
-Specifying what the feature uses lets users run Enrich on new data without providing columns or tables
+Specifying what the feature uses lets users compute features on new data without providing columns or tables
 that no selected features use.
 
 `secondary_tables` should be used if the feature runs SQL queries on them; `join_strategies` should be used
@@ -98,9 +93,9 @@ if it uses those objects to access data. Both can be specified.
 When `Feature.compute` variants are called, only the data declared in `params` is actually passed in the `args`
 parameter. The `args` are passed in the order in which they were declared in `params`, which may be different
 from the order of these columns in the analysis input dataset. Similarly, the dataset passed to `compute_batch`
-includes only the columns declared in `params`. The data available through the DuckDB connection includes only the 
-`secondary_tables` (and only the columns listed for them in `secondary_tables`), as well as any tables and columns
-referenced by the declared `join_strategies`.
+includes only the columns declared in `params`. The data available through the DuckDB connection is only guaranteed
+to include the `secondary_tables`, and only with the columns listed for them in the feature's `secondary_tables` 
+attribute, as well as any tables and columns referenced by the declared `join_strategies`.
 
 More data MAY be available through the DuckDB connection and in additional columns of the main dataset passed to 
 `compute_batch`, but the feature must not access it or rely on it.
@@ -119,12 +114,15 @@ async def acompute_batch_safe(self, input: Dataset,
 
 These wrap the base `acompute` and `acompute_batch` methods, catch all errors and return missing values.
 For categorical features, they also replace return values that are not in the declared categories list with 
-`CategoricalFeature.other_category`, and replace the empty string with a missing value.
+`CategoricalFeature.other_category`, and replace empty strings with a missing value.
 
 All higher-level code (e.g. EnrichRunner) uses the _safe wrapper methods. Features must not override them.
 
-Note that, if `acompute_batch` raises an error, the output for entire batch becomes missing values.
-This may be changed in the future (#155).
+The default implementation of `acompute_batch`, which delegates to row-based `acompute` substitutes errors with 
+missing values only for the rows where `acompute` raised an error. A feature that implements `acompute_batch` 
+directly should replicate this behavior if possible but this is not a promise of the Feature interface itself,
+because we cannot guarantee that all batch implementations will be able to do so. So it is allowed (but undesirable)
+for an `acompute_batch` implementation to return missing values for the entire batch of rows in case of an error.
 
 ## Feature computation with default values
 
@@ -141,8 +139,6 @@ def substitute_defaults(self, value: T | None) -> T:
 def subsistute_defaults_batch(self, values: pl.Series) -> pl.Series:
 ```
 
-(These methods are synchronous because they admit no other / asynchronous implementation; they are very fast in practice.)
-
 You can also call these convenience methods, which combine `compute_safe` and `substitute_defaults`:
 
 ```python
@@ -154,24 +150,25 @@ async def acompute_batch_with_defaults(self, input: Dataset,
 
 Note that `acompute_with_defaults` returns `T` and not `T | None`.
 
-Each component needs to decide whether to support missing values and/or non-finite float values.
-The enriched data passed around is (normally) the output of `compute_safe`, with missing and non-finite values,
-because substituting the defaults is very cheap and can be done whenever it's needed. High-level user APIs
-such as EnrichRunner may, in the future, add support for returning the output with defaults, or both sets of outputs.
+Each component needs to decide whether (and how) to support missing values and/or non-finite float values,
+and call `substitute_defaults` if needed.
+
+The enriched data returned by EnrichRunner and passed around is normally the output of `compute_safe`, 
+with missing and non-finite values, because  substituting the defaults is very cheap and can be done on demand. 
 
 ### FeatureGenerator and default values
 
-When a `FeatureGenerator` generates a feature, it returns a wrapper class `GeneratedFeature`, which contains an attribute
+When a `FeatureGenerator` generates a feature it returns a wrapper class `GeneratedFeature` which contains an attribute
 `has_good_defaults: bool`. If it is True, the default value attributes on the feature are not changed. 
 
-If it is False the analysis substitutes 'default default' values, which are calculated on the feature's outputs 
-on the analysis dataset, as follows:
+If it is False the analyzer substitutes 'default default' values, which are calculated on the feature's outputs 
+on the analysis dataset as follows:
 
 1. For Bool features, False
 2. For Categorical features, CategoricalFeature.other_category
 3. For int features, the median. It can be a value that does not itself appear in the feature's output.
 4. For float features:
-    1. The defaults for infinity and -infinity are the max finite value +1 and the min finite value -1, respectively.
+    1. The defaults for infinity and -infinity are the max finite value + 1 and the min finite value - 1, respectively.
     2. The default for both missing values and `nan` is the median, calculated after substituting defaults for infinity and -infinity,
        and ignoring `nan` values.
 
@@ -190,7 +187,7 @@ def compute(self, args: tuple[Any, ...],
 
 There are synchronous equivalents of all the other methods mentioned above: _batch, _safe and _with_defaults variants.
 
-Although SyncFeature extends Feature, its asynchronous methods SHOULD NOT be called. All code handling features has separate
+Although SyncFeature extends Feature, its asynchronous methods SHOULD NOT be called. Components that handle features have separate
 codepaths for synchronous and asynchronous features.
 
 ## Efficient computation strategies (FeatureComputer)
@@ -225,11 +222,8 @@ Decorate your class with `@attrs.define` (or, preferrably, `@attrs.frozen`).
 
 Implement the metadata properties; use attributes if possible (i.e. they don't need methods to compute them).
 
-Make sure serialization works.
-
-## Serializing features to json
-
-TBD (to be done and to be documented); see #157.
+Make sure [serialization](serialization.md) works. In particular, your class name can't be the same as that of any other subclass
+of Feature in the codebase, including subclasses defined in test code. 
 
 ## Computing features (as a user)
 

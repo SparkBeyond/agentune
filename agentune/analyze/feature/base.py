@@ -199,17 +199,15 @@ class Feature[T](ABC, UseTypeTag):
 
 # -------- Feature value types
 
-# Note that the values of type param T are all non-None; missing values are allowed in feature outputs.
+# Features of all types can return missing values. The type param T is the non-missing type (e.g. int) and not the
+# returned type (e.g. int | None).
 # Generally speaking, features should only return missing values if one of the inputs has a missing value.
-# We might prefer a simpler world where feature outputs can't be missing, but that would not allow us
-# to use input columns as features.
 
 class NumericFeature[T](Feature[T]):
     @final
     @override
     def is_numeric(self) -> bool: return True
 
-# Other int sizes or unsigned ints can be added as needed.
 @define(slots=False)
 class IntFeature(NumericFeature[int]):
     @final

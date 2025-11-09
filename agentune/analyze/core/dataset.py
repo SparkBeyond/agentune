@@ -40,7 +40,7 @@ class IfTargetExists(StrEnum):
 class Dataset(CopyToThread): #noqa: PLW1641 # polars DF is not hashable
     """A dataframe with a schema.
     
-    This class exists because our Schema might evolve to contain more information than the pl.Schema available on the dataframe.
+    This class exists because our Schema can contain more information than the pl.Schema available on the dataframe.
     """
 
     schema: Schema
@@ -123,7 +123,7 @@ class Dataset(CopyToThread): #noqa: PLW1641 # polars DF is not hashable
     @staticmethod
     def from_polars(df: pl.DataFrame) -> Dataset:
         """Note that some schema information is not represented in a polars DataFrame.
-        A schema created from them will have some erased types.
+        A schema created from a dataframe will have some erased types.
         """
         return Dataset(Schema.from_polars(df), df)
 
@@ -263,7 +263,11 @@ class ReadNdjsonParams:
     
 
 class DatasetSource(CopyToThread):
-    """A source of a dataset stream which can be read multiple times, and whose schema is known ahead of time."""
+    """A source of a dataset stream which can be read multiple times, and whose schema is known ahead of time.
+
+    The data (but not the schema) is allowed to change between reads.
+    Because of this, potentially expensive metadata like the number of rows is not cached by default.
+    """
 
     @property
     @abstractmethod

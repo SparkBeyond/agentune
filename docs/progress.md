@@ -3,18 +3,19 @@
 An instance of class `ProgressStage` (a 'stage') is a progress indicator which has:
 - A name
 - A start time, and eventually an end time
-- Optionally, a count, which increments over time. Optionally, a total (expected count), which can also be updated.
-  
-The count is absent in stages with no internal progress (e.g. some kinds of feature selection).
-It might also be absent in stages that only serve to group other sub-stages (which can have separate counters), e.g. “feature generation” with a sub-stage for each individual generator. But, where possible, it’s better to publish a counter corresponding to the completion of the sub-stages (e.g. 2/3 of feature generators completed).
+- Optionally, a count which increments over time. 
+- Optionally, a total (expected count) which can also be updated.
 
-Stages are organized in a tree. There is a single root stage (at any one point in time, while running).
-The 'current' stage is stored in a context var in the context.base module. This allows code to publish a new stage without knowing where it was called from; the resulting tree of stages corresponds to the call stack.
+The count is absent in stages with no internal progress (e.g. some kinds of feature selection).
+It might also be absent in stages that only serve to group other sub-stages (which can have separate counters), e.g. “feature generation” with a sub-stage for each individual generator. It’s often better to publish a counter corresponding to the completion of the sub-stages (e.g. 2/3 of feature generators completed).
+
+Stages are organized in a tree, which is stored in a [contextvar](https://docs.python.org/3/library/contextvars.html) in the context.base module. 
+At any point in time, in a given context, there is at most one 'current' stage, which may be the root stage and may have children. This allows code to publish a new stage without knowing where it was called from; the resulting tree of stages corresponds to the logical call stack.
 
 Because stages are stored in a context var, each thread and callstack can have a separate root. However, that is not how they are meant to be used. 
 
 The intended use is:
-1. Every top-level operation in the library is async (and there is only one async thread). All sync operations come from async code calling to_thread, preserving the contextvars.
+1. Every top-level operation in the library is async (and there is only one async thread). Normally, the most-top-level operation is creating the RunContext. All sync operations come from async code calling to_thread, preserving the contextvars.
 2. Progress reporters must also be async (at least the part that calls progress.current_stage()); that gives them access to the root stage that was defined by the top-level (async) library operation.
 
 However:

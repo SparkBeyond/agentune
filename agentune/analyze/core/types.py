@@ -16,8 +16,6 @@ from attrs import field, frozen
 
 from agentune.analyze.core import sercontext, setup
 
-# We define these types instead of using pl.Field and pl.Schema because we might want to support e.g. semantic types in the future.
-
 # Used in some Polars APIs. Copy of a type union defined in polars._types.
 type PolarsDataType = pl.DataType | polars.datatypes.DataTypeClass
 
@@ -31,7 +29,7 @@ class Dtype(ABC):
         return self.name
     
     def arrow_type(self) -> pa.DataType:
-        # Clunky, but it works without hardcoding the coversions (though we might want to cache them?)
+        # Clunky, but it works without hardcoding the conversions (though we might want to cache them?)
         return pl.Series('a', [], self.polars_type).to_arrow().type
     
     @staticmethod

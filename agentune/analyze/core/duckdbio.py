@@ -111,6 +111,7 @@ def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection,
     return DatasetSourceFromDuckdb(schema, opener, batch_size)
 
 def ingest(conn: DuckDBPyConnection, table: DuckdbTable | DuckdbName | str, data: DatasetSource) -> DuckdbTableSource:
+    """Copy data into a duckdb table."""
     match table:
         case DuckdbTable():
             table_name = table.name

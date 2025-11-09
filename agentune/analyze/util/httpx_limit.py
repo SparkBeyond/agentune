@@ -21,7 +21,7 @@ class AsyncLimitedTransport(httpx.AsyncBaseTransport):
     In the future we can add rate limits, and add limits that apply per request group and not globally.
     (Like httpx-ratelimiter (https://github.com/Midnighter/httpx-limiter) and some other libraries, but each of them
     has a different set of bugs and features, e.g. httpx-limiter doesn't override this class's methods other than
-    handle_async_request; so I'll probably use pyrate directly.)
+    handle_async_request; so we'll probably use pyrate directly.)
     """
     base_transport: AsyncBaseTransport
     semaphore: BoundedSemaphore

@@ -34,7 +34,10 @@ class TableDescription:
 
 @frozen
 class ProblemDescription:
-    """User input to the analyzer. Almost all parameters are optional. Some will be set automatically if absent.
+    """User input to the analyzer. Almost all parameters are optional.
+
+    During analysis, an instance of class Problem is created which contains a copy of this class; that copy
+    might be modified from the original user input by setting some fields that the user left empty.
 
     Parameters which describe data (schema and/or values) are validated against the data inputs to `analyze`.
     """
@@ -62,11 +65,15 @@ class ProblemDescription:
 class Problem(ABC, UseTypeTag):
     """Final information about the problem.
 
-    The ProblemDescription is the original one provided by the user; its attributes (when set) are guaranteed to be
-    valid and consistent with each other, the data, and the other attributes of this class (Problem).
+    The ProblemDescription may not be the original one provided by the user; some attributes left empty in the user input
+    may have been filled in automatically.
 
-    Code should use the other attributes of this class in preference to those of problem_description;
-    e.g. use target_column not problem_description.target_column and date_column not problem_description.date_column.
+    The attributes of this class and of the included ProblemDescription (if set) are guaranteed to be
+    valid and consistent with each other and the data.
+
+    Some attributes of this class match attributes of ProblemDescription but have types that provide more information;
+    for example, target_column is a Field instead of a string. Code should use attributes in this class in preference
+    to attributes of the contained ProblemDescription.
     """
     problem_description: ProblemDescription
     target_column: Field

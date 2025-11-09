@@ -12,7 +12,6 @@ from agentune.analyze.feature.problem import Problem
 from agentune.analyze.util.attrutil import frozendict_converter
 from agentune.analyze.util.cattrutil import UseTypeTag
 
-# Type aliases
 CategoryClassMatrix = tuple[tuple[float, ...], ...]
 
 

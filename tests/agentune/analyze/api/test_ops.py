@@ -13,6 +13,7 @@ from agentune.analyze.api.base import RunContext
 from agentune.analyze.api.data import BoundTable
 from agentune.analyze.core.database import (
     DuckdbName,
+    DuckdbOnDisk,
     DuckdbTable,
 )
 from agentune.analyze.core.dataset import Dataset, DatasetSource, ReadCsvParams
@@ -58,6 +59,35 @@ async def test_e2e_flow_synthetic(input_data_csv_path: Path, tmp_path: Path) -> 
         assert results == results2
 
         # Enrich new data (we don't have actually new data so we'll enrich a copy of the original data in a new location)
+        new_input = await ctx.data.from_csv(input_data_csv_path).copy_to_table('new_input')
+        output_path = tmp_path / 'output.csv'
+        output = ctx.data.to_csv(output_path)
+        await ctx.ops.enrich_stream(results.features, new_input, output)
+
+        enriched = ctx.data.from_csv(output_path)
+        assert await enriched.size() == await new_input.size()
+        assert list(enriched.schema.names) == [feature.name for feature in results.features]
+
+async def test_rename_main_database(input_data_csv_path: Path, tmp_path: Path) -> None:
+    dbpath = tmp_path / 'duck.db'
+    async with await RunContext.create(DuckdbOnDisk(dbpath)) as ctx:
+        input = await ctx.data.from_csv(input_data_csv_path).copy_to_table('input')
+        split_input = await input.split()
+        problem_description = ProblemDescription('target')
+
+        components = AnalyzeComponents(
+            generators=(ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator(), ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator()),
+            selector=ToyAsyncEnrichedFeatureSelector()
+        )
+        results = await ctx.ops.analyze(problem_description, split_input, components=components)
+        results_json = ctx.json.dumps(results)
+
+    dbpath2 = tmp_path / 'duck2.db'
+    dbpath.rename(dbpath2)
+
+    async with await RunContext.create(DuckdbOnDisk(dbpath2)) as ctx:
+        results = ctx.json.loads(results_json, type(results))
+
         new_input = await ctx.data.from_csv(input_data_csv_path).copy_to_table('new_input')
         output_path = tmp_path / 'output.csv'
         output = ctx.data.to_csv(output_path)

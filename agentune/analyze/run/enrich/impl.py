@@ -79,7 +79,7 @@ class EnrichRunnerImpl(EnrichRunner):
                          keep_input_columns: Sequence[str] = (),
                          deduplicate_names: bool = True) -> None:
         """This naive implementation has performance issues:
-        - The buffer size (i.e. the size of the Datasets in the DatasetSource stream) is set by the `input` creator,
+        - The buffer size (i.e. the size of the Datasets in the DatasetSource stream) is set by the `dataset_source` creator,
           possibly the user, and can't be adjusted to the features or feature computers involved
         - Async features computed in parallel means we wait for the slowest to finish before moving to the
           next batch. If the slowest isn't consistent (but is due to e.g. occasional timeouts that we'll retry),

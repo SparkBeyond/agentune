@@ -10,8 +10,8 @@ _logger = logging.getLogger(__name__)
 class Queue[T](Iterable[T], AsyncIterable[T]):
     """Queue connecting sync and async. Also supports for and async for, which wait for the queue to be closed.
 
-    This wraps a janus.Queue, which has the same interfaces as python normal and asyncio Queues, adds some
-    high-level methods, and deliberately does not expose some other functionality; the semantics are slightly
+    This wraps a janus.Queue (which has the same interfaces as python normal and asyncio Queues), adds some
+    high-level methods and deliberately does not expose some other functionality; the semantics are slightly
     different from the builtin and janus queues:
 
     - There is no task_done() method. Whenever an item is removed from the queue (e.g. with `get` or `produce`),

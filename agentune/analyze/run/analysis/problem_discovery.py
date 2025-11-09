@@ -32,7 +32,7 @@ def discover_problem(data: AnalyzeInputData, description: ProblemDescription,
     The classes are discovered from the train dataset, which is read once.
     This can take unbounded time, so it should be run on the threadpool.
 
-    It can also run out of memory if the target column has very high cardinality.
+    It can also run out of memory or temp disk space if the target column has very high cardinality.
     We could try to protect against that, but it would either require reading the input twice,
     or reading the input column into python and computing distinct values ourselves which would be much slower.
 
@@ -71,13 +71,13 @@ def discover_problem(data: AnalyzeInputData, description: ProblemDescription,
                 with conn.cursor() as cursor:
                     source_rel = data.train.to_duckdb(cursor)
                     cursor.register('source', source_rel)
-                    # Unfortunately the `limit` doesn't actually stop duckdb from collecting all distinct values in memory first,
+                    # Unfortunately, the `limit` doesn't stop duckdb from collecting all distinct values in memory first,
                     # even if there are many more than the limit.
                     cursor.execute(f'''select distinct "{target_column.name}" from source limit $1''', [max_classes + 1])
                     classes = cast(tuple[ClassificationClass, ...], # True by construction, we checked the dtype
                                    tuple(result[0] for result in cursor.fetchmany(max_classes + 1)))
-                    if len(classes) > max_classes:
-                        raise ValueError(f'Target column has more than {max_classes} classes')
+            if len(classes) > max_classes:
+                raise ValueError(f'Target column has more than {max_classes} classes')
             if len(classes) < 2: # noqa: PLR2004
                 raise ValueError(f'Target column has fewer than 2 distinct values: {', '.join(str(cls) for cls in classes)}')
             classes = tuple(sorted(classes))

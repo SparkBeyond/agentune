@@ -62,20 +62,17 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
     - Select final features, and deduplicate their names
     - Enrich and calculate stats on feature_eval and test datasets, and return those statistics
 
-    The enriched data (and any other temporary data stored in duckdb) is stored in a new in-memory database,
-    to avoid conflicts with other code or data and to ensure it's closed and discarded when we're done.
-    Like every in-memory database, it can spillover to disk if duckdb runs out of memory and spillover
-    is enabled.
+    The enriched data (and any other temporary data stored in duckdb) is stored in the dedicated temp schema
+    of the main database. This avoids name conflicts and ensures it's eventually discarded when the RunContext
+    and therefore the duckdb database are closed.
 
     Current limitations:
     - All generated features are kept in memory at once. (A future version could offload them
-      by serializing them into duckdb.)
+      by serializing them, potentially into duckdb.)
     - Not all features are enriched at once (for fear of resource limits); the grouping is naive and,
       with more than one feature generator running in parallel, will likely be suboptimal.
     - The enriched feature_search dataset is discarded before enriching the feature_eval dataset,
       although they may share rows that could be reused
-    - The enriched feature_eval and test data are discarded, and only the feature statistics are returned
-      (this is a limitation of the analyzer API)
 
     Args:
         max_features_enrich_batch_size: Enrich at most these many features at once.

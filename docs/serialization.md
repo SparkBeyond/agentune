@@ -5,7 +5,7 @@ We use the [cattrs](https://catt.rs/) library to serialize and validate attrs da
 This library isn't perfect for our needs, and we may switch to something else in the future. 
 (Despite the name, cattrs is not part of attrs.) You don't have to understand cattrs in depth for typical use.
 
-Note that cattrs calls de/serialization 'de/structuring'; we follow this terminology imperfectly in the code.
+Note that cattrs calls de/serialization 'un/structuring'; we follow this terminology imperfectly in the code.
 
 ## Serializing data
 
@@ -21,9 +21,6 @@ There is a global `Converter` instance at `sercontext.register_context_converter
 custom serialization hooks. It is not currently guaranteed to contain all serialization hooks (i.e. to know how to serialize)
 all classes, even those that don't require a `SerializationContext` instance.
 
-Serialization outside of a `RunContext` isn't currently well-supported; you can create a `SerializationContext` but 
-you shouldn't need to. Please ask for help if this is necessary.
-
 ### Serializing data
 
 Data can be converted to and from native Python values acceptable by the json module (dicts and so on) by calling
@@ -31,7 +28,7 @@ Data can be converted to and from native Python values acceptable by the json mo
 by calling `Converter.dumps` and `Converter.loads`; this is equivalent to calling `json.dumps(Converter.unstructure(...))`
 etc.
 
-Details: cattrs includes preconfigured JsonConverters that use different json libraries (and not the stdlib json module),
+Details: cattrs includes preconfigured `JsonConverter`s that use different json libraries (and not the stdlib json module)
 such as orjson. Besides being faster, using these can result in serializing some values differently (eg datetimes, string enums).
 Right now, the use of the stdlib json module is hardcoded (in that `sercontext.register_context_converter_hook` is initialized that way);
 we could relax this or make it configurable in the future, but would need to be careful. See the 
@@ -41,7 +38,7 @@ we could relax this or make it configurable in the future, but would need to be 
 
 Classes should match the desired json structure as closely as possible. If the json must look different from the class,
 write another class that maps cleanly to the json format and then convert between the classes using python code
-(i.e. with attrs.field(converter=...)). This is preferrable to doing the conversion in a custom serialization hook.
+(i.e. with attrs.field(converter=...)). This is preferable to doing the conversion in a custom serialization hook.
 
 We want to avoid custom serialization logic for several reasons. First, it's harder to write and to annotate with types,
 because the cattrs APIs aren't as simple as they could be. Second, serialization hooks in cattrs don't compose cleanly;

@@ -8,11 +8,11 @@ import attrs
 # check for __replace__ and call it.
 
 def replace[T](value: T, **kwargs: Any) -> T:
-    val2: Any = value # https://github.com/python/mypy/issues/18973
+    val2: Any = value # python/mypy#18973
     if attrs.has(type(val2)):
         return attrs.evolve(val2, **kwargs)
     elif dataclasses.is_dataclass(value):
-        # This is a *different* mypy bug from the above, and I'm tired of fighting it
+        # This is a different mypy bug from the above
         return dataclasses.replace(value, **kwargs) # type: ignore[type-var]
     else:
         dunder_replace = getattr(val2, '__replace__', None)

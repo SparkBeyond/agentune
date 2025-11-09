@@ -73,7 +73,7 @@ class DuckdbName:
 class DuckdbTable:
     """A table in a DuckDB database.
     
-    This represents a table in a real database, not any other relation that  DuckDB knows how to read.
+    This represents a table in a real database, not any other relation that DuckDB knows how to read.
     """
     name: DuckdbName
     schema: Schema
@@ -326,16 +326,13 @@ class DuckdbManager:
         
     The default database (out of those attached) is always the first one; you can execute USE on a connection
     to change it locally, but this doesn't affect other connections.
-    (This limitation is required because otherwise all code calling connection.cursor() would have to re-apply
-    the USE statement, and most code calls connection.cursor() and not the cursor() method of this class because
-    it doesn't have a reference to this class.)
 
     The class instance always keeps an open connection instance, so closing all connections outside of this class
     will not free any resources until this class's own .close() is called.
     Code SHOULD scope the use of connection instances obtained from this class, so that resources are freed
     when this class is eventually closed.
     
-    There is currently no way to force close a database instance (discard an in-memory database, release files, close threads) 
+    There is currently no way to forcibly close a database instance (discard an in-memory database, release files, close threads)
     while live (python) connections remain. We can implement this in the future by using lower-level duckdb APIs.
 
     The main database (passed to the constructor) is always attached under the default name given to it by duckdb.
@@ -345,7 +342,7 @@ class DuckdbManager:
     The following database names are reserved and may NOT be used for either the primary database or later attached ones:
 
     - 'system', 'temp': reserved by duckdb
-    - 'memory': this is (unchangeable) name used by the primary database, if it's in-memory. To avoid confusion,
+    - 'memory': this is the (unchangeable) name used by the primary database, if it's in-memory. To avoid confusion,
                 it cannot be used for on-disk databases, or for secondary databases attached later (even if they're in-memory).
 
     The following schema names are reserved:
@@ -359,7 +356,7 @@ class DuckdbManager:
 
                        Code should use `DuckdbManager.temp_schema_name`, not the literal name.
 
-    See also docs/duckdb.md for more information.
+    See also docs/using_duckdb.md and docs/duckdb.md.
     """
 
     _conn: DuckDBPyConnection

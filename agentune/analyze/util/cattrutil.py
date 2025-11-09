@@ -99,7 +99,7 @@ def register_use_type_tag(converter: Converter, tag_name: str = '_type') -> None
                 raise ValueError(f'Unfamiliar type tag value {tag} for subtype of {target_type.__name__}; '
                                  f'did you forget to import a module?')
 
-            # Work around cattrs#692
+            # Work around python-attrs/cattrs#692
             if attrs.has(real_cl):
                 attrs.resolve_types(real_cl)
 

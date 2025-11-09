@@ -1,7 +1,7 @@
 """An API for caching (some) calls to LLMs of (some) providers.
 
 Caching is enabled separately for each provider (= subclass of LLM), using provider-specific cache key classes
-that declare the provider-specific parameters of methods like LLM.chat that be part of the cache key.
+that declare the provider-specific parameters of methods like LLM.chat that should be part of the cache key.
 
 This package implements only the bare minimum needed for our own uses. That means it only declares cache key parameters
 that we actually pass to models. (It would be a large and never-ending task to document and test all parameters
@@ -94,8 +94,6 @@ class CachingLLMMixin(LLM):
     """Mixin for an LLM subclass adding caching behavior for the methods declared in LLM.
     This class is abstract; only LLM-provider-specific subclasses can be concrete.
 
-    The provided `storage` can be any mutable storage.
-
     Concurrent calls to an async method like `achat` with the same parameters join into a single call
     to the wrapped LLM, even though the result is not cached yet.
 
@@ -106,7 +104,7 @@ class CachingLLMMixin(LLM):
     The chat_cache and completion_cache can be the same if a single cache supports storing both value types;
     we use separate fields to avoid casts.
 
-    Streaming methods are not supported and calling them will raise an error, to make it clear they're not cached.
+    Streaming methods are not supported and calling them will raise an error to make it clear they're not cached.
     (We can add support if we ever need it.)
     """
 

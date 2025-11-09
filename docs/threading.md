@@ -2,7 +2,7 @@
 
 Each code component (loosely defined) is either synchronous or asynchronous. 
 
-Components which have an abstract interface and one or more implementation always declare the interface ABC to be async,
+Components which have an abstract interface and one or more implementation always declare the interface ABC to be async
 and add a SyncXxx subclass which adds abstract synchronous methods and overrides the asynchronous ones to call them,
 like this:
 
@@ -27,9 +27,8 @@ When passing parameters to another thread, as in a call to `asyncio.to_thread`, 
 1. Code that uses network / llm calls, or other naturally-asynchronous things like sleeping / waiting for things, must be async.
 2. Code that blocks - waiting for IO or another syscall - or that performs long computations (possibly using duckdb or polars),
    must be sync. If an async component needs to run such code, it must dispatch it to a sync thread.
-3. Calls which technically block but are guaranteed to be very short can sometimes be allowed in async code, if it's a strong guarantee
-   and dispatching it to sync code has a clear downside, but this is a rare exception and you should never decide to do it
-   without exhausting every alternative.
+3. Calls which technically block but are guaranteed to be very short (e.g. guaranteed-short duckdb queries like checking a table schema) 
+   are allowed in async code, but dispatching them to a sync thread is never an error and you should do it if in any doubt.
 
 ## Other rules for async components
 
@@ -38,34 +37,37 @@ All async components run on the same async thread, together with other async lib
 They must not compute things for a long time without either yielding (`await sleep(0)`) or sending the computation
 to a sync thread.
 
-# High-level runners
+A 5-second computation embeded in async code doesn't technically block, but it prevents e.g. network operations from 
+taking place during those 5 seconds, which can cause timeouts and other problems.
 
-Runners are the high-level functions that compose multiple components together. A typical example is running several feature generators
-and selecting the best features among them.
+# Components composing other components or features
 
-A runner needs to handle each component (implementation) being sync or async, and discovering which only at runtime.
+These are components like AnalyzeRunner and EnrichRunner. They take other components as arguments, which may be async or sync.
+In particular, any component that computes Features either has to deal with this or (more commonly) uses EnrichRunner to do it.
 
-Runners are always async (or wrappers calling asyncio.run on the real async runner). During a running operation,
-there is a single async thread and a threadpool of sync threads to which sync code can be dispatched. 
-This follows normal asyncio convention.
+Such code needs to handle each sub-component (implementation) being sync or async, and discovering which only at runtime.
+The code itself must be async, and dispatch sync sub-components to a sync thread as needed.
 
 # Thread safety
 
 ## Preface
 
 Python very few documented rules for thread safety. Primitives (float, int, string, bool, None, tuples, ...) are threadsafe;
-reading and assigning local variables is threadsafe; anything else is not guaranteed.
+getting and setting dict members (including local variables) is threadsafe, if the builtin dict is used and not another wrapper
+Mapping class; anything else is not guaranteed.
 
-Some things are considered safe "in practice", as CPython implementation details - like readonly access to dicts 
-(which includes access to class members!) - but this is deliberately not a documented guarantee.
+Some other things are considered safe "in practice", based on CPython implementation details, but are not documented guarantees.
 
-Also, if you don't fully control the code behind the class you're sharing, it might involve a write operation 
-under the hood (setting a private value, perhaps to cache something) as part of reading a property.
+If you don't fully control the code behind a class, even benign-looking read access might involve a write operation 
+under the hood (e.g. setting a private value to cache something) as part of reading a property, which may not be threadsafe.
+(This is why Polars dataframe instances are not threadsafe even though they are immutable, and Pandas dataframes are not threadsafe
+even if used in a non-mutating way.) 
 
-For user-defined classes, we should only share our best bet is to only share readonly classes whose definition we control, 
-and which are implemented with slots (the default for attrs dataclasses).
+For user-defined classes, we should only share our best bet is to only share readonly classes whose definition we control.
+It is better to use slots classes (the default for attrs dataclasses) than dict classes, because there are non-atomic
+operations on dicts.
 
-If you need to share anything other than that, it must be explicilty handled in one way or another.
+If you need to share anything other values between threads, thread safety must be explicilty handled in one way or another.
 
 ## Known cases requiring handling
 

@@ -55,7 +55,8 @@ class LLMWithSpec:
     It is unstructured by storing only the LLMSpec, and automatically structured
     as an LLMWithSpec in the presence of a SerializationContext.
 
-    Equality ignores the LLM and compares only the LLMSpec.
+    Equality ignores the LLM and compares only the LLMSpec. (Instances of class LLM are not hashable and don't have
+    well-defined equality.)
     """
     spec: LLMSpec
     llm: LLM

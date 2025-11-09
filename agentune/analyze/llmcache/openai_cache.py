@@ -6,7 +6,7 @@ from llama_index.core.llms import LLM
 
 from agentune.analyze.llmcache.base import CachingLLMMixin, LLMCacheKey
 
-# Conditional import because we don't have a hard dependency on llama-index-openai
+# Use conditional imports because we don't want to add a hard dependency on every llama-index llm provider
 try:
     from llama_index.llms.openai import OpenAI, OpenAIResponses
 

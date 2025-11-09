@@ -100,10 +100,9 @@ class KtsJoinStrategy[K](JoinStrategy):
         sample_clause = f'USING SAMPLE {window.sample_maxsize} (reservoir, 42)' if window.sample_maxsize else ''
         
         # Sampling is not deterministic when multithreaded, even when a random seed is provided.
-        # And we can only set threads globally (per database), not locally (per connection).
-        # I think setting threads replaces the whole threadpool, which would be very expensive.
-        # So right now I'm leaving out the 'set threads', meaning this is not deterministic,
-        # and we need to do better. #189
+        # And we can only set threads globally (per database), not locally (per connection), which is too expensive
+        # and would disrupt any currently running queries.
+        # We need to do better. #189
         try:
             if window.sample_maxsize:
                 #conn.execute('set threads = 1')
@@ -158,5 +157,5 @@ class KtsJoinStrategy[K](JoinStrategy):
                 pass
 
     # I wanted to implemented a get_batch, taking `keys: Sequence[K]` and returning `Sequence[Option[TimeSeries]]`,
-    # but I don't know how to implement the downsampling in way that would be more efficient than calling it once per key.
+    # but I don't know how to implement the downsampling in a way that would be more efficient than calling it once per key.
 

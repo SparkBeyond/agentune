@@ -13,7 +13,8 @@ from frozendict import frozendict
 from agentune.analyze.core.types import ArrayDtype, Dtype, EnumDtype, ListDtype, StructDtype
 from agentune.analyze.util.attrutil import frozendict_converter
 
-# We define these types instad of using pl.Field and pl.Schema because we might want to support e.g. semantic types in the future.
+# We define these types instead of using pl.Field and pl.Schema because support a slightly different set of types,
+# and in the future we might want to support logical types that polars doesn't.
 
 @frozen
 class Field:
@@ -103,7 +104,7 @@ def _contains_enum_type(dtype: Dtype) -> bool:
         case _: return False
 
 def restore_df_types(df: pl.DataFrame, schema: Schema) -> pl.DataFrame:
-    """Restore the correct types to a Polars dataframe created from a DuckDB relation, given the schema."""
+    """Restore the correct types to a Polars dataframe created from a DuckDB relation, given the original schema."""
     # Preserve enum types
     for col in schema.cols:
         if _contains_enum_type(col.dtype):

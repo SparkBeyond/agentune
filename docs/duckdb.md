@@ -1,23 +1,14 @@
 # Notes and explanations about duckdb
 
-This is a collection of my notes about duckdb's behavior, documenting some things that I found 
-difficult to understand from the existing duckdb documentation. Some of it comes from reading various
-duckdb tickets and discussions, some from experimentation.
-
-This assumes thorough knowledge of what duckdb already documents; both the general and the python-specific
-sections. This is *not* an introduction to duckdb, or something to read after you've read just a few pages
-and examples of the duckdb docs. It is meant to supplement and to underscore things that are especially
-relevant to this codebase.
-
-You need to understand the duckdb docs (and then this document) to work with most parts of this codebase.
-Yes, there's a lot of it, and you don't know which parts you'll need, so it's tempting to skip it all until
-you do need it. Sorry, but there are no shortcuts.
-
-Note that the duckdb python API implements the Python standard DB-API 2.0 (documented [here](https://peps.python.org/pep-0249/)), but the names here can be a bit confusing. A `DuckDBPyConnection` is both a Connection and a Cursor, in terms of the DB-API; the `connection.cursor()` method returns the same type as the original `connection`.  In the rest of this document, I use the term `connection` meaning a `DuckDBPyConnection`, not the narrow interface called a Connection in the DB-API.
+This are my notes about duckdb's behavior, documenting some things that I found difficult to understand 
+from the existing duckdb documentation. Some of it comes from reading various duckdb tickets and discussions, 
+some from experimentation.
 
 I've been wrong before, more than once, about duckdb's behavior. You should trust-but-verify this document,
 and please do correct it if you can. You can submit additions, although we don't want to repeat here anything
 that is clearly documented in the duckdb python API docs or SQL docs.
+
+Note that the duckdb python API implements the Python standard DB-API 2.0 (documented [here](https://peps.python.org/pep-0249/)), but the names here can be a bit confusing. A `DuckDBPyConnection` is both a Connection and a Cursor, in terms of the DB-API; the `connection.cursor()` method returns the same type as the original `connection`.  In the rest of this document, I use the term `connection` meaning a `DuckDBPyConnection`, not the narrow interface called a Connection in the DB-API.
 
 ## duckdb's management of connections
 
@@ -72,9 +63,9 @@ A relation instance can be consumed only once; if you call e.g. `relation.fetcha
 
 A further point of confusion is that `rel.show()` (and also `str(relation)` and `repr(relation)`) will fetch and cache the first 10K rows of the relation's results, but will print or return (as a string) only a small sample of those rows. This can be done multiple times, both before and after (and during) consuming the relation, and does not affect it; the 10K rows are cached transparently on the Relation instance. (Code outside an interactive shell normally has no reason to use this preview, and shouldn't.) 
 
-This can be confusing when looking at when rows are actually fetched or computed (e.g. by calling a function in the query) versus when you get the results from the Relation instance. It also means that a Relation instance, after its results being consumed, holds an in-memory cache of the first 10K rows of its results, even if you never asked for it.
+This can be confusing when looking at when rows are actually fetched or computed (e.g. by calling a function in the query) versus when you get the results from the Relation instance. It also means that a Relation instance still holds an in-memory cache of the first 10K rows of its results after the results have been consumed by e.g. `fetchall()`, even if you never asked for it by calling `show()`.
 
-Therefore, code MUST only ever create a Relation that will definitely be consumed quickly, in a close-by and known location, exactly one. It's bug-prone to e.g. store a Relation for later use, or to pass it somewhere that will not immediately consume it.
+Therefore, code must never create a Relation that will not definitely be consumed exactly once, quickly, in a close-by and known location. It's bug-prone to e.g. store a Relation for later use, or to pass it somewhere that will not immediately consume it.
 
 A Relation instance is backed by the Connection instance that created it. If the Connection is closed, the Relation cannot be consumed. This is another reason not to store Relations, and the result set semantics (below) provide yet another reason not to do it.
 

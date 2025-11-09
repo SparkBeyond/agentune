@@ -19,7 +19,7 @@ def _check_features_match_schema(schema: Schema, features: Sequence[Feature]) ->
 
 
 def substitute_default_values(dataset: Dataset, features: Sequence[Feature]) -> Dataset:
-    """Apply each feature's .substitute_default_values to the corresponding column in the dataset.
+    """Apply each feature's .substitute_default_values method to the corresponding column in the dataset.
 
     Assumes the feature names match the column names (after applying the deduplication logic);
     fails if a column isn't found for one of the features.

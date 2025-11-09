@@ -93,12 +93,9 @@ Classes should *not* document different rules for determining which attributes a
 Interfaces must extend `abc.ABC`, and use the `@abstractmethod`, `@final`, etc. family of decorators.
 Implementations must specify `@override` where possible.
 
-Interfaces should not use attrs `@define`; instead they have to define properties with `@property @abstractmethod def foo(self) -> T: ...`.
-This allows implementations not to use attrs.
-
-We are considering changing this rule in the future, since using `@define` would make some interfaces much more readable, 
-and it is possible to implement such an interface without using attrs (or to work around any shortcomings of attrs)
-by manually writing out the appropriate `__init__` and other dunder methods.
+Interfaces can use attrs `@define` to guarantee that all instances are e.g. usable with attrs.evolve.
+However, they should still define properties with `@property @abstractmethod def foo(self) -> T: ...`,
+unless it is important to allow a specific attribute to be evolve()d for all instances.
 
 By convention, we put interfaces in a module called `base.py` in each package, and their implementations in other modules in the same package.
 This is not an absolute rule, since some packages have too many (unrelated) interfaces to place them all in a single base module.

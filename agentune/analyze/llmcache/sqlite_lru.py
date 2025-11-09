@@ -192,7 +192,7 @@ class _CleanupThread(threading.Thread):
 class SqliteLru(KVStore[bytes, bytes], ConnectionProvider):
     """An LRU max-size cache backed by an sqlite database.
 
-    The maximum size is measured as the sum of lengths of values in the cache; the lengths of the keys are ignored.
+    The maximum size is measured as the sum of lengths of the values in the cache; the lengths of the keys are ignored.
     (In practice, we only store hashes of the real LLMCacheKeys, so their sizes in the cache are tiny.)
 
     Starts an associated thread which periodically (every cleanup_interval) batch-writes all access time updates
