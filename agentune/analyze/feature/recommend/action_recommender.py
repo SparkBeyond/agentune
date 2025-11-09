@@ -4,11 +4,11 @@ This recommender formats conversation data and uses an LLM to generate
 actionable recommendations based on feature importance.
 """
 
+import logging
 from collections.abc import Sequence
 from typing import ClassVar, override
 
 import attrs
-import polars as pl
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
@@ -26,7 +26,11 @@ from agentune.analyze.feature.gen.insightful_text_generator.sampling.samplers im
     BalancedClassSampler,
     BalancedNumericSampler,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.util import achat_raw
+from agentune.analyze.feature.gen.insightful_text_generator.util import (
+    achat_raw,
+    estimate_tokens,
+    get_max_input_context_window,
+)
 from agentune.analyze.feature.problem import (
     ClassificationProblem,
     Problem,
@@ -37,6 +41,9 @@ from agentune.analyze.feature.recommend.base import ActionRecommender
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
 from agentune.analyze.join.conversation import Conversation, ConversationJoinStrategy
 
+logger = logging.getLogger(__name__)
+
+MIN_SAMPLES = 5  # Minimum samples for formatting conversations
 
 @frozen
 class FeatureWithScore:
@@ -118,7 +125,7 @@ class ConversationActionRecommender(ActionRecommender):
         )
     
     model: LLMWithSpec
-    num_samples: int = 40
+    max_samples: int = 40
     top_k_features: int = 60
     
     # Optional faster model for structuring (e.g., gpt-4o instead of o3)
@@ -214,7 +221,7 @@ class ConversationActionRecommender(ActionRecommender):
 
     def _format_conversations(
         self,
-        formatted_samples: pl.Series,
+        formatted_samples: list[str],
     ) -> str:
         """Format conversation samples as a readable string.
         
@@ -229,7 +236,7 @@ class ConversationActionRecommender(ActionRecommender):
             Formatted string with conversations numbered sequentially
         """
         lines = []
-        for i, conversation in enumerate(formatted_samples.to_list(), start=1):
+        for i, conversation in enumerate(formatted_samples, start=1):
             lines.append(f'--- Conversation {i} ---')
             lines.append(str(conversation))
             lines.append('')
@@ -330,6 +337,79 @@ class ConversationActionRecommender(ActionRecommender):
             conversations=conversations_dict,
             raw_report=raw_report,
         )
+    
+    async def _create_prompt(self,
+                             problem: Problem,
+                             sorted_features: list[FeatureWithFullStats],
+                             sampled_data: Dataset,
+                             conversation_strategy: ConversationJoinStrategy,
+                             conn: DuckDBPyConnection,
+                             ) -> tuple[str, list[Conversation], list[str | int]]:
+        """ Create prompt for LLM based on formatted conversations and token limits.
+
+        Args:
+            problem: The problem definition
+            sorted_features: Features sorted by importance
+            sampled_data: Sampled dataset for examples
+            conversation_strategy: The conversation join strategy being used
+            conn: Database connection
+        Returns:
+            Tuple of (prompt string, list of Conversation objects, list of conversation IDs)
+
+        Note:
+            This method adapts the number of examples included in the prompt
+            to fit within the model's context window token limit.
+        """
+        # Extract conversation IDs from sampled data
+        conversation_ids = sampled_data.data[conversation_strategy.main_table_id_column.name].to_list()
+        # Create the formatter
+        formatter = ConversationFormatter(
+            name='action_recommender_conversations',
+            conversation_strategy=conversation_strategy,
+            params_to_print=(problem.target_column,),
+        )
+        formatted_samples = await formatter.aformat_batch(sampled_data, conn)
+
+        # Get token limits
+        max_context_window = get_max_input_context_window(self.model)
+        # Find the maximum number of examples that fit within token limit
+        num_examples = len(formatted_samples)
+        while num_examples >= MIN_SAMPLES:
+            # Try with current number of examples
+            current_examples = formatted_samples.to_list()[:num_examples]
+
+            # Build prompt (adapts to regression vs classification)
+            formatted_conversations = self._format_conversations(current_examples)
+            if formatter.description is None:
+                raise ValueError(f'Formatter {formatter.name} description not available')
+            prompt = prompts.create_conversation_analysis_prompt(
+                agent_description=self.agent_description,
+                instance_description=formatter.description,
+                problem=problem,
+                sse_reduction_dict=self._format_sse_reduction_dict(sorted_features),
+                conversations=formatted_conversations,
+            )
+
+            # Estimate tokens
+            current_tokens = estimate_tokens(prompt, self.model)
+
+            # If fits, return prompt and conversations
+            if current_tokens <= max_context_window:
+                current_conversation_ids = conversation_ids[:num_examples]
+                conversations_tuple = conversation_strategy.get_conversations(current_conversation_ids, conn)
+                # Convert tuple to list for return type compatibility
+                conversations = [conv for conv in conversations_tuple if conv is not None]
+
+                logger.info(
+                    f'Fitted prompt with {num_examples} out of {len(formatted_samples)} examples, '
+                    f'using {current_tokens} tokens which is < token limit ({max_context_window} tokens)'
+                )
+                return prompt, conversations, current_conversation_ids
+ 
+            # Remove one example and try again
+            num_examples -= 1
+        # We couldn't fit even with minimum samples
+        raise ValueError(f'Cannot fit the minimal amount of needed sample conversations ({MIN_SAMPLES}) within the LLM token limit ({max_context_window}). Try providing shorter conversations as input.')
 
     @override
     async def arecommend(
@@ -363,34 +443,13 @@ class ConversationActionRecommender(ActionRecommender):
 
         # 2. Sample data
         sampler = self._get_sampler(problem)
-        sampled_data = sampler.sample(dataset, self.num_samples)
+        sampled_data = sampler.sample(dataset, self.max_samples)
 
-        # 3. Fetch conversations once (used for both formatting and final output)
-        conversations = conversation_strategy.get_conversations(sampled_data, conn)
-        
-        # 4. Extract actual conversation IDs from sampled data
-        conversation_ids = sampled_data.data[conversation_strategy.main_table_id_column.name].to_list()
-        
-        # 5. Format conversations using ConversationFormatter
-        formatter = ConversationFormatter(
-            name='action_recommender_conversations',
-            conversation_strategy=conversation_strategy,
-            params_to_print=(problem.target_column,),
+        # 3. create prompt and get conversations used (adapting number of examples to token limit)
+        prompt, conversations, conversation_ids = await self._create_prompt(
+            problem, sorted_features, sampled_data, conversation_strategy, conn
         )
-        formatted_samples = await formatter.aformat_batch(sampled_data, conn)
-
-        # 6. Build prompt (adapts to regression vs classification)
-        formatted_conversations = self._format_conversations(formatted_samples)
-        if formatter.description is None:
-            raise ValueError(f'Formatter {formatter.name} description not available')
-        prompt = prompts.create_conversation_analysis_prompt(
-            agent_description=self.agent_description,
-            instance_description=formatter.description,
-            problem=problem,
-            sse_reduction_dict=self._format_sse_reduction_dict(sorted_features),
-            conversations=formatted_conversations,
-        )
-
+        
         # 7. Call LLM to get raw text report
         raw_report = await achat_raw(self.model, prompt)
 
@@ -407,6 +466,6 @@ class ConversationActionRecommender(ActionRecommender):
         outcomes = [str(val) for val in sampled_data.data[problem.target_column.name].to_list()]
         
         return self._convert_pydantic_to_attrs(
-            pydantic_report, sorted_features, conversations, 
+            pydantic_report, sorted_features, tuple(conversations),
             conversation_ids, outcomes, raw_report
         )

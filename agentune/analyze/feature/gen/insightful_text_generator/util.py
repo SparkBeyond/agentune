@@ -3,6 +3,7 @@ import json
 import logging
 import re
 
+import tiktoken
 from llama_index.core.llms import ChatMessage
 
 from agentune.analyze.core.sercontext import LLMWithSpec
@@ -63,3 +64,25 @@ def parse_json_response_field(response: str, key: str) -> str | None:
     except (ValueError, TypeError, KeyError, AttributeError) as e:
         logger.warning(f'Failed to parse JSON response field "{key}": {e}')
         return None
+
+
+def _get_token_encoder(model_name: str) -> tiktoken.Encoding:
+    """Get the appropriate tiktoken encoder for the given model."""
+    try:
+        # Try to get encoding for the specific model
+        return tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        # Fallback to o200k_base encoding (used by gpt-4o, gpt-4o-mini)
+        logger.warning(f'Unknown model {model_name}, using o200k_base encoding')
+        return tiktoken.get_encoding('o200k_base')
+
+
+def estimate_tokens(text: str, model: LLMWithSpec) -> int:
+    """Estimate the number of tokens in a text string for a given model."""
+    encoder = _get_token_encoder(model.spec.model_name)
+    return len(encoder.encode(text))
+
+
+def get_max_input_context_window(model: LLMWithSpec) -> int:
+    """Get the maximum input context window size for the given LLM model."""
+    return model.llm.metadata.context_window * 3 // 4  # Use 75% of the context window for safety margin

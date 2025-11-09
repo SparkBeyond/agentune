@@ -148,7 +148,7 @@ async def test_blackbox_feature_generation_with_real_llm(test_dataset_with_strat
 
     feature_generator = ConversationQueryFeatureGenerator(
         query_generator_model=real_llm_with_spec,
-        num_samples_for_generation=10,
+        max_samples_for_generation=10,
         num_samples_for_enrichment=5,
         num_features_per_round=5,
         num_actionable_rounds=2,

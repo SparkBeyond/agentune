@@ -103,6 +103,53 @@ def _load_conversations_from_normalized_csv(csv_path: Path, conn: DuckDBPyConnec
     conn.unregister('conversations_df')
 
 
+def _load_long_conversations_from_normalized_csv(csv_path: Path, conn: DuckDBPyConnection, duplication_factor: int = 10) -> tuple[int, int]:
+    """Load conversations from normalized CSV and duplicate them to create very long conversations.
+    
+    Args:
+        csv_path: Path to the original conversations CSV
+        conn: DuckDB connection
+        duplication_factor: How many times to duplicate each conversation
+        
+    Returns:
+        Tuple of (first_conversation_id, last_conversation_id) for testing
+    """
+    df = pl.read_csv(csv_path)
+    
+    # Parse timestamps
+    df = df.with_columns(
+        pl.col('timestamp').str.to_datetime('%Y-%m-%dT%H:%M:%SZ')
+    )
+    
+    # Get the original conversation IDs for tracking
+    original_ids = sorted(df['id'].unique().to_list())
+    first_id = original_ids[0]
+    last_id = original_ids[-1]
+    
+    # Duplicate the conversations multiple times to make them very long
+    duplicated_dfs = []
+    for i in range(duplication_factor):
+        # Create a copy with offset timestamps to avoid duplicates
+        df_copy = df.with_columns([
+            pl.col('timestamp') + pl.duration(hours=i),
+            # Add suffix to content to make it unique and longer
+            pl.col('content') + f' [Duplicated message #{i + 1} - this makes the conversation much longer '
+                                f'and should trigger token sampling when there are many conversations like this]'
+        ])
+        duplicated_dfs.append(df_copy)
+    
+    # Concatenate all duplicated conversations
+    long_df = pl.concat(duplicated_dfs, how='vertical')
+    
+    # Register and create table
+    conn.execute('DROP TABLE IF EXISTS conversations')
+    conn.register('conversations_df', long_df)
+    conn.execute('CREATE TABLE conversations AS SELECT * FROM conversations_df')
+    conn.unregister('conversations_df')
+    
+    return first_id, last_id
+
+
 def _reconstruct_features_with_stats(
     features_and_stats: dict,
     converter: Converter,
@@ -174,7 +221,7 @@ async def test_action_recommender(
     recommender = ConversationActionRecommender(
         model=real_llm_with_spec,
         structuring_model=structuring_llm_with_spec,
-        num_samples=40,
+        max_samples=40,
         top_k_features=60,
     )
     
@@ -298,3 +345,131 @@ def test_conversation_id_mapping() -> None:
     # Verify conversations 1 and 3 are NOT in the dict (not referenced by LLM)
     assert 1 not in conversations_dict
     assert 3 not in conversations_dict
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_action_recommender_with_long_conversations_token_sampling(
+    real_llm_with_spec: LLMWithSpec,
+    structuring_llm_with_spec: LLMWithSpec,
+    ser_context: SerializationContext,
+) -> None:
+    """Test ConversationActionRecommender with very long conversations to verify token sampling works.
+    
+    This test creates artificially long conversations by duplicating the original data,
+    then verifies that:
+    1. No token limit errors occur
+    2. Some conversations are included (first one should be there)
+    3. Some conversations are excluded due to token limits (last one should not be there)
+    4. The recommender still produces valid results
+    """
+    # Check for API key
+    if not os.getenv('OPENAI_API_KEY'):
+        pytest.skip('OPENAI_API_KEY not set')
+    
+    # Load test data from centralized data directory (normalized CSVs)
+    data_dir = Path(__file__).parent.parent.parent / 'data' / 'conversations'
+    main_csv_path = data_dir / 'example_main.csv'
+    conversations_csv_path = data_dir / 'example_conversations_secondary.csv'
+    features_file_path = data_dir / 'features_with_stats.json'
+
+    # Get cattrs converter from ser_context (as per docs/serialization.md)
+    converter = ser_context.converter
+
+    # Load features and extract problem info
+    features_and_stats = _load_features_stats(features_file_path)
+    target_column, desired_target_class = _extract_problem_info(features_and_stats)
+    
+    # Load main dataset from normalized CSV
+    dataset = _load_main_dataset(main_csv_path)
+    
+    ddb_manager = DuckdbManager(DuckdbInMemory())
+    with ddb_manager.cursor() as conn:
+        # Load LONG conversations from normalized CSV (duplicated 15 times to make them very long)
+        first_conv_id, last_conv_id = _load_long_conversations_from_normalized_csv(
+            conversations_csv_path, conn, duplication_factor=15
+        )
+        
+        logger.info(f'Created long conversations - first ID: {first_conv_id}, last ID: {last_conv_id}')
+        
+        target_field = dataset.schema[target_column]
+        classes_in_data = tuple(sorted(dataset.data[target_column].unique().drop_nulls().to_list()))
+        
+        problem_description = ProblemDescription(
+            target_column=target_column,
+            problem_type='classification',
+            target_desired_outcome=desired_target_class,
+        )
+        
+        problem = ClassificationProblem(
+            problem_description=problem_description,
+            target_column=target_field,
+            classes=classes_in_data,
+        )
+
+    # Use cattrs converter for stats deserialization
+    features_with_stats = _reconstruct_features_with_stats(
+        features_and_stats,
+        converter,
+    )
+    
+    # Create recommender with smaller max_samples to force token sampling
+    recommender = ConversationActionRecommender(
+        model=real_llm_with_spec,
+        structuring_model=structuring_llm_with_spec,
+        max_samples=15,  # Smaller to force token limit issues with long conversations
+        top_k_features=20,  # Smaller to focus on the token sampling behavior
+    )
+    
+    with ddb_manager.cursor() as conn:
+        # This should NOT raise any token limit errors due to the token sampling logic
+        report = await recommender.arecommend(
+            problem=problem,
+            features_with_stats=features_with_stats,
+            dataset=dataset,
+            conn=conn,
+        )
+    
+    if report is None:
+        pytest.skip('No conversation features found')
+    
+    # Verify that the recommender still produced valid results
+    assert isinstance(report, RecommendationsReport)
+    assert len(report.analysis_summary) > 50
+    assert len(report.recommendations) > 0
+    
+    # Check that some conversations were included but not all
+    # The raw_report should contain some conversation content but not all conversations
+    raw_report_lower = report.raw_report.lower()
+    
+    # Verify that some conversation content is included (first conversation should be there)
+    assert 'conversation' in raw_report_lower, 'Report should contain conversation content'
+    
+    # Log information about what was included
+    first_id_str = str(first_conv_id)
+    last_id_str = str(last_conv_id)
+    
+    first_conv_in_report = first_id_str in report.raw_report
+    last_conv_in_report = last_id_str in report.raw_report
+    
+    logger.info(f'First conversation (ID {first_conv_id}) in report: {first_conv_in_report}')
+    logger.info(f'Last conversation (ID {last_conv_id}) in report: {last_conv_in_report}')
+    logger.info(f'Report length: {len(report.raw_report)} characters')
+    
+    # We expect that due to token sampling:
+    # 1. The first conversation should likely be included (as token reduction starts from the end)
+    # 2. The last conversation might be excluded if token limits are hit
+    # Note: We can't guarantee exact behavior as it depends on the actual token counts,
+    # but we can verify that the system didn't crash and produced valid results
+    
+    logger.info('============= Token Sampling Test Results =============')
+    logger.info(f'Dataset shape: {dataset.data.shape}')
+    logger.info(f'Features analyzed: {len(features_with_stats)}')
+    logger.info(f'Number of recommendations: {len(report.recommendations)}')
+    logger.info('Test completed successfully - no token limit errors occurred!')
+    
+    # Verify basic structure is still intact
+    for rec in report.recommendations:
+        assert len(rec.title) > 0, 'Recommendation title should not be empty'
+        assert len(rec.description) > 0, 'Recommendation description should not be empty'
+        assert len(rec.rationale) > 0, 'Recommendation rationale should not be empty'

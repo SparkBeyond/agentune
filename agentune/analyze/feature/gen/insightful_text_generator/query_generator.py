@@ -25,11 +25,16 @@ from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
 from agentune.analyze.feature.gen.insightful_text_generator.util import (
     achat_raw,
+    estimate_tokens,
     extract_json_from_response,
+    get_max_input_context_window,
 )
 from agentune.analyze.feature.problem import Problem
 
 logger = logging.getLogger(__name__)
+
+# Minimum number of examples required for query generation
+MIN_SAMPLES = 5
 
 
 @define
@@ -40,13 +45,13 @@ class QueryGenerator(ABC):
     model: LLMWithSpec
 
     sampler: DataSampler
-    sample_size: int
+    max_sample_size: int
     prompt_template: str
     
     @abstractmethod
-    async def generate_prompt_params(self, sampled_data: Dataset, problem: Problem, num_features: int,
-                                     existing_queries: list[Query] | None, conn: DuckDBPyConnection) -> dict[str, str]:
-        """Convert sampled data into params for LLM prompt."""
+    async def generate_prompt(self, sampled_data: Dataset, problem: Problem, num_features: int,
+                              existing_queries: list[Query] | None, conn: DuckDBPyConnection) -> str:
+        """Convert sampled data into LLM prompt."""
         ...
 
     async def parse_and_validate_queries(self, raw_query: str) -> list[Query]:
@@ -75,15 +80,14 @@ class QueryGenerator(ABC):
             logger.exception('Failed to parse queries')
             return []
 
-    async def agenerate_queries(self, input_data: Dataset, problem: Problem, num_features: int, conn: DuckDBPyConnection, 
+    async def agenerate_queries(self, input_data: Dataset, problem: Problem, num_features: int, conn: DuckDBPyConnection,
                                 random_seed: int | None, existing_queries: list[Query] | None = None) -> list[Query]:
-        """Generate a batch of feature queries from input conversation data."""        
-        # 1. Sample representative data for examples
-        sampled_data = self.sampler.sample(input_data, self.sample_size, random_seed=random_seed)
+        """Generate a batch of feature queries from input conversation data."""
+        # 1. Sample maximum amount of data initially
+        sampled_data = self.sampler.sample(input_data, self.max_sample_size, random_seed=random_seed)
 
-        # 2. Create prompts from the sampled data
-        prompt_params = await self.generate_prompt_params(sampled_data, problem, num_features, existing_queries, conn)
-        prompt = self.prompt_template.format(**prompt_params)
+        # 2. Generate prompt
+        prompt = await self.generate_prompt(sampled_data, problem, num_features, existing_queries, conn)
 
         # 3. Call the LLM with the prompts to generate raw query text
         raw_response = await achat_raw(self.model, prompt)
@@ -100,28 +104,52 @@ class ConversationQueryGenerator(QueryGenerator):
     """Concrete implementation for generating feature queries from conversation data."""
     formatter: DataFormatter
 
-    async def generate_prompt_params(self, sampled_data: Dataset, problem: Problem, num_features: int,
-                                     existing_queries: list[Query] | None, conn: DuckDBPyConnection) -> dict[str, str]:
+    async def generate_prompt(self, sampled_data: Dataset, problem: Problem, num_features: int,
+                              existing_queries: list[Query] | None, conn: DuckDBPyConnection) -> str:
         """Convert sampled conversation data into parameters for the prompt template.
         
         Args:
             sampled_data: Sampled dataset for examples
             problem: Problem definition
-            conn: Database connection
             existing_queries: Optional list of existing queries to avoid duplication
+            conn: Database connection
         """
         if not self.formatter.description:
             raise ValueError('DataFormatter must have a description for ConversationQueryGenerator.')
+        # Format all the examples
         formatted_examples = await self.formatter.aformat_batch(sampled_data, conn)
-        examples_str = '\n\n'.join(formatted_examples.to_list())
+        # Get token limits
+        max_context_window = get_max_input_context_window(self.model)
+        # Find the maximum number of examples that fit within token limit
+        num_examples = len(formatted_examples)
+        while num_examples >= MIN_SAMPLES:
+            # Try with current number of examples
+            current_examples = formatted_examples.to_list()[:num_examples]
+            
+            # Generate the prompt
+            examples_str = '\n\n'.join(current_examples)
+            prompt_params = questionnaire_prompt_context(
+                examples=examples_str,
+                problem=problem,
+                instance_type='conversation',
+                instance_description=self.formatter.description,
+                n_queries=str(num_features),
+                existing_queries=existing_queries if existing_queries is not None else []
+            )
+            prompt = self.prompt_template.format(**prompt_params)
 
-        prompt_params = questionnaire_prompt_context(
-            examples=examples_str,
-            problem=problem,
-            instance_type='conversation',
-            instance_description=self.formatter.description,
-            n_queries=str(num_features),
-            existing_queries=existing_queries if existing_queries is not None else []
-        )
-        return prompt_params
+            # Estimate tokens
+            current_tokens = estimate_tokens(prompt, self.model)
+
+            if current_tokens <= max_context_window:
+                logger.info(
+                    f'Fitted prompt with {num_examples} out of {len(formatted_examples)} examples, '
+                    f'using {current_tokens} tokens which is < token limit ({max_context_window} tokens)'
+                )
+                return prompt
+            
+            # Remove one example and try again
+            num_examples -= 1
+        # We couldn't fit even with minimum samples
+        raise ValueError(f'Cannot fit the minimal amount of needed sample conversations ({MIN_SAMPLES}) within the LLM token limit ({max_context_window}). Try providing shorter conversations as input.')
 

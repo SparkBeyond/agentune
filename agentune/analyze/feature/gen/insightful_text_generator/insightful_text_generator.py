@@ -98,7 +98,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
     query_enrich_model: LLMWithSpec
 
     # Optional parameters with defaults
-    num_samples_for_generation: int = 30
+    max_samples_for_generation: int = 30
     num_samples_for_enrichment: int = 200
     num_features_per_round: int = 20
     num_actionable_rounds: int = 2
@@ -142,7 +142,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         return ConversationQueryGenerator(
             model=self.query_generator_model,
             sampler=sampler,
-            sample_size=self.num_samples_for_generation,
+            max_sample_size=self.max_samples_for_generation,
             prompt_template=prompt_template,
             formatter=formatter
         )
