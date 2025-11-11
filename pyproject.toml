@@ -38,6 +38,10 @@ pytest = "^8.4.2"
 matplotlib = "^3.10.7"
 pytest-asyncio = "^1.2.0"
 
+[tool.poetry.group.examples.dependencies]
+jupyter = "^1.1.0"
+notebook = "^7.4.0"
+
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",

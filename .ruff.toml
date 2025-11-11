@@ -114,3 +114,7 @@ line-ending = "lf"
     "T201",                             # Use of print
     "S101",                             # Use of assert
 ]
+
+"*.ipynb" = [
+    "T201"                              # Use of print
+]
