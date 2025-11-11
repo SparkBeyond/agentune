@@ -1,0 +1,89 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "agentune-analyze"
+version = "0.1.0"
+description = "Analyze AI agents to understand their performance and get improvement suggestions to make them better"
+authors = [{name = "Agentune dev team", email = "agentune-dev@sparkbeyond.com"}]
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12.6,<4.0"
+keywords = [
+    "agent optimization",
+    "AI agent improvement",
+    "agent evaluation",
+    "customer support",
+    "sales agents",
+    "conversational agents",
+    "AI agents",
+    "chatbot evaluation",
+    "customer service",
+    "customer facing agents"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: Apache Software License",
+]
+
+[project.urls]
+Repository = "https://github.com/SparkBeyond/agentune"
+Homepage = "https://github.com/SparkBeyond/agentune/tree/main/agentune_analyze"
+Documentation = "https://github.com/SparkBeyond/agentune/tree/main/agentune_analyze"
+
+[tool.poetry]
+packages = [{include = "agentune"}]
+
+[tool.poetry.dependencies]
+python = "^3.12.6"
+duckdb = ">=1.4.1,<1.5.0"
+pyarrow = ">=19.0.1"
+numpy = "^2.2.4"
+janus = "^2.0.0"
+polars = "^1.27.1"
+attrs = "^25.3.0"
+scikit-learn = "^1.6.1"
+scipy = "^1.15.3"
+scipy-stubs = "^1.15.3.0"
+cattrs = "^25.3.0"
+httpx = {extras = ["http2"], version = "^0.28.1"}
+frozendict = "^2.4.6"
+more-itertools = "^10.7.0"
+llama-index-core = "^0.14.7"
+llama-index-llms-openai = "^0.6.7"
+lightgbm = "^4.6.0"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.18.2"
+ruff = "^0.12.11"
+pytest-mypy-plugins = "^3.2.0"
+pyarrow-stubs = ">=19.0"
+pytest = "^8.4.2"
+matplotlib = "^3.10.7"
+pytest-asyncio = "^1.2.0"
+
+[tool.poetry.group.examples.dependencies]
+jupyter = "^1.1.0"
+notebook = "^7.4.0"
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+    "-m not integration"
+]
+testpaths = [ "tests" ]
+pythonpath = ["."]
+tmp_path_retention_policy = "none"
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (deselected by default)"
+]
