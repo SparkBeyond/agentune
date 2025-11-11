@@ -29,6 +29,14 @@ class RegressionDirection(StrEnum):
 
 @frozen
 class TableDescription:
+    """A natural-language description of an input data table.
+
+    Args:
+        description: the entity corresponding to each row in the table (e.g. 'kittens') and any additional
+                     information on that entity.
+        column_descriptions: descriptions of the columns in the table, mapped by the column name.
+                             E.g., {'age': 'age of the kitten in weeks', 'color': 'color of the kitten'}
+    """
     description: str | None = None
     column_descriptions: frozendict[str, str] = field(default=frozendict(), converter=frozendict_converter)
 
@@ -40,6 +48,36 @@ class ProblemDescription:
     might be modified from the original user input by setting some fields that the user left empty.
 
     Parameters which describe data (schema and/or values) are validated against the data inputs to `analyze`.
+
+    Args:
+        target_column: name of the column in the main table that contains the target variable to predict/estimate/explain.
+                       The target variable is the manifestation or indication of the outcome or indicator associated with
+                       the corresponding row. Aggregated over the main table, it provides the KPI to be optimized.
+        problem_type: 'classification' or 'regression'. If not specified, the type is inferred from the target column dtype.
+                      Regression requires a numeric target column, and is the inferred type for numeric targets.
+                      Classification allows all types (including numeric ones) and requires a limited number of distinct
+                      values in the target column in the train dataset; the limit is given by `AnalyzeParams.max_classes`.
+                      If this is None, the actual (inferred) problem_type is given by `Problem.target_kind` when analysis
+                      completes.
+        target_desired_outcome: the preferred outcome for the target variable. This causes features to be found
+                                that drive this outcome in particular, and recommendations to be made that optimize for
+                                that outcome.
+                                For classification problems, this is a target value, which must exactly match one of the
+                                target values present in the train data. For regression problems, this indicates whether
+                                higher or lower target values are better (`RegressionDirection.up` or `RegressionDirection.down`).
+        name:         a short name for the problem being analyzed, e.g. 'Kitten adoption'.
+        description:  a longer (1-2 sentences) description, e.g. 'There are kittens in shelters that need to be adopted
+                      to loving homes. This requires matching each kitten with the right person.'
+        target_description: any additional information on the target and the possible outcomes, e.g.
+                      'how long the kitten spent in the shelter before being adopted'.
+        business_domain: the domain to which the problem and the data belong, e.g. 'animal welfare'.
+        date_column:  Name of a column of type datetime in the main table.
+                      Relevant for temporal problems. In the future, this will help determine the train-test split
+                      to avoid target leaks.
+        comments:     Any additional semantic information that can help analyze the problem and suggest improvements,
+                      e.g. 'Only weaned kittens are put out for adoption'.
+        main_table:   A description of the main table and its columns.
+        secondary_tables: A mapping from table names to descriptions of secondary tables.
     """
     target_column: str # Comes first because it's the only mandatory parameter
     problem_type: TargetKind | None = None
