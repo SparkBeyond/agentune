@@ -2,12 +2,45 @@
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry]
-name = "agentune_analyze"
+[project]
+name = "agentune-analyze"
 version = "0.1.0"
-description = "A library for discovering insights in data"
-authors = ["SparkBeyond Team"]
+description = "Analyze AI agents to understand their performance and get improvement suggestions to make them better"
+authors = [{name = "Agentune dev team", email = "agentune-dev@sparkbeyond.com"}]
 readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12.6,<4.0"
+keywords = [
+    "agent optimization",
+    "AI agent improvement",
+    "agent evaluation",
+    "customer support",
+    "sales agents",
+    "conversational agents",
+    "AI agents",
+    "chatbot evaluation",
+    "customer service",
+    "customer facing agents"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: Apache Software License",
+]
+
+[project.urls]
+Repository = "https://github.com/SparkBeyond/agentune"
+Homepage = "https://github.com/SparkBeyond/agentune/tree/main/agentune_analyze"
+Documentation = "https://github.com/SparkBeyond/agentune/tree/main/agentune_analyze"
+
+[tool.poetry]
 packages = [{include = "agentune"}]
 
 [tool.poetry.dependencies]
