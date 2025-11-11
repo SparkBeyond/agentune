@@ -42,6 +42,10 @@ Learn the fundamentals of Agentune Analyze by analyzing customer service convers
 **Dataset**: Auto insurance customer service (101 conversations)
 **Prerequisites**: OpenAI API key
 
+### [Advanced examples](examples.md)
+
+Example code for several common usecases not covered by the walkthrough.
+
 ## Sample Data
 
 All tutorial datasets are located in the [`data/`](data/) directory. See [data/README.md](data/README.md) for detailed schema documentation and information about using your own data.
