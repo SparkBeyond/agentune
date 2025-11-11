@@ -49,7 +49,7 @@ MIN_SAMPLES = 5  # Minimum samples for formatting conversations
 class FeatureWithScore:
     """Reference to a feature with its importance score."""
     name: str
-    sse_reduction: float
+    r_squared: float
 
 
 @frozen
@@ -88,11 +88,13 @@ class Recommendation:
 
 @frozen
 class RecommendationsReport:
-    """Structured recommendations report with enriched SSE reduction data."""
+    """Structured recommendations report with enriched R² data."""
     analysis_summary: str
     recommendations: tuple[Recommendation, ...]
     conversations: dict[int, ConversationWithMetadata]  # Keyed by display_number (1, 2, 3...)
     raw_report: str
+    total_conversations_analyzed: int  # Total number of conversations sent to LLM for analysis
+    all_features: tuple[FeatureWithScore, ...]  # All features analyzed, sorted by R²
 
 
 @attrs.frozen
@@ -205,7 +207,7 @@ class ConversationActionRecommender(ActionRecommender):
         self, features_with_stats: list[FeatureWithFullStats]
     ) -> str:
         """Format SSE reduction dictionary as a readable string.
-        
+
         Args:
             features_with_stats: Features sorted by importance
             
@@ -242,7 +244,7 @@ class ConversationActionRecommender(ActionRecommender):
             lines.append('')
         return '\n'.join(lines)
 
-    def _pydantic_to_attrs(
+    def _convert_pydantic_to_attrs(
         self,
         pydantic_report: prompts.StructuredReport,
         features_with_stats: list[FeatureWithFullStats],
@@ -250,10 +252,11 @@ class ConversationActionRecommender(ActionRecommender):
         conversation_ids: list[int | str],
         outcomes: list[str],
         raw_report: str,
+        total_conversations_analyzed: int,
     ) -> RecommendationsReport:
         """Convert Pydantic report to attrs report, enriching with SSE reduction and conversation data.
         non-existing features appear with SSE=0, and are to be pruned in the filtering later on in the flow.
-        
+
         Args:
             pydantic_report: The Pydantic model from LLM structured output
             features_with_stats: Features with their statistics (for SSE lookup)
@@ -261,31 +264,32 @@ class ConversationActionRecommender(ActionRecommender):
             conversation_ids: List of actual database conversation IDs (in same order as conversations)
             outcomes: List of outcome values (in same order as conversations)
             raw_report: Raw report from LLM structured output
-            
+            total_conversations_analyzed: Number of conversations included in the prompt sent to LLM
+
         Returns:
             RecommendationsReport with enriched feature references and ConversationWithMetadata objects
         """
-        # Build a lookup map: feature description -> SSE reduction
-        sse_lookup = {
-            fws.feature.description: fws.stats.relationship.sse_reduction
+        # Build a lookup map: feature description -> R²
+        r_squared_lookup = {
+            fws.feature.description: fws.stats.relationship.r_squared
             for fws in features_with_stats
         }
         
-        def find_sse_for_feature(feat_name: str) -> float:
-            """Find SSE reduction for a feature name.
+        def find_r_squared_for_feature(feat_name: str) -> float:
+            """Find R² for a feature name.
             
-            The LLM is instructed to return exact feature descriptions without SSE values.
+            The LLM is instructed to return exact feature descriptions without R² values.
             We try exact match first, then fallback to fuzzy matching for robustness.
             Returns 0.0 if feature is not found (treated as non-predictive).
             """
             # Try exact match first (expected case)
-            if feat_name in sse_lookup:
-                return sse_lookup[feat_name]
+            if feat_name in r_squared_lookup:
+                return r_squared_lookup[feat_name]
             
             # Fallback: try to find by prefix match (in case LLM didn't follow instructions)
-            for desc, sse in sse_lookup.items():
+            for desc, r2 in r_squared_lookup.items():
                 if feat_name.startswith(desc) or desc.startswith(feat_name):
-                    return sse
+                    return r2
             
             return 0.0  # Feature not found - treat as non-predictive
         
@@ -298,7 +302,7 @@ class ConversationActionRecommender(ActionRecommender):
             supporting_features = tuple(
                 FeatureWithScore(
                     name=feat_name,
-                    sse_reduction=find_sse_for_feature(feat_name),
+                    r_squared=find_r_squared_for_feature(feat_name),
                 )
                 for feat_name in rec.supporting_features
             )
@@ -336,35 +340,46 @@ class ConversationActionRecommender(ActionRecommender):
             if 1 <= idx <= len(conversation_ids)  # Validate idx is within valid range
         }
         
+        # Create list of all features with their R² scores
+        all_features_list = [
+            FeatureWithScore(
+                name=fws.feature.description,
+                r_squared=fws.stats.relationship.r_squared,
+            )
+            for fws in features_with_stats
+        ]
+
         return RecommendationsReport(
             analysis_summary=pydantic_report.analysis_summary,
             recommendations=tuple(recommendations_list),
             conversations=conversations_dict,
             raw_report=raw_report,
+            total_conversations_analyzed=total_conversations_analyzed,
+            all_features=tuple(all_features_list),
         )
 
     def _filter_recommendations_with_no_supporting_features(self, report: RecommendationsReport) -> RecommendationsReport:
         """Filter out recommendations with no valid supporting features.
-        
+
         Removes:
         - Features with SSE reduction = 0.0 (non-existent or non-predictive) from supporting features list in recommendations.
         - Recommendations that have no remaining features after filtering
-        
+
         Args:
             report: The unfiltered RecommendationsReport
-            
+
         Returns:
             Filtered RecommendationsReport with only meaningful recommendations
         """
         filtered_recommendations_list = []
         filtered_out: list[str] = []
-        
+
         for rec in report.recommendations:
             # Filter out features with SSE=0 (non-existent or non-predictive)
             meaningful_features = tuple(
-                f for f in rec.supporting_features if f.sse_reduction > 0.0
+                f for f in rec.supporting_features if f.r_squared > 0.0
             )
-            
+
             # Only include recommendation if it has at least one meaningful feature
             if meaningful_features:
                 filtered_recommendations_list.append(
@@ -372,14 +387,14 @@ class ConversationActionRecommender(ActionRecommender):
                 )
             else:
                 filtered_out.append(rec.title)
-        
+
         # Log filtered recommendations
         if filtered_out:
             logger.warning(
                 f'Filtered out {len(filtered_out)} recommendation(s) due to having no valid supporting features: '
                 f'{", ".join(filtered_out)}'
             )
-        
+
         return attrs.evolve(report, recommendations=tuple(filtered_recommendations_list))
 
     async def _create_prompt(self,
@@ -388,7 +403,7 @@ class ConversationActionRecommender(ActionRecommender):
                              sampled_data: Dataset,
                              conversation_strategy: ConversationJoinStrategy,
                              conn: DuckDBPyConnection,
-                             ) -> tuple[str, list[Conversation], list[str | int]]:
+                             ) -> tuple[str, list[Conversation], list[str | int], int]:
         """ Create prompt for LLM based on formatted conversations and token limits.
 
         Args:
@@ -398,7 +413,7 @@ class ConversationActionRecommender(ActionRecommender):
             conversation_strategy: The conversation join strategy being used
             conn: Database connection
         Returns:
-            Tuple of (prompt string, list of Conversation objects, list of conversation IDs)
+            Tuple of (prompt string, list of Conversation objects, list of conversation IDs, num conversations in prompt)
 
         Note:
             This method adapts the number of examples included in the prompt
@@ -448,8 +463,8 @@ class ConversationActionRecommender(ActionRecommender):
                     f'Fitted prompt with {num_examples} out of {len(formatted_samples)} examples, '
                     f'using {current_tokens} tokens which is < token limit ({max_context_window} tokens)'
                 )
-                return prompt, conversations, current_conversation_ids
-
+                return prompt, conversations, current_conversation_ids, num_examples
+ 
             # Remove one example and try again
             num_examples -= 1
         # We couldn't fit even with minimum samples
@@ -489,12 +504,12 @@ class ConversationActionRecommender(ActionRecommender):
         # Filter dataset to only rows where conversation exists
         existing_ids = conversation_strategy.ids_exist(dataset, conn)
         filtered_dataset = Dataset(schema=dataset.schema, data=dataset.data.filter(existing_ids))
-        
+
         sampler = self._get_sampler(problem)
         sampled_data = sampler.sample(filtered_dataset, self.max_samples)
 
         # 3. create prompt and get conversations used (adapting number of examples to token limit)
-        prompt, conversations, conversation_ids = await self._create_prompt(
+        prompt, conversations, conversation_ids, num_conversations_in_prompt = await self._create_prompt(
             problem, sorted_features, sampled_data, conversation_strategy, conn
         )
         
@@ -508,16 +523,16 @@ class ConversationActionRecommender(ActionRecommender):
             model=self.model,
             structuring_model=self.structuring_model,
         )
-
-        # 6. Convert Pydantic to attrs, enriching with SSE reduction and conversation data
+        
+        # 6. Convert Pydantic to attrs, enriching with conversation data
         # Extract outcomes as strings for metadata
         outcomes = [str(val) for val in sampled_data.data[problem.target_column.name].to_list()]
         
         # Convert Pydantic to attrs
-        report = self._pydantic_to_attrs(
+        report = self._convert_pydantic_to_attrs(
             pydantic_report, sorted_features, tuple(conversations),
-            conversation_ids, outcomes, raw_report
+            conversation_ids, outcomes, raw_report, num_conversations_in_prompt
         )
-        
+
         # Filter out invalid recommendations
         return self._filter_recommendations_with_no_supporting_features(report)

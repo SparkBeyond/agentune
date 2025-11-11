@@ -267,10 +267,10 @@ async def test_action_recommender(
         assert len(rec.description) > 0, 'Recommendation description should not be empty'
         assert len(rec.rationale) > 0, 'Recommendation rationale should not be empty'
         
-        # Verify that supporting features have SSE reduction values
+        # Verify that supporting features have R² values
         for feat_ref in rec.supporting_features:
-            assert isinstance(feat_ref.sse_reduction, float), 'SSE reduction should be a float'
-            # Note: SSE reduction can be negative (temporary errors), so we don't assert > 0
+            assert isinstance(feat_ref.r_squared, float), 'R² should be a float'
+            # Note: R² can be negative (temporary errors), so we don't assert > 0
 
     # Verify ConversationWithMetadata structure
     assert len(report.conversations) > 0, 'Should have at least one conversation referenced'
@@ -516,13 +516,14 @@ def test_feature_filtering_removes_recommendations_without_features(caplog: pyte
     )
 
     # Call the conversion and filtering methods
-    unfiltered = recommender._pydantic_to_attrs(
+    unfiltered = recommender._convert_pydantic_to_attrs(
         mock_pydantic_report,
         features_with_stats,
         (),  # conversations
         [],  # conversation_ids
         [],  # outcomes
-        'raw report'
+        'raw report',
+        0  # total_conversations_analyzed
     )
     result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
 
@@ -543,18 +544,18 @@ def test_feature_filtering_removes_features_with_zero_sse() -> None:
         top_k_features=5,
     )
 
-    # Create mock features: one with high SSE, one with 0.0 SSE
+    # Create mock features: one with high R², one with 0.0 R²
     mock_feature_high = Mock()
     mock_feature_high.description = 'High SSE feature'
     mock_relationship_high = Mock()
-    mock_relationship_high.sse_reduction = 0.8
+    mock_relationship_high.r_squared = 0.8
     mock_stats_high = Mock()
     mock_stats_high.relationship = mock_relationship_high
 
     mock_feature_zero = Mock()
     mock_feature_zero.description = 'Zero SSE feature'
     mock_relationship_zero = Mock()
-    mock_relationship_zero.sse_reduction = 0.0
+    mock_relationship_zero.r_squared = 0.0
     mock_stats_zero = Mock()
     mock_stats_zero.relationship = mock_relationship_zero
 
@@ -585,24 +586,25 @@ def test_feature_filtering_removes_features_with_zero_sse() -> None:
     )
 
     # Call the conversion and filtering methods
-    unfiltered = recommender._pydantic_to_attrs(
+    unfiltered = recommender._convert_pydantic_to_attrs(
         mock_pydantic_report,
         features_with_stats,
         (),  # conversations
         [],  # conversation_ids
         [],  # outcomes
-        'raw report'
+        'raw report',
+        0  # total_conversations_analyzed
     )
     result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
 
-    # Verify only 1 recommendation remains (with only the high SSE feature)
+    # Verify only 1 recommendation remains (with only the high R² feature)
     assert len(result.recommendations) == 1
     rec = result.recommendations[0]
 
-    # Should only have 1 feature (the one with high SSE)
+    # Should only have 1 feature (the one with high R²)
     assert len(rec.supporting_features) == 1
     assert rec.supporting_features[0].name == 'High SSE feature'
-    assert rec.supporting_features[0].sse_reduction == 0.8
+    assert rec.supporting_features[0].r_squared == 0.8
 
     # Verify the zero SSE feature is not included
     feature_names = [f.name for f in rec.supporting_features]
@@ -622,14 +624,14 @@ def test_feature_filtering_removes_hallucinated_features(caplog: pytest.LogCaptu
     mock_feature_1 = Mock()
     mock_feature_1.description = 'Real feature 1'
     mock_relationship_1 = Mock()
-    mock_relationship_1.sse_reduction = 0.9
+    mock_relationship_1.r_squared = 0.9
     mock_stats_1 = Mock()
     mock_stats_1.relationship = mock_relationship_1
 
     mock_feature_2 = Mock()
     mock_feature_2.description = 'Real feature 2'
     mock_relationship_2 = Mock()
-    mock_relationship_2.sse_reduction = 0.7
+    mock_relationship_2.r_squared = 0.7
     mock_stats_2 = Mock()
     mock_stats_2.relationship = mock_relationship_2
 
@@ -674,13 +676,14 @@ def test_feature_filtering_removes_hallucinated_features(caplog: pytest.LogCaptu
     )
 
     # Call the conversion and filtering methods
-    unfiltered = recommender._pydantic_to_attrs(
+    unfiltered = recommender._convert_pydantic_to_attrs(
         mock_pydantic_report,
         features_with_stats,
         (),  # conversations
         [],  # conversation_ids
         [],  # outcomes
-        'raw report'
+        'raw report',
+        0  # total_conversations_analyzed
     )
     result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
 
@@ -701,10 +704,10 @@ def test_feature_filtering_removes_hallucinated_features(caplog: pytest.LogCaptu
     assert "Hallucinated feature that doesn't exist" not in feature_names
     assert 'Another fake feature' not in feature_names
 
-    # Verify SSE values are correct for real features
-    sse_values = {f.name: f.sse_reduction for f in rec.supporting_features}
-    assert sse_values['Real feature 1'] == 0.9
-    assert sse_values['Real feature 2'] == 0.7
+    # Verify R² values are correct for real features
+    r_squared_values = {f.name: f.r_squared for f in rec.supporting_features}
+    assert r_squared_values['Real feature 1'] == 0.9
+    assert r_squared_values['Real feature 2'] == 0.7
 
     # Verify the recommendation with only hallucinations was filtered out
     assert any('Filtered out' in record.message for record in caplog.records)
