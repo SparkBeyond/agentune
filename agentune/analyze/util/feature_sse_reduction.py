@@ -216,16 +216,27 @@ def prepare_targets(target_values: np.ndarray) -> np.ndarray:
             return one_hot
 
 
-def encode_categorical_loo(series: pl.Series, target: np.ndarray) -> np.ndarray:
-    """Generalized Leave-One-Out (LOO) target encoding for regression and classification.
-
-    - Regression: Treats the target as a single-class problem.
-    - Classification: Handles binary and multiclass targets.
-
+def encode_categorical_catboost(series: pl.Series, target: np.ndarray, n_permutations: int = 5, prior: float = 5.0, random_seed: int = 42) -> np.ndarray:
+    """CatBoost-style Ordered Target Statistics encoding for categorical features.
+    
+    This implements the CatBoost algorithm which avoids target leakage by:
+    1. Creating random permutations of the data
+    2. For each sample, computing target statistics using only samples that appear
+       BEFORE it in the permutation order (ordered target statistics)
+    3. Averaging results across multiple permutations to reduce variance
+    
+    The encoding uses prior smoothing: (cumsum + prior*global_mean) / (count + prior)
+    This acts as if we've observed 'prior' additional pseudo-samples with the global mean value.
+    
+    Args:
+        series: Categorical feature values as polars Series
+        target: Target values as numpy array (1D or 2D)
+        n_permutations: Number of random permutations to average (default: 5)
+        prior: Prior value for smoothing (default: 5.0)
+        random_seed: Random seed for reproducibility (default: 42)
+    
     Returns:
-        np.ndarray: An array with shape (n_samples, n_classes).
-                    For regression and binary classification, the shape will be (n_samples, 1).
-                    The result can be squeezed to (n_samples,) if needed post-call.
+        np.ndarray: Encoded values with shape (n_samples, n_classes) or (n_samples,) for single-class
     """
     # 1. Standardize Inputs
     if target.ndim == 1:
@@ -236,42 +247,53 @@ def encode_categorical_loo(series: pl.Series, target: np.ndarray) -> np.ndarray:
     # Use robust preprocessing for the categorical feature
     series_str = series.cast(pl.Utf8)
     values = series_str.to_numpy()
-
-    # 2. Pre-compute Statistics
-    # Global mean for fallback (more robust for singletons)
+    
+    # Global mean as prior
     global_mean = target.mean(axis=0)
-
-    # Per-category sums and counts
-    category_sum: dict[str, np.ndarray] = {}
-    category_count: dict[str, int] = {}
-
-    for cat in np.unique(values):
-        mask = (values == cat)
-        # This works for both regression (n_classes=1) and classification
-        category_sum[cat] = target[mask].sum(axis=0)
-        category_count[cat] = int(mask.sum())
-
-    # 3. Perform LOO Encoding
-    encoded = np.zeros_like(target, dtype=np.float64)
-
-    for i, cat in enumerate(values):
-        cat_total_sum = category_sum[cat]
-        cat_total_count = category_count[cat]
-        current_target_value = target[i]
-
-        if cat_total_count > 1:
-            # The core LOO logic works for both scalars and vectors
-            encoded[i] = (cat_total_sum - current_target_value) / (cat_total_count - 1)
-        else:
-            # Use the global mean as a safe fallback for singleton categories
-            encoded[i] = global_mean
-
+    
+    # Get unique categories for encoding
+    unique_cats = np.unique(values)
+    
+    # Perform CatBoost Ordered Target Statistics
+    # Initialize result array to accumulate encodings from multiple permutations
+    result = np.zeros((n_samples, n_classes), dtype=np.float64)
+    
+    rng = np.random.RandomState(random_seed)
+    
+    for _ in range(n_permutations):
+        # Create random permutation
+        perm = rng.permutation(n_samples)
+        
+        # Track cumulative statistics for each category as we iterate
+        # category -> (sum_of_targets, count)
+        cumulative_sum: dict[str, np.ndarray] = {}
+        cumulative_count: dict[str, int] = {}
+        
+        # Initialize all categories with prior
+        for cat in unique_cats:
+            cumulative_sum[cat] = global_mean * prior
+            cumulative_count[cat] = 0
+        
+        # Iterate through samples in permuted order
+        for idx in perm:
+            cat = values[idx]
+            
+            # Encode current sample using statistics from samples seen so far
+            # Formula: cumsum / (count + prior), where cumsum is initialized with prior*global_mean
+            count = cumulative_count[cat]
+            result[idx] += cumulative_sum[cat] / (count + prior)
+            # Update cumulative statistics with current sample
+            cumulative_sum[cat] += target[idx]
+            cumulative_count[cat] += 1
+    
+    # 3. Average across permutations
+    result /= n_permutations
+    
     # 4. Finalize Output Shape
-    # If the original task was regression or binary, squeeze the output to be a 1D array.
     if n_classes == 1:
-        return encoded.ravel()  # Shape (n_samples,)
-
-    return encoded  # Shape (n_samples, n_classes) for multiclass
+        return result.ravel()  # Shape (n_samples,)
+    
+    return result  # Shape (n_samples, n_classes) for multiclass
 
 
 def prepare_feature_values(features: Sequence[Feature], df: pl.DataFrame, target: np.ndarray) -> dict[str, np.ndarray]:
@@ -288,7 +310,7 @@ def prepare_feature_values(features: Sequence[Feature], df: pl.DataFrame, target
         if isinstance(feature, CategoricalFeature):
             # Categorical: direct LOO encoding
             series = df[feature.name]
-            encoded = encode_categorical_loo(series, target)
+            encoded = encode_categorical_catboost(series, target)
             feature_values[feature.name] = encoded
         else:
             # Numeric: single component
@@ -346,6 +368,10 @@ def calculate_sse_reduction(feature: Feature, series: pl.Series, target: pl.Seri
     """
     # Create aligned arrays without nulls
     df = pl.DataFrame({feature.name: series, 'target': target}).drop_nulls()
+    
+    # Check if we have enough samples after dropping nulls
+    if len(df) <= 1:
+        raise ValueError(f'Insufficient samples for SSE calculation: {len(df)} sample(s) after removing nulls. Need at least 2 samples.')
     
     # Use shared preparation function
     prepared_target, feature_values, baseline_stats = prepare_sse_data([feature], df, 'target')

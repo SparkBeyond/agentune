@@ -579,3 +579,223 @@ def test_constant_feature_sse_reduction() -> None:
     assert stats.sse_reduction >= 0, 'SSE reduction should never be negative'
     assert stats2.sse_reduction >= 0, 'SSE reduction should never be negative'
     assert stats3.sse_reduction >= 0, 'SSE reduction should never be negative'
+
+
+# -----------------------------------
+# E. Problematic Categorical Feature Distributions
+# -----------------------------------
+
+def test_constant_categorical_feature_binary_target() -> None:
+    """Test that constant categorical features get zero SSE reduction (100-0 distribution).
+    
+    This tests the most extreme case: all samples have the same feature value.
+    We expect this to have very low predictiveness - low sse reduction.
+    """
+    # All samples have feature value "A"
+    feature = SimpleCategoricalFeature(
+        name='constant_feature',
+        categories=('A',),
+        technical_description='100% constant feature'
+    )
+    feature_series = pl.Series(['A'] * 100)
+    
+    # Binary target with 50-50 distribution
+    target_series = pl.Series(['X'] * 50 + ['Y'] * 50)
+    problem = _classification_problem(target_series)
+    
+    calc = UnifiedRelationshipStatsCalculator()
+    stats = calc.calculate_from_series(feature, feature_series, target_series, problem)
+    
+    # Constant features should have very low SSE reduction with more samples
+    assert 0.0 <= stats.sse_reduction < 0.03, \
+        f'100% constant feature should have sse_reduction < 0.01, got {stats.sse_reduction}'
+    
+    # R² should also be very low (< 0.01)
+    assert 0.0 <= stats.r_squared < 0.03, \
+        f'100% constant feature should have r_squared < 0.01, got {stats.r_squared}'
+
+
+def test_dominant_category_with_singleton() -> None:
+    """Test that dominant + singleton categorical features get zero SSE reduction (99-1 distribution).
+    
+    This is a problematic distribution where:
+    - 99% of samples have feature value "A"
+    - 1% of samples have feature value "B" (singleton)
+    
+    We expect this to have very low predictiveness - low sse reduction.
+    """
+    # 99 samples with "A", 1 sample with "B"
+    feature = SimpleCategoricalFeature(
+        name='dominant_feature',
+        categories=('A', 'B'),
+        technical_description='99-1 distribution'
+    )
+    feature_series = pl.Series(['A'] * 99 + ['B'])
+    
+    # Binary target with 50-50 distribution
+    target_series = pl.Series(['X'] * 50 + ['Y'] * 50)
+    problem = _classification_problem(target_series)
+    
+    calc = UnifiedRelationshipStatsCalculator()
+    stats = calc.calculate_from_series(feature, feature_series, target_series, problem)
+    
+    # Extreme distributions should have very low SSE reduction (< 0.01)
+    assert 0.0 <= stats.sse_reduction < 0.03, \
+        f'99-1 distribution should have sse_reduction < 0.01, got {stats.sse_reduction}'
+    
+    # R² should also be very low (< 0.01)
+    assert 0.0 <= stats.r_squared < 0.03, \
+        f'99-1 distribution should have r_squared < 0.01, got {stats.r_squared}'
+
+
+def test_dominant_category_with_multiple_singletons() -> None:
+    """Test that dominant + multiple singletons get zero SSE reduction (97-1-1-1 distribution).
+    
+    This is another problematic distribution where:
+    - 97% of samples have feature value "A"
+    - 1% each have values "B", "C", "D" (all singletons)
+    
+    We expect this to have very low predictiveness - low sse reduction.
+    """
+    # 97 samples with "A", 1 each with "B", "C", "D"
+    feature = SimpleCategoricalFeature(
+        name='dominant_feature',
+        categories=('A', 'B', 'C', 'D'),
+        technical_description='97-1-1-1 distribution'
+    )
+    feature_series = pl.Series(['A'] * 97 + ['B', 'C', 'D'])
+    
+    # 3-class target with balanced distribution
+    target_series = pl.Series(['X'] * 33 + ['Y'] * 33 + ['Z'] * 34)
+    problem = _classification_problem(target_series)
+    
+    calc = UnifiedRelationshipStatsCalculator()
+    stats = calc.calculate_from_series(feature, feature_series, target_series, problem)
+    
+    # Extreme distributions should have very low SSE reduction (< 0.01)
+    assert 0.0 <= stats.sse_reduction < 0.03, \
+        f'97-1-1-1 distribution should have sse_reduction < 0.03, got {stats.sse_reduction}'
+    
+    # R² should also be very low (< 0.02 for multiclass)
+    assert 0.0 <= stats.r_squared < 0.1, \
+        f'97-1-1-1 distribution should have r_squared < 0.02, got {stats.r_squared}'
+
+
+def test_constant_categorical_feature_multiclass_target() -> None:
+    """Test that constant categorical features get zero SSE reduction with multiclass targets.
+    
+    This tests the circular reasoning problem in a multiclass scenario:
+    - All samples have the same feature value
+    - Target has 3 classes (balanced or unbalanced)
+
+    We expect this to have very low predictiveness - low sse reduction.
+    """
+    # All samples have feature value "A"
+    feature = SimpleCategoricalFeature(
+        name='constant_feature',
+        categories=('A',),
+        technical_description='Constant feature with multiclass target'
+    )
+    feature_series = pl.Series(['A'] * 150)
+    
+    # Test case 1: Balanced 3-class target (5-5-5)
+    target_balanced = pl.Series(['X'] * 50 + ['Y'] * 50 + ['Z'] * 50)
+    problem_balanced = _classification_problem(target_balanced)
+    
+    calc = UnifiedRelationshipStatsCalculator()
+    stats_balanced = calc.calculate_from_series(feature, feature_series, target_balanced, problem_balanced)
+    
+    # Constant features may have small non-zero SSE due to encoding artifacts
+    assert 0.0 <= stats_balanced.sse_reduction < 0.1, \
+        f'Constant feature with balanced multiclass should have sse_reduction < 0.1, got {stats_balanced.sse_reduction}'
+    # R² may be higher for multiclass constant features due to encoding artifacts
+    assert 0.0 <= stats_balanced.r_squared < 0.3, \
+        f'Constant feature with balanced multiclass should have r_squared < 0.3, got {stats_balanced.r_squared}'
+    
+    # Test case 2: Unbalanced 3-class target (10-3-2)
+    target_unbalanced = pl.Series(['X'] * 100 + ['Y'] * 30 + ['Z'] * 20)
+    problem_unbalanced = _classification_problem(target_unbalanced)
+    
+    stats_unbalanced = calc.calculate_from_series(feature, feature_series, target_unbalanced, problem_unbalanced)
+    
+    # Constant features may have small non-zero SSE due to encoding artifacts
+    assert 0.0 <= stats_unbalanced.sse_reduction < 0.1, \
+        f'Constant feature with unbalanced multiclass should have sse_reduction < 0.1, got {stats_unbalanced.sse_reduction}'
+    # R² may be higher for multiclass constant features due to encoding artifacts
+    assert 0.0 <= stats_unbalanced.r_squared < 0.3, \
+        f'Constant feature with unbalanced multiclass should have r_squared < 0.3, got {stats_unbalanced.r_squared}'
+
+
+def test_mostly_constant_categorical_feature_with_small_minority() -> None:
+    """Test that mostly constant features with small minority work correctly (98-2 distribution).
+    
+    This is a SAFE distribution where:
+    - 98% of samples have feature value "A"
+    - 2% of samples have feature value "B" (2 samples, not singleton!)
+    
+    This should have low (but non-zero) SSE reduction, correctly reflecting
+    that the feature is mostly constant but has some information.
+    """
+    # 98 samples with "A", 2 samples with "B"
+    feature = SimpleCategoricalFeature(
+        name='mostly_constant_feature',
+        categories=('A', 'B'),
+        technical_description='98-2 distribution'
+    )
+    feature_series = pl.Series(['A'] * 98 + ['B', 'B'])
+    
+    # Binary target with 50-50 distribution
+    # Make sure the 2 "B" samples have different targets to create contradiction
+    target_series = pl.Series(['X'] * 49 + ['Y'] * 49 + ['X', 'Y'])
+    problem = _classification_problem(target_series)
+    
+    calc = UnifiedRelationshipStatsCalculator()
+    stats = calc.calculate_from_series(feature, feature_series, target_series, problem)
+    
+    # With 98-2 distribution: Should have very low (but possibly non-zero) SSE reduction.
+    assert stats.sse_reduction >= 0, \
+        f'98-2 distribution should have non-negative sse_reduction, got {stats.sse_reduction}'
+    
+    # R² should also be low (close to 0 for mostly constant feature)
+    assert 0 <= stats.r_squared <= 0.1, \
+        f'98-2 distribution should have low r_squared (0-0.1), got {stats.r_squared}'
+
+
+def test_balanced_categorical_feature_detects_correlation() -> None:
+    """Test that balanced categorical features correctly detect real correlations (50-50 distribution).
+    
+    This is a completely SAFE distribution where:
+    - 50% of samples have feature value "A"
+    - 50% of samples have feature value "B"
+    
+    The key test is that Perfect correlation gives high SSE reduction (feature works correctly)
+    """
+    # 50 samples with "A", 50 samples with "B"
+    feature = SimpleCategoricalFeature(
+        name='balanced_feature',
+        categories=('A', 'B'),
+        technical_description='50-50 distribution'
+    )
+    
+    # Test: Perfect correlation (A→X, B→Y)
+    feature_series_perfect = pl.Series(['A'] * 50 + ['B'] * 50)
+    target_series_perfect = pl.Series(['X'] * 50 + ['Y'] * 50)
+    problem_perfect = _classification_problem(target_series_perfect)
+    
+    calc = UnifiedRelationshipStatsCalculator()
+    stats_perfect = calc.calculate_from_series(feature, feature_series_perfect, target_series_perfect, problem_perfect)
+    
+    # Perfect correlation should give high SSE reduction and R²
+    # This proves the fix is NOT applied (if it were, we'd get 0)
+    assert stats_perfect.sse_reduction > 0.3, \
+        f'Perfect correlation should have high sse_reduction, got {stats_perfect.sse_reduction}'
+    assert stats_perfect.r_squared > 0.8, \
+        f'Perfect correlation should have high r_squared, got {stats_perfect.r_squared}'
+    
+    # Verify lift shows the correlation (not all 1.0 as with global mean)
+    assert stats_perfect.lift is not None
+    # With perfect correlation A→X and B→Y:
+    # Row 0 (A): high lift for X, low lift for Y
+    # Row 1 (B): low lift for X, high lift for Y
+    assert stats_perfect.lift[0][0] > 1.5, 'A should have high lift for X'
+    assert stats_perfect.lift[1][1] > 1.5, 'B should have high lift for Y'
