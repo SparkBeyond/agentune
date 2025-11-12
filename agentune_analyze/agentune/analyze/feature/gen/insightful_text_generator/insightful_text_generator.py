@@ -50,6 +50,8 @@ from agentune.analyze.feature.gen.insightful_text_generator.util import (
 from agentune.analyze.feature.problem import Classification, Problem, Regression
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.join.conversation import ConversationJoinStrategy
+from agentune.analyze.progress.base import stage_scope
+from agentune.analyze.progress.util import execute_and_count
 
 logger = logging.getLogger(__name__)
 
@@ -154,35 +156,40 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         """
         if not enrichment_formatter.description:
             raise ValueError('DataFormatter must have a description for ConversationQueryGenerator.')
-        # Format the sampled data for enrichment
-        formatted_examples = await enrichment_formatter.aformat_batch(input_data, conn)
 
-        # Generate prompts for enrichment (columnar structure)
-        prompt_columns = [
-            [create_enrich_conversation_prompt(
-                instance_description=enrichment_formatter.description,
-                queries_str=f'{query.name}: {query.query_text}',
-                instance=row
-            ) for row in formatted_examples]
-            for query in queries
-        ]
-        
-        # Execute LLM calls with caching-aware staging
-        response_columns = await execute_llm_caching_aware_columnar(self.query_enrich_model, prompt_columns)
-        
-        # Parse responses (already in optimal columnar structure)
-        parsed_columns = [
-            [parse_json_response_field(resp, PARSER_OUT_FIELD) for resp in column]
-            for column in response_columns
-        ]
-        
-        # Create DataFrame directly from columnar structure
-        enriched_df_data = {
-            query.name: column_data
-            for query, column_data in zip(queries, parsed_columns, strict=False)
-        }
-        enriched_df = pl.DataFrame(enriched_df_data)
-        return enriched_df
+        with stage_scope('Enrich queries', count=0) as enrich_queries_stage:
+            # Format the sampled data for enrichment
+            formatted_examples = await enrichment_formatter.aformat_batch(input_data, conn)
+
+            # Generate prompts for enrichment (columnar structure)
+            prompt_columns = [
+                [create_enrich_conversation_prompt(
+                    instance_description=enrichment_formatter.description,
+                    queries_str=f'{query.name}: {query.query_text}',
+                    instance=row
+                ) for row in formatted_examples]
+                for query in queries
+            ]
+
+            # Set total to the number of cells to execute
+            total_cells = len(queries) * len(formatted_examples)
+            enrich_queries_stage.set_total(total_cells)
+
+            # Execute LLM calls with caching-aware staging
+            response_columns = await execute_llm_caching_aware_columnar(self.query_enrich_model, prompt_columns, enrich_queries_stage)
+
+            # Parse responses (already in optimal columnar structure)
+            parsed_columns = [
+                [parse_json_response_field(resp, PARSER_OUT_FIELD) for resp in column]
+                for column in response_columns
+            ]
+            # Create DataFrame directly from columnar structure
+            enriched_df_data = {
+                query.name: column_data
+                for query, column_data in zip(queries, parsed_columns, strict=False)
+            }
+            enriched_df = pl.DataFrame(enriched_df_data)
+            return enriched_df
 
     async def _determine_dtype(self, query: Query, series_data: pl.Series) -> Query | None:
         """Determine the appropriate dtype for a query based on the series data.
@@ -221,6 +228,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
                 return None
         if not ((dtype in [types.boolean, types.int32, types.float64]) or isinstance(dtype, types.EnumDtype)):
             raise ValueError(f'Invalid dtype: {dtype}')
+
         return Query(name=query.name,
                      query_text=query.query_text,
                      return_type=dtype)
@@ -229,14 +237,15 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         """Determine the appropriate dtype for each query based on the enriched output data.
         Returns a partial list, only for columns where type detection succeeded.
         """
-        # Use gather to batch all dtype determinations
-        results = await asyncio.gather(*[
-            self._determine_dtype(q, enriched_output[q.name])
-            for q in queries
-        ])
-        
-        # Filter out None results
-        return [query for query in results if query is not None]
+        with stage_scope('Type detection', count=0, total=len(queries)) as type_detection_stage:
+            # Use gather to batch all dtype determinations
+            results = await asyncio.gather(*[
+                execute_and_count(self._determine_dtype(q, enriched_output[q.name]), type_detection_stage)
+                for q in queries
+            ])
+
+            # Filter out None results
+            return [query for query in results if query is not None]
 
     async def agenerate(self, feature_search: Dataset, problem: Problem, join_strategies: TablesWithJoinStrategies,
                         conn: DuckDBPyConnection) -> AsyncIterator[GeneratedFeature]:
@@ -275,40 +284,42 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         followed by generating num_juicy_features juicy features.
         Finally deduplicate all generated queries and return the unique set.
         """
-        query_generator = self.create_query_generator(conversation_strategy, problem, creative=False)
-        current_seed = self.random_seed
-        queries: list[Query] = []
-        for gen_idx in range(self.num_actionable_rounds):
-            logger.debug(f'Starting generation {gen_idx + 1}/{self.num_actionable_rounds} for conversation strategy "{conversation_strategy.name}"')
-            gen_queries = await query_generator.agenerate_queries(
-                input_data,
-                problem,
-                self.num_features_per_round,
-                conn,
-                random_seed=current_seed,
-                existing_queries=queries
-            )
-            logger.debug(f'Generated {len(gen_queries)} queries in generation {gen_idx + 1}/{self.num_actionable_rounds}')
-            queries.extend(gen_queries)
-            if current_seed is not None:
-                current_seed += SEED_OFFSET  # Offset seed for next generation to sample different conversations
+        with stage_scope('Generate queries', 0) as queries_stage:
+            query_generator = self.create_query_generator(conversation_strategy, problem, creative=False)
+            current_seed = self.random_seed
+            queries: list[Query] = []
+            for gen_idx in range(self.num_actionable_rounds):
+                logger.debug(f'Starting generation {gen_idx + 1}/{self.num_actionable_rounds} for conversation strategy "{conversation_strategy.name}"')
+                gen_queries = await query_generator.agenerate_queries(
+                    input_data,
+                    problem,
+                    self.num_features_per_round,
+                    conn,
+                    random_seed=current_seed,
+                    existing_queries=queries
+                )
+                logger.debug(f'Generated {len(gen_queries)} queries in generation {gen_idx + 1}/{self.num_actionable_rounds}')
+                queries.extend(gen_queries)
+                queries_stage.increment_count(len(gen_queries))
+                if current_seed is not None:
+                    current_seed += SEED_OFFSET  # Offset seed for next generation to sample different conversations
 
-        creative_query_generator = self.create_query_generator(conversation_strategy, problem, creative=True)
-        if self.num_creative_features > 0:
-            logger.debug(f'Generating additional {self.num_creative_features} juicy features for conversation strategy "{conversation_strategy.name}"')
-            creative_queries = await creative_query_generator.agenerate_queries(
-                input_data,
-                problem,
-                self.num_creative_features,
-                conn,
-                random_seed=current_seed,
-                existing_queries=queries
-            )
-            logger.debug(f'Generated {len(creative_queries)} creative queries')
-            queries.extend(creative_queries)
-
-        # Final deduplication on all queries from both phases
-        deduplicator = self._get_deduplicator()
-        unique_queries = await deduplicator.deduplicate(queries)
-        logger.debug(f'Deduplicated to {len(unique_queries)} unique queries after all generations')
-        return unique_queries
+            creative_query_generator = self.create_query_generator(conversation_strategy, problem, creative=True)
+            if self.num_creative_features > 0:
+                logger.debug(f'Generating additional {self.num_creative_features} juicy features for conversation strategy "{conversation_strategy.name}"')
+                creative_queries = await creative_query_generator.agenerate_queries(
+                    input_data,
+                    problem,
+                    self.num_creative_features,
+                    conn,
+                    random_seed=current_seed,
+                    existing_queries=queries
+                )
+                logger.debug(f'Generated {len(creative_queries)} creative queries')
+                queries.extend(creative_queries)
+                queries_stage.increment_count(len(creative_queries))
+            # Final deduplication on all queries from both phases
+            deduplicator = self._get_deduplicator()
+            unique_queries = await deduplicator.deduplicate(queries)
+            logger.debug(f'Deduplicated to {len(unique_queries)} unique queries after all generations')
+            return unique_queries

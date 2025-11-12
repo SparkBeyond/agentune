@@ -7,6 +7,8 @@ import tiktoken
 from llama_index.core.llms import ChatMessage
 
 from agentune.analyze.core.sercontext import LLMWithSpec
+from agentune.analyze.progress.base import ProgressStage
+from agentune.analyze.progress.util import execute_and_count
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +21,20 @@ async def achat_raw(llm_with_spec: LLMWithSpec, prompt: str) -> str:
     return response.message.content or ''
 
 
-async def execute_llm_caching_aware_columnar(llm_with_spec: LLMWithSpec, prompt_columns: list[list[str]]) -> list[list[str]]:
+async def execute_llm_caching_aware_columnar(llm_with_spec: LLMWithSpec, prompt_columns: list[list[str]], stage: ProgressStage | None = None) -> list[list[str]]:
     """Execute LLM calls with caching-aware staging: first column separately, then remaining columns."""
     if not prompt_columns:
         return []
     
     # Stage 1: Execute first column (for prompt cache warming)
     first_column_responses = await asyncio.gather(*[
-        achat_raw(llm_with_spec, prompt) for prompt in prompt_columns[0]
+        execute_and_count(achat_raw(llm_with_spec, prompt), stage) for prompt in prompt_columns[0]
     ])
     
     # Stage 2: Execute remaining columns in parallel
     if len(prompt_columns) > 1:
         remaining_responses = await asyncio.gather(*[
-            asyncio.gather(*[achat_raw(llm_with_spec, prompt) for prompt in column])
+            asyncio.gather(*[execute_and_count(achat_raw(llm_with_spec, prompt), stage) for prompt in column])
             for column in prompt_columns[1:]
         ])
         return [first_column_responses, *remaining_responses]

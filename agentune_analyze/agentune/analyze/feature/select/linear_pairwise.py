@@ -10,6 +10,7 @@ from agentune.analyze.feature.base import Feature
 from agentune.analyze.feature.problem import Problem
 from agentune.analyze.feature.select.base import SyncEnrichedFeatureSelector
 from agentune.analyze.feature.util import substitute_default_values
+from agentune.analyze.progress.base import stage_scope
 from agentune.analyze.util.feature_sse_reduction import (
     FeatureTargetStats,
     TargetStats,
@@ -210,89 +211,97 @@ class LinearPairWiseFeatureSelector(SyncEnrichedFeatureSelector):
         selected_feature_names: list[str] = []
         feature_scores: list[float] = []
 
-        # Precompute per-feature statistics once for reuse in scoring (local per-run cache)
-        stats_by_name: dict[str, FeatureTargetStats] = {
-            fname: calculate_feature_statistics(vals, target) for fname, vals in feature_values.items()
-        }
+        with stage_scope('Feature selection', 0) as feature_selection_stage:
 
-        # Phase 1: single feature scoring and initial filtering
-        candidate_marginal_scores: dict[str, float] = {}
-        for f_name in remaining_feature_names:
-            sse_reduction, _ = single_feature_score(stats_by_name[f_name], baseline_stats)
-            candidate_marginal_scores[f_name] = sse_reduction
-        if not remaining_feature_names:
-            self.final_importances_ = {'feature': [], 'importance': []}
-            return [], []
+            # Precompute per-feature statistics once for reuse in scoring (local per-run cache)
+            stats_by_name: dict[str, FeatureTargetStats] = {
+                fname: calculate_feature_statistics(vals, target) for fname, vals in feature_values.items()
+            }
 
-        # Filter out features that don't meet the threshold (they can never improve)
-        viable_features = [
-            f_name for f_name in remaining_feature_names
-            if candidate_marginal_scores[f_name] > 0.0 and candidate_marginal_scores[f_name] >= self.min_marginal_reduction_threshold
-        ]
+            # Phase 1: single feature scoring and initial filtering
+            candidate_marginal_scores: dict[str, float] = {}
+            for f_name in remaining_feature_names:
+                sse_reduction, _ = single_feature_score(stats_by_name[f_name], baseline_stats)
+                candidate_marginal_scores[f_name] = sse_reduction
+            if not remaining_feature_names:
+                self.final_importances_ = {'feature': [], 'importance': []}
+                return [], []
 
-        if not viable_features:
-            # No features meet the threshold, return empty selection
-            return [], []
+            # Filter out features that don't meet the threshold (they can never improve)
+            viable_features = [
+                f_name for f_name in remaining_feature_names
+                if candidate_marginal_scores[f_name] > 0.0 and candidate_marginal_scores[f_name] >= self.min_marginal_reduction_threshold
+            ]
 
-        # Select best first feature from viable candidates
-        best_first_feature = max(viable_features, key=lambda name: (candidate_marginal_scores[name], name))
-        best_first_score = candidate_marginal_scores[best_first_feature]
-
-        selected_feature_names.append(best_first_feature)
-        feature_scores.append(best_first_score)
-        viable_features.remove(best_first_feature)
-
-        # Phase 2: iteratively add features using pairwise scoring
-        # Precompute target-shape constants and per-feature normalization outside the loop
-        n_targets = target.shape[1]
-        norm_feature_values: dict[str, np.ndarray] = {
-            name: self._normalize_to_targets(vals, n_targets) for name, vals in feature_values.items()
-        }
-        while len(selected_feature_names) < max_features_to_select and viable_features:
-            last_selected_name = selected_feature_names[-1]
-            # Update candidate's marginal only against the newly selected feature
-            # Normalize Z once to (n_samples, n_targets)
-            z = norm_feature_values[last_selected_name]
-
-            # Pre-normalize X for all viable candidates once (compact)
-            cand_order = list(viable_features)
-            x_stack = np.stack([norm_feature_values[name] for name in cand_order], axis=0)  # (C, N, T)
-
-            # Batch compute sxz for all candidates: sxz[c, t] = sum_n X[c, n, t] * Z[n, t]
-            # Z[None, :, :] adds a candidate axis for broadcasting: Z -> (1, N, T)
-            xz = x_stack * z[None, :, :]
-            sxz_matrix = xz.sum(axis=1, dtype=np.float64)  # (C, T)
-
-            # Update scores and remove features that fall below threshold
-            features_to_remove = []
-            for idx, cand_name in enumerate(cand_order):
-                sxz_vec = sxz_matrix[idx]
-                pairwise_score = self._pairwise_feature_score(
-                    stats_by_name[cand_name], stats_by_name[last_selected_name], baseline_stats, sxz_vec
-                )
-                candidate_marginal_scores[cand_name] = min(candidate_marginal_scores[cand_name], pairwise_score)
-
-                # Mark features that fall below threshold for removal
-                if candidate_marginal_scores[cand_name] < self.min_marginal_reduction_threshold:
-                    features_to_remove.append(cand_name)
-
-            # Remove features that no longer meet the threshold
-            for feature_name in features_to_remove:
-                viable_features.remove(feature_name)
-
-            # If no viable features remain, return current selection
             if not viable_features:
-                return selected_feature_names, feature_scores
+                # No features meet the threshold, return empty selection
+                return [], []
 
-            # Select best remaining viable feature
-            best_feature = max(viable_features, key=lambda name: (candidate_marginal_scores[name], name))
-            best_score = candidate_marginal_scores[best_feature]
+            # Select best first feature from viable candidates
+            best_first_feature = max(viable_features, key=lambda name: (candidate_marginal_scores[name], name))
+            best_first_score = candidate_marginal_scores[best_first_feature]
 
-            selected_feature_names.append(best_feature)
-            feature_scores.append(best_score)
-            viable_features.remove(best_feature)
+            selected_feature_names.append(best_first_feature)
+            feature_scores.append(best_first_score)
+            viable_features.remove(best_first_feature)
+            
+            # Update progress for first feature selection
+            feature_selection_stage.increment_count(1)
 
-        return selected_feature_names, feature_scores
+            # Phase 2: iteratively add features using pairwise scoring
+            # Precompute target-shape constants and per-feature normalization outside the loop
+            n_targets = target.shape[1]
+            norm_feature_values: dict[str, np.ndarray] = {
+                name: self._normalize_to_targets(vals, n_targets) for name, vals in feature_values.items()
+            }
+            while len(selected_feature_names) < max_features_to_select and viable_features:
+                last_selected_name = selected_feature_names[-1]
+                # Update candidate's marginal only against the newly selected feature
+                # Normalize Z once to (n_samples, n_targets)
+                z = norm_feature_values[last_selected_name]
+
+                # Pre-normalize X for all viable candidates once (compact)
+                cand_order = list(viable_features)
+                x_stack = np.stack([norm_feature_values[name] for name in cand_order], axis=0)  # (C, N, T)
+
+                # Batch compute sxz for all candidates: sxz[c, t] = sum_n X[c, n, t] * Z[n, t]
+                # Z[None, :, :] adds a candidate axis for broadcasting: Z -> (1, N, T)
+                xz = x_stack * z[None, :, :]
+                sxz_matrix = xz.sum(axis=1, dtype=np.float64)  # (C, T)
+
+                # Update scores and remove features that fall below threshold
+                features_to_remove = []
+                for idx, cand_name in enumerate(cand_order):
+                    sxz_vec = sxz_matrix[idx]
+                    pairwise_score = self._pairwise_feature_score(
+                        stats_by_name[cand_name], stats_by_name[last_selected_name], baseline_stats, sxz_vec
+                    )
+                    candidate_marginal_scores[cand_name] = min(candidate_marginal_scores[cand_name], pairwise_score)
+
+                    # Mark features that fall below threshold for removal
+                    if candidate_marginal_scores[cand_name] < self.min_marginal_reduction_threshold:
+                        features_to_remove.append(cand_name)
+
+                # Remove features that no longer meet the threshold
+                for feature_name in features_to_remove:
+                    viable_features.remove(feature_name)
+
+                # If no viable features remain, return current selection
+                if not viable_features:
+                    return selected_feature_names, feature_scores
+
+                # Select best remaining viable feature
+                best_feature = max(viable_features, key=lambda name: (candidate_marginal_scores[name], name))
+                best_score = candidate_marginal_scores[best_feature]
+
+                selected_feature_names.append(best_feature)
+                feature_scores.append(best_score)
+                viable_features.remove(best_feature)
+                
+                # Update progress incrementally as each feature is selected
+                feature_selection_stage.increment_count(1)
+
+            return selected_feature_names, feature_scores
 
     @staticmethod
     def _lin_regression_2variables_with_sums(sx: float, sz: float, sy: float, sx2: float, sz2: float,
