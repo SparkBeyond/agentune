@@ -65,7 +65,7 @@ These recommendations can then be validated using [Agentune Simulate](https://gi
 
 ## Example Usage (Preview)
 For a detailed example of how to use the library, use the following notebook example:
-https://github.com/SparkBeyond/agentune/blob/main/agentune-analyze/examples/01_getting_started.ipynb 
+https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/01_getting_started.ipynb 
 
 
 ## Testing & Costs

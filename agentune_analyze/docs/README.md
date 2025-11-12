@@ -42,7 +42,7 @@ We use attrs to define dataclasses - that is, classes primarily representing dat
 Use of attrs is mandatory for dataclasses. It is optional (but widespread) for classes where it merely provides a more convenient syntax and
 saves boilerplate. Make sure to pass `eq=False` and/or `hash=False` where appropriate.
 
-We use cattrs to serialize (aka un/structure) attrs dataclass instances; see [serialization.md]() for more details.
+We use cattrs to serialize (aka un/structure) attrs dataclass instances; see [serialization.md](serialization.md) for more details.
 
 ## Types and schemas
 
@@ -74,7 +74,7 @@ and having all other code work with the interface and not assume on a particular
 It is expected that the user (or another library) can introduce a new implementation of any interface. 
 To this end, interfaces must be fully documented, so that it is possible to tell whether a new implementation is valid or not.
 
-Some interfaces can have sync and async implementation variants (see [threading.md]()). 
+Some interfaces can have sync and async implementation variants (see [threading.md](threading.md)). 
 
 ## Code organization
 
