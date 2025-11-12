@@ -45,12 +45,12 @@ The result: agents that don’t just respond — they **learn what works**.
 Agentune consists of modular components designed to work together or standalone:
 
 
-### 🧠 [Agentune Analyze & Improve](analyze-improve/README.md)
+### 🧠 [Agentune Analyze & Improve](agentune_analyze/README.md)
 Turn real transcripts and telemetry into insights and recommended actions that measurably improve agent KPIs.
 
 
-### 🧪 [Agentune Simulate](simulate/README.md)
-Create customer simulations to test and benchmark your agent’s behavior before production.
+### 🧪 [Agentune Simulate](agentune_simulate/README.md)
+Create customer simulations to test and benchmark your agent's behavior before production.
 
 
 Together, these modules form the **Analyze → Improve → Simulate** loop — a disciplined framework for building smarter, higher-performing AI agents.
@@ -65,8 +65,8 @@ Together, these modules form the **Analyze → Improve → Simulate** loop — a
 Agentune is modular. Each package includes its own quickstart guide:
 
 
-- [**Analyze & Improve**](analyze-improve/README.md) — extract insights from real data and generate improvement recommendations.  
-- [**Simulate**](simulate/README.md) — validate agent behavior and benchmark changes before deployment.  
+- [**Analyze & Improve**](agentune_analyze/README.md) — extract insights from real data and generate improvement recommendations.
+- [**Simulate**](agentune_simulate/README.md) — validate agent behavior and benchmark changes before deployment.  
 
 
 ---
