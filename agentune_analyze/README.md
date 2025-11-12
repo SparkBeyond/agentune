@@ -1,5 +1,12 @@
 # Agentune Analyze & Improve
 
+[![CI](https://github.com/SparkBeyond/agentune/actions/workflows/python-tests.yml/badge.svg?label=CI)](https://github.com/SparkBeyond/agentune/actions)
+[![PyPI version](https://badge.fury.io/py/agentune-analyze.svg)](https://pypi.org/project/agentune-analyze/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Twitter Follow](https://img.shields.io/twitter/follow/agentune_sb?style=social)](https://x.com/agentune_sb)
+[![Discord](https://img.shields.io/badge/discord-join-blue?logo=discord&logoColor=white)](https://discord.gg/Hx5YYAaebz)
+
+---
 
 **Turn real conversations into insights that measurably improve your AI agents.**
 
@@ -63,9 +70,10 @@ These recommendations can then be validated using [Agentune Simulate](https://gi
 ---
 
 
-## Example Usage (Preview)
-For a detailed example of how to use the library, use the following notebook example:
-https://github.com/SparkBeyond/agentune/blob/main/agentune-analyze/examples/01_getting_started.ipynb 
+## Example Usage
+
+1. **Getting Started** - [`01_getting_started.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/01_getting_started.ipynb) for an introductory walkthrough of library fundamentals
+2. **Advanced Examples** - [`advanced_examples.md`](https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/advanced_examples.md) for customizing components, using LLM requests caching, and advanced workflows 
 
 
 ## Testing & Costs

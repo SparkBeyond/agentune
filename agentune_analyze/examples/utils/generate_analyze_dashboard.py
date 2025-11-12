@@ -129,7 +129,7 @@ def extract_dashboard_data(results: AnalyzeResults) -> dict:
     }
 
 
-def create_dashboard(
+def create_analyze_dashboard(
     results: AnalyzeResults,
     output_file: str | Path | None = None,
     title: str = 'Analysis Results Dashboard'
