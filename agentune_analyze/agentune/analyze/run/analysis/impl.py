@@ -39,6 +39,7 @@ from agentune.analyze.feature.select.base import (
 )
 from agentune.analyze.feature.stats import stats_calculators
 from agentune.analyze.feature.stats.base import FeatureWithFullStats, FullFeatureStats
+from agentune.analyze.progress.base import ProgressStage, stage_scope
 from agentune.analyze.run.analysis import problem_discovery
 from agentune.analyze.run.analysis.base import (
     AnalyzeComponents,
@@ -89,89 +90,91 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
     async def run(self, ddb_manager: DuckdbManager, data: AnalyzeInputData,
                   params: AnalyzeParams, components: AnalyzeComponents,
                   problem_description: ProblemDescription) -> AnalyzeResults:
-
-        with ddb_manager.cursor() as conn:
-            problem = await asyncio.to_thread(problem_discovery.discover_problem, data.copy_to_thread(),
-                                              problem_description, conn, params.max_classes)
-            await asyncio.to_thread(problem_discovery.validate_input, data.copy_to_thread(), problem, conn)
-
-        with ddb_manager.cursor() as conn:
-            candidate_features = await self._generate_features(conn, data, components.generators, problem)
-
-        if len(candidate_features) == 0:
-            raise NoFeaturesFoundError
-
-        # Later we will go back to the original list to recover the original name of each selected feature,
-        # since after selection not all deduplication will be needed
-        deduplicated_candidate_features = self._deduplicate_generated_feature_names(candidate_features, existing_names=[problem.target_column.name])
-
-        # Compute candidate features on the feature_search dataset, storing the results in the temp schema.
-        (enriched_feature_eval_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
-            deduplicated_candidate_features, data.feature_eval,
-            ddb_manager, components, 'enriched_feature_search',
-            problem.target_column.name
-        )
-        try:
+        with stage_scope('Analyze'):
             with ddb_manager.cursor() as conn:
-                selected_features = await self._select_features(features_with_updated_defaults,
-                                                                data.feature_eval, enriched_feature_eval_group_tables,
-                                                                problem, params, components, conn)
-                _logger.debug(f'Selected {len(selected_features)} features out of {len(features_with_updated_defaults)}')
-        finally:
+                problem = await asyncio.to_thread(problem_discovery.discover_problem, data.copy_to_thread(),
+                                                  problem_description, conn, params.max_classes)
+                await asyncio.to_thread(problem_discovery.validate_input, data.copy_to_thread(), problem, conn)
+
             with ddb_manager.cursor() as conn:
-                for table in enriched_feature_eval_group_tables:
-                    conn.execute(f'drop table {table.name}')
+                candidate_features = await self._generate_features(conn, data, components.generators, problem)
 
-        # Get the original version of the selected features, and re-deduplicate their names
-        # Some of the original deduplications may no longer be necessary.
-        # Note that we need to use the selected feature and not the original feature at that index,
-        # because it has updated defaults.
-        def original_name(feature: Feature) -> str:
-            index = next(idx for idx, gen in enumerate(deduplicated_candidate_features) if gen.feature.name == feature.name)
-            return candidate_features[index].feature.name
+            if len(candidate_features) == 0:
+                raise NoFeaturesFoundError
 
-        selected_features_with_original_names = [attrs.evolve(feature, name=original_name(feature)) for feature in selected_features]
-        deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[problem.target_column.name])
+            # Later we will go back to the original list to recover the original name of each selected feature,
+            # since after selection not all deduplication will be needed
+            deduplicated_candidate_features = self._deduplicate_generated_feature_names(candidate_features, existing_names=[problem.target_column.name])
 
-        enriched_eval_name = self._enriched_table_name(ddb_manager, params.store_enriched_train, 'enriched_eval')
-        enriched_test_name = self._enriched_table_name(ddb_manager, params.store_enriched_test, 'enriched_test')
+            # Compute candidate features on the feature_search dataset, storing the results in the temp schema.
+            (enriched_feature_eval_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
+                deduplicated_candidate_features, data.feature_eval,
+                ddb_manager, components, 'enriched_feature_search',
+                problem.target_column.name
+            )
+            try:
+                with ddb_manager.cursor() as conn:
+                    selected_features = await self._select_features(features_with_updated_defaults,
+                                                                    data.feature_eval, enriched_feature_eval_group_tables,
+                                                                    problem, params, components, conn)
+                    _logger.debug(f'Selected {len(selected_features)} features out of {len(features_with_updated_defaults)}')
+            finally:
+                with ddb_manager.cursor() as conn:
+                    for table in enriched_feature_eval_group_tables:
+                        conn.execute(f'drop table {table.name}')
 
-        try:
-            with ddb_manager.cursor() as conn:
-                enriched_eval_sink = DatasetSink.into_duckdb_table(enriched_eval_name)
-                await components.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval,
-                                                      enriched_eval_sink, components.feature_computers, conn,
-                                                      keep_input_columns=(problem.target_column.name,),
-                                                      deduplicate_names=False)
-                features_with_eval_stats: list[FeatureWithFullStats] = \
-                    await self._calculate_feature_stats_single_data(deduplicated_selected_features,
-                                                                    enriched_eval_sink.as_source(conn),
-                                                                    problem, conn)
-                if not params.store_enriched_train:
-                    conn.execute(f'drop table {enriched_eval_name}')
+            # Get the original version of the selected features, and re-deduplicate their names
+            # Some of the original deduplications may no longer be necessary.
+            # Note that we need to use the selected feature and not the original feature at that index,
+            # because it has updated defaults.
+            def original_name(feature: Feature) -> str:
+                index = next(idx for idx, gen in enumerate(deduplicated_candidate_features) if gen.feature.name == feature.name)
+                return candidate_features[index].feature.name
 
-                enriched_test_sink = DatasetSink.into_duckdb_table(enriched_test_name)
-                await components.enrich_runner.run_stream(deduplicated_selected_features, data.test,
-                                                      enriched_test_sink, components.feature_computers, conn,
-                                                      keep_input_columns=(problem.target_column.name,),
-                                                      deduplicate_names=False)
-                features_with_test_stats: list[FeatureWithFullStats] = \
-                    await self._calculate_feature_stats_single_data(deduplicated_selected_features,
-                                                                    enriched_test_sink.as_source(conn),
-                                                                    problem, conn)
-                if not params.store_enriched_test:
-                    conn.execute(f'drop table {enriched_test_name}')
+            selected_features_with_original_names = [attrs.evolve(feature, name=original_name(feature)) for feature in selected_features]
+            deduplicated_selected_features = deduplicate_feature_names(selected_features_with_original_names, existing_names=[problem.target_column.name])
 
-                return AnalyzeResults(problem,
-                                      tuple(features_with_eval_stats), tuple(features_with_test_stats),
-                                      DuckdbTable.from_duckdb(enriched_eval_name, conn) if params.store_enriched_train else None,
-                                      DuckdbTable.from_duckdb(enriched_test_name, conn) if params.store_enriched_test else None)
-        finally:
-            with ddb_manager.cursor() as conn:
-                if not params.store_enriched_train:
-                    conn.execute(f'drop table if exists {enriched_eval_name}')
-                if not params.store_enriched_test:
-                    conn.execute(f'drop table if exists {enriched_test_name}')
+            enriched_eval_name = self._enriched_table_name(ddb_manager, params.store_enriched_train, 'enriched_eval')
+            enriched_test_name = self._enriched_table_name(ddb_manager, params.store_enriched_test, 'enriched_test')
+
+            try:
+                with ddb_manager.cursor() as conn:
+                    enriched_eval_sink = DatasetSink.into_duckdb_table(enriched_eval_name)
+                    with stage_scope('Enrich eval dataset'):
+                        await components.enrich_runner.run_stream(deduplicated_selected_features, data.feature_eval,
+                                                              enriched_eval_sink, components.feature_computers, conn,
+                                                              keep_input_columns=(problem.target_column.name,),
+                                                              deduplicate_names=False)
+                    features_with_eval_stats: list[FeatureWithFullStats] = \
+                        await self._calculate_feature_stats_single_data(deduplicated_selected_features,
+                                                                        enriched_eval_sink.as_source(conn),
+                                                                        problem, conn, 'eval')
+                    if not params.store_enriched_train:
+                        conn.execute(f'drop table {enriched_eval_name}')
+
+                    enriched_test_sink = DatasetSink.into_duckdb_table(enriched_test_name)
+                    with stage_scope('Enrich test dataset'):
+                        await components.enrich_runner.run_stream(deduplicated_selected_features, data.test,
+                                                              enriched_test_sink, components.feature_computers, conn,
+                                                              keep_input_columns=(problem.target_column.name,),
+                                                              deduplicate_names=False)
+                    features_with_test_stats: list[FeatureWithFullStats] = \
+                        await self._calculate_feature_stats_single_data(deduplicated_selected_features,
+                                                                        enriched_test_sink.as_source(conn),
+                                                                        problem, conn, 'test')
+                    if not params.store_enriched_test:
+                        conn.execute(f'drop table {enriched_test_name}')
+
+                    return AnalyzeResults(problem,
+                                          tuple(features_with_eval_stats), tuple(features_with_test_stats),
+                                          DuckdbTable.from_duckdb(enriched_eval_name, conn) if params.store_enriched_train else None,
+                                          DuckdbTable.from_duckdb(enriched_test_name, conn) if params.store_enriched_test else None)
+            finally:
+                with ddb_manager.cursor() as conn:
+                    if not params.store_enriched_train:
+                        conn.execute(f'drop table if exists {enriched_eval_name}')
+                    if not params.store_enriched_test:
+                        conn.execute(f'drop table if exists {enriched_test_name}')
 
     def _enriched_table_name(self, ddb_manager: DuckdbManager,
                              user_requested: str | DuckdbName | UniqueTableName | None,
@@ -195,47 +198,50 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
 
     async def _generate_features(self, conn: DuckDBPyConnection, data: AnalyzeInputData,
                                  generators: Sequence[FeatureGenerator], problem: Problem) -> list[GeneratedFeature]:
-        async with ScopedQueue[GeneratedFeature](maxsize=0) as queue: # maxsize=0 means unlimited
-            sync_generators = [generator for generator in generators if isinstance(generator, SyncFeatureGenerator)]
-            async_generators = [generator for generator in generators if not isinstance(generator, SyncFeatureGenerator)]
+        with stage_scope('Feature generation', 0, len(generators)) as generation_stage:
+            async with ScopedQueue[GeneratedFeature](maxsize=0) as queue: # maxsize=0 means unlimited
+                sync_generators = [generator for generator in generators if isinstance(generator, SyncFeatureGenerator)]
+                async_generators = [generator for generator in generators if not isinstance(generator, SyncFeatureGenerator)]
 
-            if self.run_generators_concurrently:
-                await asyncio.gather(
-                    self._generate_sync(conn, queue, data, sync_generators, problem),
-                    self._generate_async(conn, queue, data, async_generators, problem)
-                )
-            else:
-                await self._generate_sync(conn, queue, data, sync_generators, problem)
-                await self._generate_async(conn, queue, data, async_generators, problem)
+                if self.run_generators_concurrently:
+                    await asyncio.gather(
+                        self._generate_sync(conn, queue, data, sync_generators, problem, generation_stage),
+                        self._generate_async(conn, queue, data, async_generators, problem, generation_stage)
+                    )
+                else:
+                    await self._generate_sync(conn, queue, data, sync_generators, problem, generation_stage)
+                    await self._generate_async(conn, queue, data, async_generators, problem, generation_stage)
 
-            queue.close() # so that iteration will terminate when producing the list()
-            return list(queue)
+                queue.close() # so that iteration will terminate when producing the list()
+                return list(queue)
 
     async def _generate_sync(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: AnalyzeInputData,
-                             generators: list[SyncFeatureGenerator], problem: Problem) -> None:
+                             generators: list[SyncFeatureGenerator], problem: Problem, parent_stage: ProgressStage) -> None:
         if not generators:
             return
 
         with conn.cursor() as cursor: # Cursor for new thread
             def sync_generate() -> None:
                 for generator in generators:
-                    _logger.debug(f'Generating features with {generator=}')
-                    count = 0
-                    for feature in generator.generate(data.feature_search, problem, data.join_strategies, cursor):
-                        output_queue.put(feature)
-                        count += 1
-                    _logger.debug(f'Generated {count} features with {generator=}')
+                    with stage_scope(type(generator).__name__, 0) as generator_stage:
+                        _logger.debug(f'Generating features with {generator=}')
+                        for feature in generator.generate(data.feature_search, problem, data.join_strategies, cursor):
+                            output_queue.put(feature)
+                            generator_stage.increment_count(1)
+                        _logger.debug(f'Generated {generator_stage.count} features with {generator=}')
+                        parent_stage.increment_count(1)
             await asyncio.to_thread(sync_generate)
 
     async def _generate_async(self, conn: DuckDBPyConnection, output_queue: Queue[GeneratedFeature], data: AnalyzeInputData,
-                              generators: list[FeatureGenerator], problem: Problem) -> None:
+                              generators: list[FeatureGenerator], problem: Problem, parent_stage: ProgressStage) -> None:
         async def agenerate(generator: FeatureGenerator) -> None:
-            _logger.debug(f'Generating features with {generator=}')
-            count = 0
-            async for feature in generator.agenerate(data.feature_search, problem, data.join_strategies, conn):
-                await output_queue.aput(feature)
-                count += 1
-            _logger.debug(f'Generated {count} features with {generator=}')
+            with stage_scope(type(generator).__name__, 0) as generator_stage:
+                _logger.debug(f'Generating features with {generator=}')
+                async for feature in generator.agenerate(data.feature_search, problem, data.join_strategies, conn):
+                    await output_queue.aput(feature)
+                    generator_stage.increment_count(1)
+                _logger.debug(f'Generated {generator_stage.count} features with {generator=}')
+                parent_stage.increment_count(1)
 
         if self.run_generators_concurrently:
             await asyncio.gather(*[agenerate(generator) for generator in generators])
@@ -318,33 +324,37 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
                 for feature in candidate_features
             ]
             features_with_stats: list[FeatureWithFullStats] = \
-                await self._calculate_feature_stats(features_with_data, target_series, problem, conn)
+                await self._calculate_feature_stats(features_with_data, target_series, problem, conn, 'eval')
+            with stage_scope('Feature selection', 0, len(features_with_stats)) as selection_stage:
+                if isinstance(selector, SyncFeatureSelector):
+                    def sync_select() -> list[Feature]:
+                        for fws in features_with_stats:
+                            selector.add_feature(fws)
+                            selection_stage.increment_count(1)
+                        return [fws.feature for fws in selector.select_final_features(problem, params.max_features_to_select)]
 
-            if isinstance(selector, SyncFeatureSelector):
-                def sync_select() -> list[Feature]:
+                    return await asyncio.to_thread(sync_select)
+
+                else:
                     for fws in features_with_stats:
-                        selector.add_feature(fws)
-                    return [fws.feature for fws in selector.select_final_features(problem, params.max_features_to_select)]
-
-                return await asyncio.to_thread(sync_select)
-
-            else:
-                for fws in features_with_stats:
-                    await selector.aadd_feature(fws)
-                return [fws.feature for fws in await selector.aselect_final_features(problem, params.max_features_to_select)]
+                        await selector.aadd_feature(fws)
+                        selection_stage.increment_count(1)
+                    return [fws.feature for fws in await selector.aselect_final_features(problem, params.max_features_to_select)]
 
         else:
             # selector is EnrichedFeatureSelector. The first enriched table also contains the target column.
             enriched_source = self._join_tables(enriched_groups, conn)
-
             if isinstance(selector, SyncEnrichedFeatureSelector):
                 with conn.cursor() as cursor: # for new thread
                     def select() -> list[Feature]:
-                        return list(selector.select_features(candidate_features, params.max_features_to_select, enriched_source, problem, cursor))
+                        selected_list = list(selector.select_features(candidate_features, params.max_features_to_select, enriched_source, problem, cursor))
+                        return selected_list
                     return await asyncio.to_thread(select)
 
             else:
-                return list(await selector.aselect_features(candidate_features, params.max_features_to_select, enriched_source, problem, conn))
+                selected_async = await selector.aselect_features(candidate_features, params.max_features_to_select, enriched_source, problem, conn)
+                selected_list = list(selected_async)
+                return selected_list
 
     def _update_feature_defaults(self, feature: Feature, enriched: pl.Series) -> Feature:
         match feature:
@@ -368,30 +378,32 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
 
     async def _calculate_feature_stats(self, features_with_data: list[tuple[Feature, DatasetSource]],
                                        target_series: pl.Series, problem: Problem,
-                                       conn: DuckDBPyConnection) -> list[FeatureWithFullStats]:
+                                       conn: DuckDBPyConnection, dataset_name: str) -> list[FeatureWithFullStats]:
         # Stats calculators are always synchronous. We run them on a single thread, one feature at a time;
         # we could use several threads.
         with conn.cursor() as cursor: # for new thread
             def calculate() -> list[FeatureWithFullStats]:
-                result = []
-                for feature, data_source in features_with_data:
-                    dataset = data_source.select(feature.name).to_dataset(cursor)
-                    feature_stats_calculator = stats_calculators.get_feature_stats_calculator(feature, problem)
-                    feature_stats = feature_stats_calculator.calculate_from_series(feature, dataset.data[feature.name])
-                    relationship_stats_calculator = stats_calculators.get_relationship_stats_calculator(feature, problem)
-                    relationship_stats = relationship_stats_calculator.calculate_from_series(feature, dataset.data[feature.name],
-                                                                                             target_series, problem)
-                    feature_with_stats = FeatureWithFullStats(feature, FullFeatureStats(feature_stats, relationship_stats))
-                    result.append(feature_with_stats)
-                return result
+                with stage_scope(f'Calculate feature stats on {dataset_name} dataset', 0, len(features_with_data)) as stats_stage:
+                    result = []
+                    for feature, data_source in features_with_data:
+                        dataset = data_source.select(feature.name).to_dataset(cursor)
+                        feature_stats_calculator = stats_calculators.get_feature_stats_calculator(feature, problem)
+                        feature_stats = feature_stats_calculator.calculate_from_series(feature, dataset.data[feature.name])
+                        relationship_stats_calculator = stats_calculators.get_relationship_stats_calculator(feature, problem)
+                        relationship_stats = relationship_stats_calculator.calculate_from_series(feature, dataset.data[feature.name],
+                                                                                                 target_series, problem)
+                        feature_with_stats = FeatureWithFullStats(feature, FullFeatureStats(feature_stats, relationship_stats))
+                        result.append(feature_with_stats)
+                        stats_stage.increment_count(1)
+                    return result
 
             return await asyncio.to_thread(calculate)
 
     async def _calculate_feature_stats_single_data(self, features: list[Feature],
                                                    dataset_source: DatasetSource, problem: Problem,
-                                                   conn: DuckDBPyConnection) -> list[FeatureWithFullStats]:
+                                                   conn: DuckDBPyConnection, dataset_name: str) -> list[FeatureWithFullStats]:
         target_source = dataset_source.select(problem.target_column.name)
         with conn.cursor() as cursor:
             target_series = (await asyncio.to_thread(target_source.to_dataset, cursor)).data[problem.target_column.name]
 
-        return await self._calculate_feature_stats([(feature, dataset_source) for feature in features], target_series, problem, conn)
+        return await self._calculate_feature_stats([(feature, dataset_source) for feature in features], target_series, problem, conn, dataset_name)
