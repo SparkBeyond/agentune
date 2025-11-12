@@ -42,7 +42,7 @@ Learn the fundamentals of Agentune Analyze by analyzing customer service convers
 **Dataset**: Auto insurance customer service (101 conversations)
 **Prerequisites**: OpenAI API key
 
-### [Advanced examples](examples.md)
+### [Advanced examples](advanced_examples.md)
 
 Example code for several common usecases not covered by the walkthrough.
 

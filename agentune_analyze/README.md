@@ -63,9 +63,10 @@ These recommendations can then be validated using [Agentune Simulate](https://gi
 ---
 
 
-## Example Usage (Preview)
-For a detailed example of how to use the library, use the following notebook example:
-https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/01_getting_started.ipynb 
+## Example Usage
+
+1. **Getting Started** - [`01_getting_started.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/01_getting_started.ipynb) for an introductory walkthrough of library fundamentals
+2. **Advanced Examples** - [`advanced_examples.md`](https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/advanced_examples.md) for customizing components, using LLM requests caching, and advanced workflows 
 
 
 ## Testing & Costs
