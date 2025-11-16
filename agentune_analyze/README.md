@@ -73,7 +73,8 @@ These recommendations can then be validated using [Agentune Simulate](https://gi
 ## Example Usage
 
 1. **Getting Started** - [`01_getting_started.ipynb`](https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/01_getting_started.ipynb) for an introductory walkthrough of library fundamentals
-2. **Advanced Examples** - [`advanced_examples.md`](https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/advanced_examples.md) for customizing components, using LLM requests caching, and advanced workflows 
+2. **End-to-End Script Example** - [`e2e_script_example.md`](https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/e2e_script_example.md) - a runnable example executing the entire analysis workflow
+3. **Advanced Examples** - [`advanced_examples.md`](https://github.com/SparkBeyond/agentune/blob/main/agentune_analyze/examples/advanced_examples.md) for customizing components, using LLM requests caching, and advanced workflows 
 
 
 ## Testing & Costs
