@@ -288,6 +288,21 @@ class SqliteLru(KVStore[bytes, bytes], ConnectionProvider):
                 case (1, ): pass
                 case other: raise ValueError(f'Unexpected query result {other}')
 
+    @override
+    def clear(self) -> None:
+        with self.acquire() as conn:
+            conn.execute('delete from cache')
+        with self._connection_provider.acquire() as conn: # Not self.acquire() because a commit() at the end would fail
+            conn.execute('commit')
+            try:
+                # Vacuum is very cheap in WAL mode after clearing the DB
+                conn.execute('vacuum')
+                # Actually apply the vacuum so the DB file shrinks immediately (may block a bit waiting for a write lock)
+                conn.execute('PRAGMA wal_checkpoint(FULL)')
+            finally:
+                conn.execute('begin') # Reopen transaction so it can be reused by the pool
+
+
     def close(self) -> None:
         self._cleanup_thread.close()
         if self._cleanup_thread.is_alive():

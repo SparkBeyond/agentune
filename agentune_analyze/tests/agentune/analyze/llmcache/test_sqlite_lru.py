@@ -150,4 +150,32 @@ def test_sqlite_lru_multithreaded(tmp_path: Path, executor: Executor, connection
         for key, value in items_stored.items():
             assert value in expected_values[key], f'For {key=}, expected one of {[len(x) for x in expected_values[key]]} but got {len(value)}'
 
+def test_lrucache_clear(tmp_path: Path) -> None:
+    file = tmp_path / 'cache.sqlite'
+    with SqliteLru(file, 100000000, timedelta(seconds=1), threadlocal_connections()) as sqlite_lru:
+        count = 10000
+
+        assert len(sqlite_lru) == 0
+        size1 = file.stat().st_size
+        for i in range(count):
+            sqlite_lru[str(i).encode()] = str(i).encode()
+        assert len(sqlite_lru) == count
+        size2 = file.stat().st_size
+        assert size2 > size1
+
+        sqlite_lru.clear()
+        assert len(sqlite_lru) == 0
+        size3 = file.stat().st_size
+        assert size3 < size2
+
+        for i in range(count):
+            sqlite_lru[str(i).encode()] = str(i).encode()
+        assert len(sqlite_lru) == count
+        size4 = file.stat().st_size
+        assert size4 > size3
+
+        sqlite_lru.clear()
+        assert len(sqlite_lru) == 0
+        size5 = file.stat().st_size
+        assert size5 == size3, 'Reduced to same size as before'
 
