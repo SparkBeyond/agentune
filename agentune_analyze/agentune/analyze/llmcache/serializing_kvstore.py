@@ -36,3 +36,7 @@ class SerializingKVStore(KVStore[LLMCacheKey, ChatResponse | CompletionResponse]
     @override
     def __len__(self) -> int:
         return len(self.inner)
+
+    @override
+    def clear(self) -> None:
+        self.inner.clear()

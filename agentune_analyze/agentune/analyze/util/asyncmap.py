@@ -1,5 +1,4 @@
 import asyncio
-from abc import abstractmethod
 from collections.abc import Callable, Coroutine
 from typing import Any, Protocol, Self
 
@@ -9,10 +8,8 @@ from attrs import field, frozen
 class KVStore[K, V](Protocol):
     """A subset of MutableMapping that doesn't support iteration, fetching the stored keys, or clear()."""
 
-    @abstractmethod
     def __len__(self) -> int: ...
 
-    @abstractmethod
     def __getitem__(self, key: K) -> V: ...
 
     def get(self, key: K) -> V | None:
@@ -24,11 +21,11 @@ class KVStore[K, V](Protocol):
     def __contains__(self, key: K) -> bool:
         return self.get(key) is not None
 
-    @abstractmethod
     def __setitem__(self, key: K, value: V) -> None: ...
 
-    @abstractmethod
     def __delitem__(self, key: K) -> None: ...
+
+    def clear(self) -> None: ...
 
 
 @frozen(eq=False, hash=False)

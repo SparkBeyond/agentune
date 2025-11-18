@@ -4,6 +4,7 @@ from llama_index.core.llms import LLM
 from agentune.analyze.api.base import RunContext
 from agentune.analyze.core.llm import LLMSpec
 from agentune.analyze.core.sercontext import LLMWithSpec
+from agentune.analyze.llmcache.base import LLMCacheBackend
 
 
 @frozen
@@ -33,3 +34,15 @@ class BoundLlm:
         """
         return self.run_context._llm_context.from_spec(spec)
 
+    @property
+    def cache_backend(self) -> LLMCacheBackend | None:
+        """Return the configured LLM cache backend (i.e. storage), if any."""
+        return self.run_context._llm_context.cache_backend
+
+    def clear_cache(self) -> None:
+        """If an LLM cache is configured, clear its contents.
+
+        For an on-disk cache, this reduces the cache file to the minimum possible size.
+        """
+        if self.cache_backend is not None:
+            self.cache_backend.clear()
