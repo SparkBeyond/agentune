@@ -4,11 +4,13 @@ This recommender formats conversation data and uses an LLM to generate
 actionable recommendations based on feature importance.
 """
 
+import asyncio
 import logging
 from collections.abc import Sequence
 from typing import ClassVar, override
 
 import attrs
+import polars as pl
 from attrs import frozen
 from duckdb import DuckDBPyConnection
 
@@ -38,6 +40,7 @@ from agentune.analyze.feature.problem import (
 )
 from agentune.analyze.feature.recommend import prompts
 from agentune.analyze.feature.recommend.base import ActionRecommender
+from agentune.analyze.feature.recommend.prompts import ConversationVerification
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
 from agentune.analyze.join.conversation import Conversation, ConversationJoinStrategy
 
@@ -244,6 +247,144 @@ class ConversationActionRecommender(ActionRecommender):
             lines.append('')
         return '\n'.join(lines)
 
+    async def _verify_conversation_references(
+        self,
+        report: RecommendationsReport,
+        formatted_conversations_map: dict[int, str]
+    ) -> RecommendationsReport:
+        """Verify conversation references using LLM and filter unsupported ones.
+
+        Args:
+            report: RecommendationsReport containing supporting_conversations for each recommendation
+            formatted_conversations_map: Mapping from conversation_id to formatted conversation string
+
+        Returns:
+            Filtered RecommendationsReport containing recommendations with verified supporting_conversations only
+        """
+
+        async def verify_single_conversation(
+            rec: Recommendation,
+            conv_with_exp: ConversationWithExplanation,
+        ) -> bool:
+            """Verify a single conversation against a recommendation.
+
+            Args:
+                rec: The recommendation being verified
+                conv_with_exp: Conversation with explanation to verify
+
+            Returns:
+                True if conversation supports the recommendation as claimed, False otherwise
+            """
+            # Check if conversation ID exists in formatted map
+            if conv_with_exp.conversation_id not in formatted_conversations_map:
+                logger.warning(
+                    f'Conversation {conv_with_exp.conversation_id} for recommendation {rec.title} could not be verified')
+                return False  # remove conversation if ID not found
+
+            conversation_formatted = formatted_conversations_map[conv_with_exp.conversation_id]
+
+            # Get outcome from report.conversations
+            outcome = report.conversations[conv_with_exp.conversation_id].outcome
+
+            try:
+                result = await self.model.llm.astructured_predict(
+                    output_cls=ConversationVerification,
+                    prompt=prompts.CONVERSATION_VERIFICATION_PROMPT,
+                    title=rec.title,
+                    description=rec.description,
+                    rationale=rec.rationale,
+                    evidence=rec.evidence,
+                    explanation=conv_with_exp.explanation,
+                    conversation_id=conv_with_exp.conversation_id,
+                    conversation=conversation_formatted,
+                    outcome=outcome,
+                )
+                return result.supports_recommendation
+            except Exception as e: # noqa: BLE001 - catch all LLM/API error, return True as default
+                logger.warning(
+                    f'Failed to verify conversation {conv_with_exp.conversation_id} '
+                    f'for recommendation "{rec.title}": {e}. '
+                )
+                return True  # keep conversation if verification fails
+
+        # Flatten all (recommendation, conversation) pairs across all recommendations
+        items = [
+            (rec, conv_with_exp)
+            for rec in report.recommendations
+            for conv_with_exp in rec.supporting_conversations
+        ]
+
+        # Verify ALL conversations in parallel
+        results = await asyncio.gather(*[
+            verify_single_conversation(rec, conv_with_exp)
+            for rec, conv_with_exp in items
+        ])
+
+        # Group all verification results by recommendation
+        verified_by_rec: dict[Recommendation, dict[ConversationWithExplanation, bool]] = {}
+        for (rec, conv_with_exp), is_valid in zip(items, results, strict=True):
+            if rec not in verified_by_rec:
+                verified_by_rec[rec] = {}
+            verified_by_rec[rec][conv_with_exp] = is_valid
+
+        # Clean evidence and rationale in parallel for all recommendations
+        async def clean_fields_for_rec(rec: Recommendation) -> tuple[str, str]:
+            """Clean evidence and rationale by removing unverified conversation references."""
+            # Filter for unverified conversations
+            unverified_ids = {
+                conv.conversation_id
+                for conv, is_valid in verified_by_rec.get(rec, {}).items()
+                if not is_valid
+            }
+            return await prompts.clean_evidence_and_rationale_with_llm(
+                evidence=rec.evidence,
+                rationale=rec.rationale,
+                unverified_conversation_ids=unverified_ids,
+                model=self.model,
+                structuring_model=self.structuring_model,
+            )
+
+        # Clean all evidence and rationale fields in parallel
+        logger.info('Starting evidence and rationale verification...')
+        cleaned_fields_list = await asyncio.gather(*[
+            clean_fields_for_rec(rec)
+            for rec in report.recommendations
+        ])
+
+        # Rebuild recommendations
+        filtered_recommendations = []
+        for rec, (cleaned_evidence, cleaned_rationale) in zip(report.recommendations, cleaned_fields_list, strict=True):
+            # Filter for verified conversations
+            verified_conversations = tuple(
+                conv for conv, is_valid in verified_by_rec.get(rec, {}).items() if is_valid
+            )
+
+            if cleaned_evidence != rec.evidence:
+                logger.debug(f'Evidence for recommendation {rec.title} has been changed due to conversations references verification. '
+                             f'Original evidence: {rec.evidence}, current evidence: {cleaned_evidence}')
+
+            if cleaned_rationale != rec.rationale:
+                logger.debug(
+                    f'Rationale for recommendation {rec.title} has been changed due to conversations references verification. '
+                    f'Original rationale: {rec.rationale}, current rationale: {cleaned_rationale}')
+
+            # Only create new Recommendation if conversations changed
+            if len(verified_conversations) != len(rec.supporting_conversations):
+                filtered_recommendations.append(
+                    attrs.evolve(
+                        rec,
+                        evidence=cleaned_evidence,
+                        rationale=cleaned_rationale,
+                        supporting_conversations=verified_conversations,
+                    )
+                )
+            else:
+                # No change - keep original recommendation
+                filtered_recommendations.append(rec)
+
+        return attrs.evolve(report,
+                            recommendations=tuple(filtered_recommendations))
+
     def _convert_pydantic_to_attrs(
         self,
         pydantic_report: prompts.StructuredReport,
@@ -339,7 +480,7 @@ class ConversationActionRecommender(ActionRecommender):
             for idx in all_conversation_indices
             if 1 <= idx <= len(conversation_ids)  # Validate idx is within valid range
         }
-        
+
         # Create list of all features with their R² scores
         all_features_list = [
             FeatureWithScore(
@@ -403,6 +544,8 @@ class ConversationActionRecommender(ActionRecommender):
                              sampled_data: Dataset,
                              conversation_strategy: ConversationJoinStrategy,
                              conn: DuckDBPyConnection,
+                             formatter: ConversationFormatter,
+                             formatted_samples: pl.Series,
                              ) -> tuple[str, list[Conversation], list[str | int], int]:
         """ Create prompt for LLM based on formatted conversations and token limits.
 
@@ -412,6 +555,8 @@ class ConversationActionRecommender(ActionRecommender):
             sampled_data: Sampled dataset for examples
             conversation_strategy: The conversation join strategy being used
             conn: Database connection
+            formatter: ConversationFormatter instance (already configured)
+            formatted_samples: Pre-formatted conversation samples
         Returns:
             Tuple of (prompt string, list of Conversation objects, list of conversation IDs, num conversations in prompt)
 
@@ -421,13 +566,6 @@ class ConversationActionRecommender(ActionRecommender):
         """
         # Extract conversation IDs from sampled data
         conversation_ids = sampled_data.data[conversation_strategy.main_table_id_column.name].to_list()
-        # Create the formatter
-        formatter = ConversationFormatter(
-            name='action_recommender_conversations',
-            conversation_strategy=conversation_strategy,
-            params_to_print=(problem.target_column,),
-        )
-        formatted_samples = await formatter.aformat_batch(sampled_data, conn)
 
         # Get token limits
         max_context_window = get_max_input_context_window(self.model)
@@ -464,7 +602,7 @@ class ConversationActionRecommender(ActionRecommender):
                     f'using {current_tokens} tokens which is < token limit ({max_context_window} tokens)'
                 )
                 return prompt, conversations, current_conversation_ids, num_examples
- 
+
             # Remove one example and try again
             num_examples -= 1
         # We couldn't fit even with minimum samples
@@ -508,11 +646,24 @@ class ConversationActionRecommender(ActionRecommender):
         sampler = self._get_sampler(problem)
         sampled_data = sampler.sample(filtered_dataset, self.max_samples)
 
+        # Create formatted conversations map for conversations verification
+        formatter = ConversationFormatter(
+            name='action_recommender_conversations',
+            conversation_strategy=conversation_strategy,
+            params_to_print=(problem.target_column,),
+        )
+        formatted_samples = await formatter.aformat_batch(sampled_data, conn)
+
+        formatted_conversations_map: dict[int, str] = {
+            i: str(conversation)
+            for i, conversation in enumerate(formatted_samples.to_list(), 1)
+        }
+
         # 3. create prompt and get conversations used (adapting number of examples to token limit)
         prompt, conversations, conversation_ids, num_conversations_in_prompt = await self._create_prompt(
-            problem, sorted_features, sampled_data, conversation_strategy, conn
+            problem, sorted_features, sampled_data, conversation_strategy, conn, formatter, formatted_samples
         )
-        
+
         # 4. Call LLM to get raw text report
         raw_report = await achat_raw(self.model, prompt)
 
@@ -535,4 +686,8 @@ class ConversationActionRecommender(ActionRecommender):
         )
 
         # Filter out invalid recommendations
-        return self._filter_recommendations_with_no_supporting_features(report)
+        report_with_valid_features = self._filter_recommendations_with_no_supporting_features(report)
+
+        # Filter out invalid conversations
+        return await self._verify_conversation_references(report_with_valid_features, formatted_conversations_map)
+

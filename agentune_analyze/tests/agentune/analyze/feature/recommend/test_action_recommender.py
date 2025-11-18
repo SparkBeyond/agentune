@@ -29,7 +29,10 @@ from agentune.analyze.feature.recommend import (
     RecommendationsReport,
 )
 from agentune.analyze.feature.recommend.action_recommender import (
+    ConversationWithExplanation,
     ConversationWithMetadata,
+    FeatureWithScore,
+    Recommendation,
 )
 from agentune.analyze.feature.recommend.prompts import RecommendationRaw, StructuredReport
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
@@ -712,3 +715,198 @@ def test_feature_filtering_removes_hallucinated_features(caplog: pytest.LogCaptu
     # Verify the recommendation with only hallucinations was filtered out
     assert any('Filtered out' in record.message for record in caplog.records)
     assert any('Only Hallucinations' in record.message for record in caplog.records)
+
+def format_conversation_for_verification(conv_metadata: ConversationWithMetadata) -> str:
+    """Format a conversation the same way ConversationFormatter does for verification.
+
+    Args:
+        conv_metadata: ConversationWithMetadata containing conversation and outcome
+
+    Returns:
+        Formatted conversation string with messages and outcome
+    """
+    # Format messages with timestamps and roles
+    conversation_lines = [
+        f'[{message.timestamp}] [{message.role}] {message.content}'
+        for message in conv_metadata.conversation.messages
+    ]
+
+    return '\n'.join(conversation_lines)
+
+
+def prepare_conversation_metadata(
+    conversation_id: int,
+    messages: tuple[Message, ...], outcome: str
+) -> ConversationWithMetadata:
+    """Create a ConversationWithMetadata for testing.
+
+    Args:
+        conversation_id: ID of the conversation
+        messages: messages for creating the conversation
+        outcome: outcome of the conversation
+
+    Returns:
+        ConversationWithMetadata instance
+    """
+    conv = Conversation(messages)
+
+    return ConversationWithMetadata(
+        actual_id=str(conversation_id),
+        conversation=conv,
+        outcome=outcome,
+    )
+
+@pytest.mark.integration
+async def test_filter_and_clean_unrelated_conversation(
+    real_llm_with_spec: LLMWithSpec,
+    structuring_llm_with_spec: LLMWithSpec,
+) -> None:
+    """Test that unrelated conversations are filtered and removed from evidence and rationale."""
+    # Check for API key
+    if not os.getenv('OPENAI_API_KEY'):
+        pytest.skip('OPENAI_API_KEY not set')
+
+    # Create simple conversations
+    # Conversation 1: About pricing (related to recommendation)
+    conv_1_messages = (Message(
+                role='customer',
+                content='What is your pricing?',
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+            ),
+            Message(
+                role='agent',
+                content='Our pricing depends on the package.',
+                timestamp=datetime(2024, 1, 1, 10, 1, 0),
+            ),
+            Message(
+                role='customer',
+                content='Can you show me a price breakdown?',
+                timestamp=datetime(2024, 1, 1, 10, 2, 0),
+            ),
+            Message(
+                role='agent',
+                content='I need to check our system.',
+                timestamp=datetime(2024, 1, 1, 10, 3, 0),
+            ),
+        )
+
+    conv1_metadata = prepare_conversation_metadata(1, conv_1_messages, 'lost')
+
+    # Conversation 2: order status check (not related to the recommendation)
+    conv2_messages = (
+            Message(
+                role='customer',
+                content='My order from last week has not arrived yet',
+                timestamp=datetime(2024, 1, 2, 11, 0, 0),
+            ),
+            Message(
+                role='agent',
+                content='I am sorry to hear that. What is the order number?',
+                timestamp=datetime(2024, 1, 2, 11, 1, 0),
+            )
+    )
+
+    conv2_metadata = prepare_conversation_metadata(2, conv2_messages, 'lost')
+
+    # Create conversation explanations
+    conv1_explanation = ConversationWithExplanation(
+        conversation_id=1,
+        explanation='Customer asks about pricing but agent cannot provide details.',
+    )
+    conv2_explanation = ConversationWithExplanation(
+        conversation_id=2,
+        explanation='Customer asks about why the existing order was not delivered.',
+    )
+
+    # Create Recommendation A: "Improve pricing transparency"
+    # References both Conv 1 and Conv 2 in evidence and rationale
+    rec_a = Recommendation(
+        title='Improve pricing transparency',
+        description='Provide clear pricing information upfront to help customers make decisions.',
+        rationale='Customers often ask about pricing (see Conversation 1, Conversation 2). We need better pricing displays.',
+        evidence='Conversation 1 shows customer asking for price breakdown. Conversation 2 also mentioned.',
+        supporting_features=(
+            FeatureWithScore(
+                name='Agent mentions pricing',
+                r_squared=0.5,
+            ),
+        ),
+        supporting_conversations=(conv1_explanation, conv2_explanation),
+    )
+
+    # Create Recommendation B: No supporting conversations
+    rec_b = Recommendation(
+        title='Enhance customer support',
+        description='Improve overall customer support quality.',
+        rationale='General customer support improvements are needed.',
+        evidence='No specific conversations referenced.',
+        supporting_features=(),
+        supporting_conversations=(),
+    )
+
+    # Create report
+    report_before = RecommendationsReport(
+        analysis_summary='Analysis of customer conversations',
+        recommendations=(rec_a, rec_b),
+        conversations={
+            1: conv1_metadata,
+            2: conv2_metadata,
+        },
+        raw_report='',
+        total_conversations_analyzed=0,
+        all_features=()
+    )
+
+    # Create formatted conversations map
+    formatted_conversations_map = {
+        1: format_conversation_for_verification(conv1_metadata),
+        2: format_conversation_for_verification(conv2_metadata),
+    }
+
+    # Create recommender
+    recommender = ConversationActionRecommender(
+        model=real_llm_with_spec,
+        structuring_model=structuring_llm_with_spec,
+    )
+
+    # Run verification
+    filtered_report = await recommender._verify_conversation_references(
+        report_before,
+        formatted_conversations_map
+    )
+
+    # Assertions
+    assert len(filtered_report.recommendations) == 2, 'Should still have 2 recommendations'
+
+    # Find the recommendations by title
+    rec_a_filtered = None
+    rec_b_filtered = None
+    for rec in filtered_report.recommendations:
+        if rec.title == 'Improve pricing transparency':
+            rec_a_filtered = rec
+        elif rec.title == 'Enhance customer support':
+            rec_b_filtered = rec
+
+    assert rec_a_filtered is not None, 'Rec A should exist'
+    assert rec_b_filtered is not None, 'Rec B should exist'
+
+    # Verify Conversation 2 (status) was filtered out
+    conv_ids_in_rec_a = {conv.conversation_id for conv in rec_a_filtered.supporting_conversations}
+    assert 1 in conv_ids_in_rec_a, 'Conversation 1 (pricing) should be kept'
+    assert 2 not in conv_ids_in_rec_a, 'Conversation 2 (status) should be filtered out'
+
+    # Verify evidence was cleaned
+    assert 'Conversation 1' in rec_a_filtered.evidence or 'Conv 1' in rec_a_filtered.evidence, \
+        'Evidence should still mention Conversation 1'
+    assert 'Conversation 2' not in rec_a_filtered.evidence and 'Conv 2' not in rec_a_filtered.evidence, \
+        'Evidence should NOT mention Conversation 2'
+
+    # Verify rationale was cleaned
+    assert 'Conversation 1' in rec_a_filtered.rationale or 'Conv 1' in rec_a_filtered.rationale, \
+        'Rationale should still mention Conversation 1'
+    assert 'Conversation 2' not in rec_a_filtered.rationale and 'Conv 2' not in rec_a_filtered.rationale, \
+        'Rationale should NOT mention Conversation 2'
+
+    # Verify recommendation without conversations is at the end
+    assert filtered_report.recommendations[-1] == rec_b_filtered, \
+        'Recommendation without supporting conversations should be at the end'
