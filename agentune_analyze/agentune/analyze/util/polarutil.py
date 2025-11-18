@@ -23,7 +23,7 @@ class ComparablePolarsSeries: #noqa: PLW1641 # polars series is not hashable
             return False
     
 @frozen(eq=False, hash=False)
-class ComparablePolarsDataFrame: #noqa: PLW1641 # polars DF is not hashable
+class ComparablePolarsDataFrame: #noqa: PLW1641 # polars series is not hashable
     df: pl.DataFrame
 
     @override
