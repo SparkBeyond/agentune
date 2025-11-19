@@ -2,8 +2,10 @@ import asyncio
 import json
 import logging
 import re
+from abc import ABC
 
 import tiktoken
+from attrs import frozen
 from llama_index.core.llms import ChatMessage
 
 from agentune.analyze.core.sercontext import LLMWithSpec
@@ -11,6 +13,23 @@ from agentune.analyze.progress.base import ProgressStage
 from agentune.analyze.progress.util import execute_and_count
 
 logger = logging.getLogger(__name__)
+
+
+@frozen
+class LLMColumnResult(ABC):
+    """Result of executing LLM calls for a single column."""
+
+
+@frozen
+class SuccessfulColumn(LLMColumnResult):
+    """Successful column execution with all response values."""
+    values: list[str]
+
+
+@frozen
+class FailedColumn(LLMColumnResult):
+    """Failed column execution with the exception that occurred."""
+    exception: Exception
 
 
 async def achat_raw(llm_with_spec: LLMWithSpec, prompt: str) -> str:
@@ -21,25 +40,40 @@ async def achat_raw(llm_with_spec: LLMWithSpec, prompt: str) -> str:
     return response.message.content or ''
 
 
-async def execute_llm_caching_aware_columnar(llm_with_spec: LLMWithSpec, prompt_columns: list[list[str]], stage: ProgressStage | None = None) -> list[list[str]]:
-    """Execute LLM calls with caching-aware staging: first column separately, then remaining columns."""
+async def execute_llm_caching_aware_columnar(llm_with_spec: LLMWithSpec, prompt_columns: list[list[str]], stage: ProgressStage | None = None) -> list[LLMColumnResult]:
+    """Execute LLM calls with caching-aware staging: first column separately, then remaining columns.
+
+    Returns a list of LLMColumnResult, one per column. Each result is either:
+    - SuccessfulColumn with all response values
+    - FailedColumn with the exception that occurred
+
+    Individual column failures do not prevent other columns from completing successfully.
+    """
     if not prompt_columns:
         return []
-    
+
+    async def execute_column_safe(prompts: list[str]) -> LLMColumnResult:
+        """Execute all prompts in a column, catching any errors."""
+        try:
+            responses = await asyncio.gather(*[
+                execute_and_count(achat_raw(llm_with_spec, prompt), stage) for prompt in prompts
+            ])
+            return SuccessfulColumn(values=list(responses))
+        except Exception as e:  # noqa: BLE001 - Intentionally catch all errors to isolate column failures
+            return FailedColumn(exception=e)
+
     # Stage 1: Execute first column (for prompt cache warming)
-    first_column_responses = await asyncio.gather(*[
-        execute_and_count(achat_raw(llm_with_spec, prompt), stage) for prompt in prompt_columns[0]
-    ])
-    
+    first_column_result = await execute_column_safe(prompt_columns[0])
+
     # Stage 2: Execute remaining columns in parallel
     if len(prompt_columns) > 1:
-        remaining_responses = await asyncio.gather(*[
-            asyncio.gather(*[execute_and_count(achat_raw(llm_with_spec, prompt), stage) for prompt in column])
+        remaining_results = await asyncio.gather(*[
+            execute_column_safe(column)
             for column in prompt_columns[1:]
         ])
-        return [first_column_responses, *remaining_responses]
+        return [first_column_result, *remaining_results]
     else:
-        return [first_column_responses]
+        return [first_column_result]
 
 
 def extract_json_from_response(response: str) -> dict:

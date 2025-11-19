@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from typing import ClassVar
 
 import polars as pl
-from attrs import define
+from attrs import define, frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.core import types
@@ -44,6 +44,8 @@ from agentune.analyze.feature.gen.insightful_text_generator.type_detector import
     decide_dtype,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.util import (
+    FailedColumn,
+    SuccessfulColumn,
     execute_llm_caching_aware_columnar,
     parse_json_response_field,
 )
@@ -54,6 +56,17 @@ from agentune.analyze.progress.base import stage_scope
 from agentune.analyze.progress.util import execute_and_count
 
 logger = logging.getLogger(__name__)
+
+
+@frozen
+class EnrichedQueryResult:
+    """Result of enriching a single query with LLM-generated data.
+    
+    The query and enriched_values are always paired together, even if enrichment failed.
+    Failed enrichments have all None values in enriched_values.
+    """
+    query: Query
+    enriched_values: list[str | None]
 
 SEED_OFFSET = 17
 
@@ -150,9 +163,12 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         )
 
     async def enrich_queries(self, queries: list[Query], enrichment_formatter: ConversationFormatter, 
-                             input_data: Dataset, conn: DuckDBPyConnection) -> pl.DataFrame:
-        """Enrich a subset of queries with additional conversation information using parallel LLM calls.
-        Returns a DataFrame containing the enriched query results
+                             input_data: Dataset, conn: DuckDBPyConnection) -> list[EnrichedQueryResult]:
+        """Enrich queries with LLM-generated conversation data.
+        
+        Returns a list of EnrichedQueryResult for successfully enriched queries only.
+        Queries that fail enrichment (all None values) are filtered out.
+        The returned list may be shorter than the input queries list, or empty if all queries fail.
         """
         if not enrichment_formatter.description:
             raise ValueError('DataFormatter must have a description for ConversationQueryGenerator.')
@@ -178,18 +194,31 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             # Execute LLM calls with caching-aware staging
             response_columns = await execute_llm_caching_aware_columnar(self.query_enrich_model, prompt_columns, enrich_queries_stage)
 
-            # Parse responses (already in optimal columnar structure)
-            parsed_columns = [
-                [parse_json_response_field(resp, PARSER_OUT_FIELD) for resp in column]
-                for column in response_columns
-            ]
-            # Create DataFrame directly from columnar structure
-            enriched_df_data = {
-                query.name: column_data
-                for query, column_data in zip(queries, parsed_columns, strict=False)
-            }
-            enriched_df = pl.DataFrame(enriched_df_data)
-            return enriched_df
+            # Parse responses and create EnrichedQueryResult for each query
+            results: list[EnrichedQueryResult] = []
+            for query, column_result in zip(queries, response_columns, strict=True):
+                if isinstance(column_result, SuccessfulColumn):
+                    enriched_values = [
+                        parse_json_response_field(resp, PARSER_OUT_FIELD)
+                        for resp in column_result.values
+                    ]
+                    results.append(EnrichedQueryResult(query=query, enriched_values=enriched_values))
+                elif isinstance(column_result, FailedColumn):
+                    # For failed columns, create None values with the same length as examples
+                    logger.warning(f'Query "{query.name}" failed with error: {column_result.exception}')
+                    enriched_values = [None] * len(formatted_examples)
+                    results.append(EnrichedQueryResult(query=query, enriched_values=enriched_values))
+                else:
+                    raise TypeError(f'Unexpected column result type: {type(column_result)}')
+            
+            # Filter out queries where all values are None (complete failures)
+            successful_results = [r for r in results if not all(v is None for v in r.enriched_values)]
+            
+            if len(successful_results) < len(results):
+                failed_count = len(results) - len(successful_results)
+                logger.warning(f'{failed_count} of {len(results)} queries failed enrichment and were filtered out')
+            
+            return successful_results
 
     async def _determine_dtype(self, query: Query, series_data: pl.Series) -> Query | None:
         """Determine the appropriate dtype for a query based on the series data.
@@ -233,15 +262,18 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
                      query_text=query.query_text,
                      return_type=dtype)
 
-    async def determine_dtypes(self, queries: list[Query], enriched_output: pl.DataFrame) -> list[Query]:
-        """Determine the appropriate dtype for each query based on the enriched output data.
-        Returns a partial list, only for columns where type detection succeeded.
+    async def determine_dtypes(self, enriched_results: list[EnrichedQueryResult]) -> list[Query]:
+        """Determine the appropriate dtype for each enriched query result.
+        Returns a partial list, only for queries where type detection succeeded.
         """
-        with stage_scope('Type detection', count=0, total=len(queries)) as type_detection_stage:
+        with stage_scope('Type detection', count=0, total=len(enriched_results)) as type_detection_stage:
             # Use gather to batch all dtype determinations
             results = await asyncio.gather(*[
-                execute_and_count(self._determine_dtype(q, enriched_output[q.name]), type_detection_stage)
-                for q in queries
+                execute_and_count(
+                    self._determine_dtype(r.query, pl.Series(r.query.name, r.enriched_values)),
+                    type_detection_stage
+                )
+                for r in enriched_results
             ])
 
             # Filter out None results
@@ -263,10 +295,14 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             sampler = self._get_sampler(problem)
             sampled_data = sampler.sample(filtered_feature_search, self.num_samples_for_enrichment, self.random_seed)
             enrichment_formatter = self._get_formatter(conversation_strategy, problem, include_target=False)
-            enriched_output = await self.enrich_queries(query_batch, enrichment_formatter, sampled_data, conn)
+            enriched_results = await self.enrich_queries(query_batch, enrichment_formatter, sampled_data, conn)
+            
+            # enrich_queries filters out failed queries, so enriched_results may be empty
+            if not enriched_results:
+                continue
 
             # 3. Determine the data types for the enriched queries
-            updated_queries = await self.determine_dtypes(query_batch, enriched_output)
+            updated_queries = await self.determine_dtypes(enriched_results)
 
             # 4. Create Features from the enriched queries
             features = [create_feature(

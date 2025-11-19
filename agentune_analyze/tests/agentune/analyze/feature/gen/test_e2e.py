@@ -272,30 +272,25 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         sampler = feature_generator._get_sampler(problem)
         sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
         enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, include_target=False)
-        enriched_output = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
+        enriched_results = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
         
         # Validate enriched output
-        assert isinstance(enriched_output, pl.DataFrame)
-        assert enriched_output.height > 0
-        assert enriched_output.height == feature_generator.num_samples_for_enrichment
+        assert isinstance(enriched_results, list)
+        assert len(enriched_results) > 0
+        assert len(enriched_results) <= len(queries)  # May be fewer if some failed
         
-        # Check that all query names are in the enriched output
-        for query in queries:
-            assert query.name in enriched_output.columns, f'Query "{query.name}" not found in enriched output columns'
-        
-        # Check that enriched data contains values for each query
-        for query in queries:
-            query_data = enriched_output.select(pl.col(query.name)).drop_nulls()
-            assert query_data.height > 0, f'Query "{query.name}" has no non-null values in enriched output'
-            
-            # Check that enriched data does not contain empty strings
-            non_empty_data = query_data.filter(pl.col(query.name) != '')
-            assert non_empty_data.height > 0, f'Query "{query.name}" has only empty string values in enriched output'
+        # Check that all results have the correct structure
+        for result in enriched_results:
+            assert result.query in queries
+            assert len(result.enriched_values) == feature_generator.num_samples_for_enrichment
+            # Check that enriched data contains some non-null, non-empty values
+            non_null_values = [v for v in result.enriched_values if v is not None and v != '']
+            assert len(non_null_values) > 0, f'Query "{result.query.name}" has only null/empty values in enriched output'
 
-        logger.info(f'Enrichment successful: {enriched_output.height} rows with {len(enriched_output.columns)} columns')
+        logger.info(f'Enrichment successful: {len(enriched_results)} queries enriched')
 
         # 3. Test determine_dtype part
-        updated_queries = await feature_generator.determine_dtypes(queries, enriched_output)
+        updated_queries = await feature_generator.determine_dtypes(enriched_results)
         
         # Validate updated queries
         assert isinstance(updated_queries, list)
@@ -333,31 +328,31 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
             strict_df = pl.DataFrame([main_dataset.data.get_column(col.name) for col in feature.params.cols])
             first_row_args = strict_df.row(0, named=False)
             # Compute the feature on the first row
-            result = await feature.acompute(first_row_args, conn)
+            compute_result = await feature.acompute(first_row_args, conn)
 
             # Validate result
-            if result is None:
+            if compute_result is None:
                 logger.info(f'Feature {feature.name} returned None (missing value)')
             else:
                 # Check that the type of the result matches the expected Python type from DuckDB
                 expected_python_type = dtypes.python_type_from_polars(feature.dtype)
-                assert isinstance(result, expected_python_type), f'Feature {feature.name} returned {type(result)} but expected {expected_python_type}'
+                assert isinstance(compute_result, expected_python_type), f'Feature {feature.name} returned {type(compute_result)} but expected {expected_python_type}'
                 
                 # Additional type-specific validation
                 if feature.dtype.is_numeric():
                     # For numeric types, check that the result is not NaN or infinite
-                    assert isinstance(result, float | int), f'Feature {feature.name} returned non-numeric type {type(result)}'
-                    assert not math.isnan(float(result)), f'Feature {feature.name} returned NaN'
-                    assert not math.isinf(float(result)), f'Feature {feature.name} returned infinite value'
+                    assert isinstance(compute_result, float | int), f'Feature {feature.name} returned non-numeric type {type(compute_result)}'
+                    assert not math.isnan(float(compute_result)), f'Feature {feature.name} returned NaN'
+                    assert not math.isinf(float(compute_result)), f'Feature {feature.name} returned infinite value'
                 elif isinstance(feature, CategoricalFeature):
                     # For categorical/enum types, check that the result is one of the valid categories
                     valid_categories = [*list(feature.categories), CategoricalFeature.other_category]
-                    assert result in valid_categories, (
-                        f'Feature {feature.name} returned "{result}" which is not in valid categories: '
+                    assert compute_result in valid_categories, (
+                        f'Feature {feature.name} returned "{compute_result}" which is not in valid categories: '
                         f'{feature.categories}'
                     )
                 
-                logger.info(f'Feature {feature.name} compute successful: {result} (type: {type(result).__name__})')
+                logger.info(f'Feature {feature.name} compute successful: {compute_result} (type: {type(compute_result).__name__})')
             
         logger.info('Feature creation and compute test completed successfully')
 
@@ -434,18 +429,20 @@ async def test_feature_generation_with_long_conversations_token_sampling(
     enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, include_target=False)
     
     # This should also work without token errors
-    enriched_output = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
+    enriched_results = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
     
     # Validate enriched output
-    assert isinstance(enriched_output, pl.DataFrame)
-    assert enriched_output.height > 0
-    assert enriched_output.height == feature_generator.num_samples_for_enrichment
+    assert isinstance(enriched_results, list)
+    assert len(enriched_results) > 0
+    assert len(enriched_results) <= len(queries)
+    for result in enriched_results:
+        assert len(result.enriched_values) == feature_generator.num_samples_for_enrichment
     
-    logger.info(f'Enrichment successful: {enriched_output.height} rows with {len(enriched_output.columns)} columns')
+    logger.info(f'Enrichment successful: {len(enriched_results)} queries enriched')
     
     # Test dtype determination
     logger.info('Testing dtype determination...')
-    updated_queries = await feature_generator.determine_dtypes(queries, enriched_output)
+    updated_queries = await feature_generator.determine_dtypes(enriched_results)
     
     # Validate updated queries
     assert isinstance(updated_queries, list)
@@ -470,9 +467,9 @@ async def test_feature_generation_with_long_conversations_token_sampling(
         first_row_args = strict_df.row(0, named=False)
         
         # This should work without errors
-        result = await feature.acompute(first_row_args, conn)
+        compute_result = await feature.acompute(first_row_args, conn)
         
-        logger.info(f'Feature {feature.name} computed successfully: {result}')
+        logger.info(f'Feature {feature.name} computed successfully: {compute_result}')
     
     logger.info('============= Token Sampling Test Results =============')
     logger.info(f'Dataset shape: {main_dataset.data.shape}')
@@ -526,3 +523,81 @@ async def test_feature_generation_with_extremely_long_conversations_error_case(
         await feature_generator._generate_queries(conversation_strategy, main_dataset, problem, conn)
     
     logger.info('✅ Correctly raised ValueError for extremely long conversations that exceed token limits!')
+
+
+@pytest.mark.integration
+async def test_enrich_queries_returns_enriched_query_results(
+    test_dataset_with_strategy: tuple[Dataset, str, TablesWithJoinStrategies],
+    conn: DuckDBPyConnection,
+    real_llm_with_spec: LLMWithSpec,
+    problem: ClassificationProblem
+) -> None:
+    """Test that enrich_queries returns EnrichedQueryResult objects with proper structure.
+    
+    This integration test validates that:
+    1. enrich_queries returns list[EnrichedQueryResult] not DataFrame
+    2. Each result pairs a query with its enriched values
+    3. The pipeline works end-to-end with the new structure
+    4. Results can be fewer than input queries (graceful degradation)
+    """
+    main_dataset, target_col, strategies = test_dataset_with_strategy
+    
+    feature_generator = ConversationQueryFeatureGenerator(
+        query_generator_model=real_llm_with_spec,
+        query_enrich_model=real_llm_with_spec,
+        max_samples_for_generation=10,
+        num_samples_for_enrichment=3,  # Small number for faster test
+        num_features_per_round=2,
+        num_actionable_rounds=1,
+        num_creative_features=0,
+        random_seed=42
+    )
+    
+    conversation_strategies = feature_generator.find_conversation_strategies(strategies)
+    conversation_strategy = conversation_strategies[0]
+    
+    # Generate some queries
+    queries = await feature_generator._generate_queries(conversation_strategy, main_dataset, problem, conn)
+    assert len(queries) >= 1, 'Need at least 1 query for this test'
+    
+    # Take first 2 queries for the test
+    test_queries = queries[:min(2, len(queries))]
+    
+    sampler = feature_generator._get_sampler(problem)
+    sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
+    enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, include_target=False)
+    
+    # Test the new enrich_queries behavior
+    enriched_results = await feature_generator.enrich_queries(test_queries, enrichment_formatter, sampled_data, conn)
+    
+    # Validate results structure
+    logger.info(f'Enrichment completed: {len(enriched_results)} results from {len(test_queries)} queries')
+    
+    # Should return a list of EnrichedQueryResult
+    assert isinstance(enriched_results, list), 'Should return a list'
+    assert len(enriched_results) > 0, 'Should have at least one successful enrichment'
+    assert len(enriched_results) <= len(test_queries), 'Results should not exceed input queries'
+    
+    # Check that each result has proper structure
+    for result in enriched_results:
+        # Each result should be an EnrichedQueryResult
+        assert hasattr(result, 'query'), 'Result should have query attribute'
+        assert hasattr(result, 'enriched_values'), 'Result should have enriched_values attribute'
+        
+        # Query should be one of the input queries
+        assert result.query in test_queries, f'Result query {result.query.name} should be in input queries'
+        
+        # Enriched values should have correct length
+        assert len(result.enriched_values) == feature_generator.num_samples_for_enrichment, \
+            f'Enriched values should have {feature_generator.num_samples_for_enrichment} items'
+        
+        # Successful results should have some non-None values
+        non_none_values = [v for v in result.enriched_values if v is not None]
+        assert len(non_none_values) > 0, f'Result for {result.query.name} should have some non-None values'
+    
+    # The pipeline should continue to work with the enriched results
+    updated_queries = await feature_generator.determine_dtypes(enriched_results)
+    assert len(updated_queries) >= 1, 'Should have at least one query with determined dtype'
+    assert all(q.return_type is not None for q in updated_queries), 'All updated queries should have return types'
+    
+    logger.info(f'✅ Pipeline works with new EnrichedQueryResult structure: {len(updated_queries)} queries with valid dtypes')

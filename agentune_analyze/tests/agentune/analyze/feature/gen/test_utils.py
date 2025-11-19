@@ -1,10 +1,13 @@
 """Tests for utility functions in insightful_text_generator."""
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
+import openai
 import pytest
 
+from agentune.analyze.core.llm import LLMSpec
+from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.gen.insightful_text_generator.util import (
     estimate_tokens,
     extract_json_from_response,
@@ -528,3 +531,43 @@ class TestGetMaxContextWindow:
         expected = 100 * 3 // 4
         assert result == expected
         assert result == 75
+
+
+class TestExecuteLLMCachingAwareColumnar:
+    """Test execute_llm_caching_aware_columnar column-level error handling."""
+    
+    @pytest.mark.asyncio
+    async def test_columns_fail_independently(self) -> None:
+        """Test that column failures are isolated - one failure doesn't affect other columns."""
+        from agentune.analyze.feature.gen.insightful_text_generator.util import (
+            FailedColumn,
+            SuccessfulColumn,
+            execute_llm_caching_aware_columnar,
+        )
+        
+        llm_mock = Mock()
+        llm_mock.achat = AsyncMock(side_effect=[
+            Mock(message=Mock(content='success1')),
+            Mock(message=Mock(content='success2')),
+            openai.BadRequestError(
+                'Bad request',
+                response=Mock(status_code=400),
+                body={'error': {'message': 'Bad request', 'type': 'invalid_request_error'}}
+            ),
+        ])
+        
+        llm_spec = LLMSpec(origin='openai', model_name='gpt-4o')
+        llm_with_spec = LLMWithSpec(spec=llm_spec, llm=llm_mock)
+        
+        prompt_columns = [
+            ['prompt1', 'prompt2'],  # Succeeds
+            ['prompt3'],  # Fails
+        ]
+        
+        results = await execute_llm_caching_aware_columnar(llm_with_spec, prompt_columns)
+        
+        assert len(results) == 2
+        assert isinstance(results[0], SuccessfulColumn)
+        assert results[0].values == ['success1', 'success2']
+        assert isinstance(results[1], FailedColumn)
+        assert isinstance(results[1].exception, openai.BadRequestError)
