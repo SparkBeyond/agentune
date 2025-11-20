@@ -205,3 +205,38 @@ async def test_blackbox_feature_generation_with_real_llm(test_dataset_with_strat
         logger.info(f'Feature {feature.name} evaluation successful: {result} (type: {type(result).__name__})')
     
     logger.info('Black-box end-to-end test completed successfully')
+
+
+@pytest.mark.integration
+async def test_min_queries_percentage_validation(test_dataset_with_strategy: tuple[Dataset, str, TablesWithJoinStrategies],
+                                                 conn: DuckDBPyConnection,
+                                                 real_llm_with_spec: LLMWithSpec,
+                                                 problem: ClassificationProblem) -> None:
+    """Test that min_queries_percentage validation works correctly.
+    
+    This test sets num_actionable_rounds to a very high value (100) to trigger
+    the RuntimeError when not enough queries are generated relative to the minimum
+    percentage requirement.
+    """
+    main_dataset, target_col, strategies = test_dataset_with_strategy
+    random_seed = 42
+
+    feature_generator = ConversationQueryFeatureGenerator(
+        query_generator_model=real_llm_with_spec,
+        max_samples_for_generation=10,
+        num_samples_for_enrichment=5,
+        num_features_per_round=200, # Set very high to trigger min_queries_percentage check
+        num_actionable_rounds=1,  
+        num_creative_features=0,
+        query_enrich_model=real_llm_with_spec,
+        random_seed=random_seed,
+        min_queries_percentage=0.5  # Default value, but making it explicit
+    )
+
+    # Expect RuntimeError due to insufficient queries generated
+    with pytest.raises(RuntimeError, match=r'Generated only \d+ queries, which is less than the minimum required'):
+        generated_features = []
+        async for gen_feature in feature_generator.agenerate(main_dataset, problem, strategies, conn):
+            generated_features.append(gen_feature)
+    
+    logger.info('min_queries_percentage validation test completed successfully')
