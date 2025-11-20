@@ -527,8 +527,7 @@ def test_feature_filtering_removes_recommendations_without_features(caplog: pyte
         (),  # conversations
         [],  # conversation_ids
         [],  # outcomes
-        'raw report',
-        0  # total_conversations_analyzed
+        'raw report'
     )
     result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
 
@@ -597,8 +596,7 @@ def test_feature_filtering_removes_features_with_zero_sse() -> None:
         (),  # conversations
         [],  # conversation_ids
         [],  # outcomes
-        'raw report',
-        0  # total_conversations_analyzed
+        'raw report'
     )
     result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
 
@@ -687,8 +685,7 @@ def test_feature_filtering_removes_hallucinated_features(caplog: pytest.LogCaptu
         (),  # conversations
         [],  # conversation_ids
         [],  # outcomes
-        'raw report',
-        0  # total_conversations_analyzed
+        'raw report'
     )
     result = recommender._filter_recommendations_with_no_supporting_features(unfiltered)
 
@@ -860,10 +857,10 @@ async def test_filter_and_clean_unrelated_conversation(
     )
 
     # Create formatted conversations map
-    formatted_conversations_map = {
-        1: format_conversation_for_verification(conv1_metadata),
-        2: format_conversation_for_verification(conv2_metadata),
-    }
+    formatted_conversations = pl.Series([
+        format_conversation_for_verification(conv1_metadata),
+        format_conversation_for_verification(conv2_metadata),
+    ])
 
     # Create recommender
     recommender = ConversationActionRecommender(
@@ -874,7 +871,7 @@ async def test_filter_and_clean_unrelated_conversation(
     # Run verification
     filtered_report = await recommender._verify_conversation_references(
         report_before,
-        formatted_conversations_map
+        formatted_conversations
     )
 
     # Assertions

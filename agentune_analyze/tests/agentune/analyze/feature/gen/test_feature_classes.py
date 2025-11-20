@@ -20,8 +20,10 @@ from agentune.analyze.feature.gen.insightful_text_generator.features import (
     create_feature,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
-    ConversationFormatter,
     DataFormatter,
+)
+from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
+    ShortDateConversationFormatter,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
 from agentune.analyze.join.conversation import ConversationJoinStrategy
@@ -116,7 +118,7 @@ class TestFeatureTypes:
         assert feature_dict[float_feature] == 'urgency_score'
         assert feature_dict[categorical_feature] == 'intent'
 
-        # Additionally ensure the production ConversationFormatter and a feature using it are hashable.
+        # Additionally ensure the production ShortDateConversationFormatter and a feature using it are hashable.
         # Build a minimal conversations table schema
         conv_schema = Schema(
             cols=(
@@ -143,7 +145,7 @@ class TestFeatureTypes:
         )
 
         # Real formatter hashability
-        conv_formatter = ConversationFormatter(name='conv_fmt', conversation_strategy=join)
+        conv_formatter = ShortDateConversationFormatter(name='conv_fmt', conversation_strategy=join)
         hash(conv_formatter)  # should not raise
 
         conv_query = Query(

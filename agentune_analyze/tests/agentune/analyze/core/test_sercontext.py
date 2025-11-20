@@ -21,8 +21,8 @@ from agentune.analyze.feature.gen.insightful_text_generator.features import (
     InsightfulIntFeature,
     InsightfulTextFeature,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
-    ConversationFormatter,
+from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
+    ShortDateConversationFormatter,
 )
 from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.join.conversation import ConversationJoinStrategy
@@ -120,7 +120,7 @@ def test_serialize_feature(converter: JsonConverter, httpx_async_client: httpx.A
                                                Field('main_id', types.int32), Field('id', types.int32), Field('timestamp', types.timestamp),
                                                Field('role', types.string), Field('content', types.string))
 
-    data_formatter = ConversationFormatter('name', conv_strat, (Field('a', types.int32),))
+    data_formatter = ShortDateConversationFormatter('name', conv_strat, (Field('a', types.int32),))
 
     features = [
         InsightfulBoolFeature('name', 'desc', '', llm_with_spec, data_formatter, 'param', 'template', {'a': 'b'}, True),

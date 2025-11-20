@@ -271,7 +271,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         # 2. Test enrichment part
         sampler = feature_generator._get_sampler(problem)
         sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
-        enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, include_target=False)
+        enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, generation_mode=False)
         enriched_results = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
         
         # Validate enriched output
@@ -426,7 +426,7 @@ async def test_feature_generation_with_long_conversations_token_sampling(
     logger.info('Testing enrichment step...')
     sampler = feature_generator._get_sampler(problem)
     sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
-    enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, include_target=False)
+    enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, generation_mode=False)
     
     # This should also work without token errors
     enriched_results = await feature_generator.enrich_queries(queries, enrichment_formatter, sampled_data, conn)
@@ -565,7 +565,7 @@ async def test_enrich_queries_returns_enriched_query_results(
     
     sampler = feature_generator._get_sampler(problem)
     sampled_data = sampler.sample(main_dataset, feature_generator.num_samples_for_enrichment, feature_generator.random_seed)
-    enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, include_target=False)
+    enrichment_formatter = feature_generator._get_formatter(conversation_strategy, problem, generation_mode=False)
     
     # Test the new enrich_queries behavior
     enriched_results = await feature_generator.enrich_queries(test_queries, enrichment_formatter, sampled_data, conn)

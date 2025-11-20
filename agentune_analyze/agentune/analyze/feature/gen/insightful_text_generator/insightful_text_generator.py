@@ -19,8 +19,9 @@ from agentune.analyze.feature.gen.insightful_text_generator.dedup.llm_based_dedu
     LLMBasedDeduplicator,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.features import create_feature
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
-    ConversationFormatter,
+from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import DataFormatter
+from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
+    ShortDateConversationFormatter,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.prompts import (
     ACTIONABLE_QUESTIONNAIRE_PROMPT,
@@ -133,12 +134,13 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
     def _get_deduplicator(self) -> QueryDeduplicator:
         return LLMBasedDeduplicator(llm_with_spec=self.query_generator_model)
     
-    def _get_formatter(self, conversation_strategy: ConversationJoinStrategy, problem: Problem, include_target: bool) -> ConversationFormatter:
-        params_to_print = (problem.target_column,) if include_target else ()
-        return ConversationFormatter(
+    def _get_formatter(self, conversation_strategy: ConversationJoinStrategy, problem: Problem, generation_mode: bool) -> DataFormatter:
+        params_to_print = (problem.target_column,) if generation_mode else ()
+        return ShortDateConversationFormatter(
             name=f'conversation_formatter_{conversation_strategy.name}',
             conversation_strategy=conversation_strategy,
-            params_to_print=params_to_print
+            params_to_print=params_to_print,
+            include_in_batch_id=generation_mode
         )
 
     def find_conversation_strategies(self, join_strategies: TablesWithJoinStrategies) -> list[ConversationJoinStrategy]:
@@ -152,7 +154,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
     def create_query_generator(self, conversation_strategy: ConversationJoinStrategy, problem: Problem, creative: bool = False) -> ConversationQueryGenerator:
         """Create a ConversationQueryGenerator for the given conversation strategy."""
         sampler = self._get_sampler(problem)
-        formatter = self._get_formatter(conversation_strategy, problem, include_target=True)
+        formatter = self._get_formatter(conversation_strategy, problem, generation_mode=True)
         prompt_template = CREATIVE_FEATURES_PROMPT if creative else ACTIONABLE_QUESTIONNAIRE_PROMPT
         return ConversationQueryGenerator(
             model=self.query_generator_model,
@@ -162,7 +164,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             formatter=formatter
         )
 
-    async def enrich_queries(self, queries: list[Query], enrichment_formatter: ConversationFormatter, 
+    async def enrich_queries(self, queries: list[Query], enrichment_formatter: DataFormatter, 
                              input_data: Dataset, conn: DuckDBPyConnection) -> list[EnrichedQueryResult]:
         """Enrich queries with LLM-generated conversation data.
         
@@ -294,7 +296,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             # 2. Enrich the queries with additional conversation information
             sampler = self._get_sampler(problem)
             sampled_data = sampler.sample(filtered_feature_search, self.num_samples_for_enrichment, self.random_seed)
-            enrichment_formatter = self._get_formatter(conversation_strategy, problem, include_target=False)
+            enrichment_formatter = self._get_formatter(conversation_strategy, problem, generation_mode=False)
             enriched_results = await self.enrich_queries(query_batch, enrichment_formatter, sampled_data, conn)
             
             # enrich_queries filters out failed queries, so enriched_results may be empty

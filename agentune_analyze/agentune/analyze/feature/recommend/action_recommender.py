@@ -18,8 +18,9 @@ from agentune.analyze.core.dataset import Dataset
 from agentune.analyze.core.llm import LLMContext, LLMSpec
 from agentune.analyze.core.sercontext import LLMWithSpec
 from agentune.analyze.feature.gen.insightful_text_generator.features import InsightfulTextFeature
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
-    ConversationFormatter,
+from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import DataFormatter
+from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
+    ShortDateConversationFormatter,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import (
     DataSampler,
@@ -109,13 +110,13 @@ class ConversationActionRecommender(ActionRecommender):
     conversation strategy per recommendation.
     
     The recommender:
-    1. Discovers features that use ConversationFormatter
+    1. Discovers features that use conversations
     2. Groups by ConversationJoinStrategy
     3. Validates single strategy (raises error for multiple)
     4. Samples data using problem-appropriate sampler:
        - Classification: BalancedClassSampler (equal samples per class)
        - Regression: BalancedNumericSampler (equal samples per quantile bin)
-    5. Formats conversations using ConversationFormatter
+    5. Formats conversations for LLM input, adapting number of examples to token limit
     6. Generates LLM-based recommendations
     """
 
@@ -206,6 +207,15 @@ class ConversationActionRecommender(ActionRecommender):
         
         return sorted_features, first_strategy
 
+    def _get_formatter(self, conversation_strategy: ConversationJoinStrategy, problem: Problem, is_batch: bool) -> DataFormatter:
+        params_to_print = (problem.target_column,) if is_batch else ()
+        return ShortDateConversationFormatter(
+            name=f'conversation_formatter_{conversation_strategy.name}',
+            conversation_strategy=conversation_strategy,
+            params_to_print=params_to_print,
+            include_in_batch_id=is_batch
+        )
+
     def _format_sse_reduction_dict(
         self, features_with_stats: list[FeatureWithFullStats]
     ) -> str:
@@ -224,39 +234,16 @@ class ConversationActionRecommender(ActionRecommender):
             lines.append(f'{i}. {description}: {sse_reduction:.4f}')
         return '\n'.join(lines)
 
-    def _format_conversations(
-        self,
-        formatted_samples: list[str],
-    ) -> str:
-        """Format conversation samples as a readable string.
-        
-        Conversations are numbered sequentially (1, 2, 3...) based on their order
-        in the formatted_samples series. This ensures the LLM's references
-        (e.g., "Conversation 5") can be traced back to the database.
-        
-        Args:
-            formatted_samples: Series of formatted conversation strings
-            
-        Returns:
-            Formatted string with conversations numbered sequentially
-        """
-        lines = []
-        for i, conversation in enumerate(formatted_samples, start=1):
-            lines.append(f'--- Conversation {i} ---')
-            lines.append(str(conversation))
-            lines.append('')
-        return '\n'.join(lines)
-
     async def _verify_conversation_references(
         self,
         report: RecommendationsReport,
-        formatted_conversations_map: dict[int, str]
+        formatted_conversations: pl.Series,
     ) -> RecommendationsReport:
         """Verify conversation references using LLM and filter unsupported ones.
 
         Args:
             report: RecommendationsReport containing supporting_conversations for each recommendation
-            formatted_conversations_map: Mapping from conversation_id to formatted conversation string
+            formatted_conversations: Series of formatted conversation strings keyed by display_number (1-based)
 
         Returns:
             Filtered RecommendationsReport containing recommendations with verified supporting_conversations only
@@ -276,12 +263,12 @@ class ConversationActionRecommender(ActionRecommender):
                 True if conversation supports the recommendation as claimed, False otherwise
             """
             # Check if conversation ID exists in formatted map
-            if conv_with_exp.conversation_id not in formatted_conversations_map:
+            if conv_with_exp.conversation_id > len(formatted_conversations) or conv_with_exp.conversation_id < 1:
                 logger.warning(
                     f'Conversation {conv_with_exp.conversation_id} for recommendation {rec.title} could not be verified')
                 return False  # remove conversation if ID not found
 
-            conversation_formatted = formatted_conversations_map[conv_with_exp.conversation_id]
+            conversation_formatted = formatted_conversations[conv_with_exp.conversation_id - 1]
 
             # Get outcome from report.conversations
             outcome = report.conversations[conv_with_exp.conversation_id].outcome
@@ -393,7 +380,6 @@ class ConversationActionRecommender(ActionRecommender):
         conversation_ids: list[int | str],
         outcomes: list[str],
         raw_report: str,
-        total_conversations_analyzed: int,
     ) -> RecommendationsReport:
         """Convert Pydantic report to attrs report, enriching with SSE reduction and conversation data.
         non-existing features appear with SSE=0, and are to be pruned in the filtering later on in the flow.
@@ -405,11 +391,12 @@ class ConversationActionRecommender(ActionRecommender):
             conversation_ids: List of actual database conversation IDs (in same order as conversations)
             outcomes: List of outcome values (in same order as conversations)
             raw_report: Raw report from LLM structured output
-            total_conversations_analyzed: Number of conversations included in the prompt sent to LLM
 
         Returns:
             RecommendationsReport with enriched feature references and ConversationWithMetadata objects
         """
+        if len(conversations) != len(conversation_ids) or len(conversations) != len(outcomes):
+            raise ValueError('Length of conversations, conversation_ids, and outcomes must be the same')
         # Build a lookup map: feature description -> R²
         r_squared_lookup = {
             fws.feature.description: fws.stats.relationship.r_squared
@@ -495,7 +482,7 @@ class ConversationActionRecommender(ActionRecommender):
             recommendations=tuple(recommendations_list),
             conversations=conversations_dict,
             raw_report=raw_report,
-            total_conversations_analyzed=total_conversations_analyzed,
+            total_conversations_analyzed=len(conversations),
             all_features=tuple(all_features_list),
         )
 
@@ -544,9 +531,7 @@ class ConversationActionRecommender(ActionRecommender):
                              sampled_data: Dataset,
                              conversation_strategy: ConversationJoinStrategy,
                              conn: DuckDBPyConnection,
-                             formatter: ConversationFormatter,
-                             formatted_samples: pl.Series,
-                             ) -> tuple[str, list[Conversation], list[str | int], int]:
+                             ) -> tuple[str, int]:
         """ Create prompt for LLM based on formatted conversations and token limits.
 
         Args:
@@ -555,17 +540,17 @@ class ConversationActionRecommender(ActionRecommender):
             sampled_data: Sampled dataset for examples
             conversation_strategy: The conversation join strategy being used
             conn: Database connection
-            formatter: ConversationFormatter instance (already configured)
-            formatted_samples: Pre-formatted conversation samples
         Returns:
-            Tuple of (prompt string, list of Conversation objects, list of conversation IDs, num conversations in prompt)
+            Tuple of (prompt string, num_example_used)
 
         Note:
             This method adapts the number of examples included in the prompt
             to fit within the model's context window token limit.
+            it used `sampled_data[:num_example_used]` as the conversations included in the prompt.
         """
-        # Extract conversation IDs from sampled data
-        conversation_ids = sampled_data.data[conversation_strategy.main_table_id_column.name].to_list()
+        # Create the formatter
+        formatter = self._get_formatter(conversation_strategy, problem, is_batch=True)
+        formatted_samples = await formatter.aformat_batch(sampled_data, conn)
 
         # Get token limits
         max_context_window = get_max_input_context_window(self.model)
@@ -576,7 +561,7 @@ class ConversationActionRecommender(ActionRecommender):
             current_examples = formatted_samples.to_list()[:num_examples]
 
             # Build prompt (adapts to regression vs classification)
-            formatted_conversations = self._format_conversations(current_examples)
+            formatted_conversations = '\n'.join(current_examples)
             if formatter.description is None:
                 raise ValueError(f'Formatter {formatter.name} description not available')
             prompt = prompts.create_conversation_analysis_prompt(
@@ -592,16 +577,11 @@ class ConversationActionRecommender(ActionRecommender):
 
             # If fits, return prompt and conversations
             if current_tokens <= max_context_window:
-                current_conversation_ids = conversation_ids[:num_examples]
-                conversations_tuple = conversation_strategy.get_conversations(current_conversation_ids, conn)
-                # Convert tuple to list for return type compatibility
-                conversations = [conv for conv in conversations_tuple if conv is not None]
-
                 logger.info(
                     f'Fitted prompt with {num_examples} out of {len(formatted_samples)} examples, '
                     f'using {current_tokens} tokens which is < token limit ({max_context_window} tokens)'
                 )
-                return prompt, conversations, current_conversation_ids, num_examples
+                return prompt, num_examples
 
             # Remove one example and try again
             num_examples -= 1
@@ -646,23 +626,12 @@ class ConversationActionRecommender(ActionRecommender):
         sampler = self._get_sampler(problem)
         sampled_data = sampler.sample(filtered_dataset, self.max_samples)
 
-        # Create formatted conversations map for conversations verification
-        formatter = ConversationFormatter(
-            name='action_recommender_conversations',
-            conversation_strategy=conversation_strategy,
-            params_to_print=(problem.target_column,),
-        )
-        formatted_samples = await formatter.aformat_batch(sampled_data, conn)
-
-        formatted_conversations_map: dict[int, str] = {
-            i: str(conversation)
-            for i, conversation in enumerate(formatted_samples.to_list(), 1)
-        }
-
         # 3. create prompt and get conversations used (adapting number of examples to token limit)
-        prompt, conversations, conversation_ids, num_conversations_in_prompt = await self._create_prompt(
-            problem, sorted_features, sampled_data, conversation_strategy, conn, formatter, formatted_samples
+        prompt, num_examples_used = await self._create_prompt(
+            problem, sorted_features, sampled_data, conversation_strategy, conn
         )
+        # Adjust sampled_data to only include the used examples
+        sampled_data = Dataset(schema=sampled_data.schema, data=sampled_data.data[:num_examples_used])
 
         # 4. Call LLM to get raw text report
         raw_report = await achat_raw(self.model, prompt)
@@ -678,16 +647,19 @@ class ConversationActionRecommender(ActionRecommender):
         # 6. Convert Pydantic to attrs, enriching with conversation data
         # Extract outcomes as strings for metadata
         outcomes = [str(val) for val in sampled_data.data[problem.target_column.name].to_list()]
+        conversations = conversation_strategy.get_conversations(sampled_data, conn)
+        conversation_ids = sampled_data.data[conversation_strategy.main_table_id_column.name].to_list()
         
         # Convert Pydantic to attrs
         report = self._convert_pydantic_to_attrs(
             pydantic_report, sorted_features, tuple(conversations),
-            conversation_ids, outcomes, raw_report, num_conversations_in_prompt
-        )
+            conversation_ids, outcomes, raw_report)
 
         # Filter out invalid recommendations
         report_with_valid_features = self._filter_recommendations_with_no_supporting_features(report)
 
         # Filter out invalid conversations
-        return await self._verify_conversation_references(report_with_valid_features, formatted_conversations_map)
+        formatter = self._get_formatter(conversation_strategy, problem, is_batch=False)
+        formatted_conversations = await formatter.aformat_batch(sampled_data, conn)
+        return await self._verify_conversation_references(report_with_valid_features, formatted_conversations)
 
