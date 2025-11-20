@@ -34,7 +34,8 @@ class TestQuestionnairePrompts:
         """Test that classification problem without target_desired_outcome raises error."""
         # Create a minimal ProblemDescription with only required parameters
         problem_description = ProblemDescription(
-            target_column='target'
+            target_column='target',
+            description='Test problem'
         )
         
         # Create a classification problem with string target (valid for classification)
@@ -70,6 +71,7 @@ class TestQuestionnairePrompts:
         # Create ProblemDescription with target_desired_outcome (required for prompt)
         problem_description = ProblemDescription(
             target_column='target',
+            description='Test problem',
             target_desired_outcome='success'
         )
         
@@ -110,6 +112,7 @@ class TestQuestionnairePrompts:
         """Test questionnaire prompt creation with classification problem (integer target)."""
         problem_description = ProblemDescription(
             target_column='quality_score',
+            description='Test quality score problem',
             target_desired_outcome=5
         )
         
@@ -146,6 +149,7 @@ class TestQuestionnairePrompts:
         """Test questionnaire prompt creation with regression problem (direction up)."""
         problem_description = ProblemDescription(
             target_column='revenue',
+            description='Test revenue problem',
             target_desired_outcome=RegressionDirection.up
         )
         
@@ -185,6 +189,7 @@ class TestQuestionnairePrompts:
         """Test questionnaire prompt creation with regression problem (direction down)."""
         problem_description = ProblemDescription(
             target_column='response_time',
+            description='Test response time problem',
             target_desired_outcome=RegressionDirection.down
         )
         
@@ -224,6 +229,7 @@ class TestQuestionnairePrompts:
         """Test questionnaire prompt creation with business domain specified."""
         problem_description = ProblemDescription(
             target_column='target',
+            description='Test problem with business domain',
             target_desired_outcome='success',
             business_domain='customer service'
         )
@@ -289,6 +295,7 @@ class TestPromptSpecificFeatures:
         """Test that ACTIONABLE_QUESTIONNAIRE_PROMPT includes existing queries section."""
         problem_description = ProblemDescription(
             target_column='target',
+            description='Test problem',
             target_desired_outcome='success'
         )
         
@@ -320,6 +327,7 @@ class TestPromptSpecificFeatures:
         """Test ACTIONABLE_QUESTIONNAIRE_PROMPT with empty existing queries."""
         problem_description = ProblemDescription(
             target_column='target',
+            description='Test problem',
             target_desired_outcome='success'
         )
         
@@ -344,6 +352,7 @@ class TestPromptSpecificFeatures:
         """Test that JUICY_FEATURES_PROMPT includes its specific content."""
         problem_description = ProblemDescription(
             target_column='target',
+            description='Test problem',
             target_desired_outcome='success'
         )
         

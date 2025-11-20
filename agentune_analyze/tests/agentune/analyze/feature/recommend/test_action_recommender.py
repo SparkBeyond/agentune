@@ -208,6 +208,7 @@ async def test_action_recommender(
         
         problem_description = ProblemDescription(
             target_column=target_column,
+            description='Test conversation outcome analysis',
             problem_type='classification',
             target_desired_outcome=desired_target_class,
         )
@@ -403,6 +404,7 @@ async def test_action_recommender_with_long_conversations_token_sampling(
 
         problem_description = ProblemDescription(
             target_column=target_column,
+            description='Test conversation outcome analysis',
             problem_type='classification',
             target_desired_outcome=desired_target_class,
         )

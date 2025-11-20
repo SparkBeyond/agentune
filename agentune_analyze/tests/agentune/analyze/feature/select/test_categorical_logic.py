@@ -126,7 +126,7 @@ def run_selection_on_df(
         features_seq, source = builder.build(df, target_col)
         features = list(features_seq)
 
-    problem = ClassificationProblem(ProblemDescription(target_col), Field(target_col, types.int64), (0, 1))
+    problem = ClassificationProblem(ProblemDescription(target_col, 'Test problem'), Field(target_col, types.int64), (0, 1))
     selected = selector.select_features(features, MAX_FEATURES_TO_SELECT, source, problem, conn)
     return [f.name for f in selected]
  
@@ -265,7 +265,7 @@ def test_categorical_selection_regression(conn: duckdb.DuckDBPyConnection) -> No
     features, source = builder.build(df_reg, 'target')
     
     selector = LinearPairWiseFeatureSelector()
-    problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
+    problem = RegressionProblem(ProblemDescription('target', 'Test regression problem'), Field('target', types.float64))
     selected = selector.select_features(features, 2, source, problem, conn)
 
     selected_names = [f.name for f in selected]
@@ -309,7 +309,7 @@ def test_categorical_selection_multiclass(conn: duckdb.DuckDBPyConnection) -> No
     features, source = builder.build(df_mc, 'target')
     
     selector = LinearPairWiseFeatureSelector()
-    problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.string), tuple(sorted(targets)))
+    problem = ClassificationProblem(ProblemDescription('target', 'Test multiclass problem'), Field('target', types.string), tuple(sorted(targets)))
     selected = selector.select_features(features, 2, source, problem, conn)
 
     selected_names = [f.name for f in selected]
@@ -346,7 +346,7 @@ def test_other_bucket_handling(conn: duckdb.DuckDBPyConnection) -> None:
     features, source = builder.build(df, 'target')
     
     selector = LinearPairWiseFeatureSelector()
-    problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
+    problem = RegressionProblem(ProblemDescription('target', 'Test regression problem'), Field('target', types.float64))
     selected = selector.select_features(features, 1, source, problem, conn)
     
     assert len(selected) == 1

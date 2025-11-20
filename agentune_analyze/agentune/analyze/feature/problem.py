@@ -42,7 +42,7 @@ class TableDescription:
 
 @frozen
 class ProblemDescription:
-    """User input to the analyzer. Almost all parameters are optional.
+    """User input to the analyzer. Most parameters are optional except target_column and description.
 
     During analysis, an instance of class Problem is created which contains a copy of this class; that copy
     might be modified from the original user input by setting some fields that the user left empty.
@@ -53,6 +53,8 @@ class ProblemDescription:
         target_column: name of the column in the main table that contains the target variable to predict/estimate/explain.
                        The target variable is the manifestation or indication of the outcome or indicator associated with
                        the corresponding row. Aggregated over the main table, it provides the KPI to be optimized.
+        description:  a longer (1-2 sentences) description of the problem, e.g. 'There are kittens in shelters that need 
+                      to be adopted to loving homes. This requires matching each kitten with the right person.'
         problem_type: 'classification' or 'regression'. If not specified, the type is inferred from the target column dtype.
                       Regression requires a numeric target column, and is the inferred type for numeric targets.
                       Classification allows all types (including numeric ones) and requires a limited number of distinct
@@ -66,8 +68,6 @@ class ProblemDescription:
                                 target values present in the train data. For regression problems, this indicates whether
                                 higher or lower target values are better (`RegressionDirection.up` or `RegressionDirection.down`).
         name:         a short name for the problem being analyzed, e.g. 'Kitten adoption'.
-        description:  a longer (1-2 sentences) description, e.g. 'There are kittens in shelters that need to be adopted
-                      to loving homes. This requires matching each kitten with the right person.'
         target_description: any additional information on the target and the possible outcomes, e.g.
                       'how long the kitten spent in the shelter before being adopted'.
         business_domain: the domain to which the problem and the data belong, e.g. 'animal welfare'.
@@ -79,11 +79,11 @@ class ProblemDescription:
         main_table:   A description of the main table and its columns.
         secondary_tables: A mapping from table names to descriptions of secondary tables.
     """
-    target_column: str # Comes first because it's the only mandatory parameter
+    target_column: str
+    description: str
     problem_type: TargetKind | None = None
     target_desired_outcome: ClassificationClass | RegressionDirection | None = None
     name: str | None = None
-    description: str | None = None
     target_description: str | None = None
     business_domain: str | None = None
     date_column: str | None = None
