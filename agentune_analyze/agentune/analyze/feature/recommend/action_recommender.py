@@ -168,7 +168,7 @@ class ConversationActionRecommender(ActionRecommender):
             features_with_stats: All features with their statistics
 
         Returns:
-            Tuple of (sorted features by SSE reduction, conversation strategy) if conversation features found.
+            Tuple of (sorted features by R squared, conversation strategy) if conversation features found.
             None if no conversation features are found.
             
         Raises:
@@ -198,10 +198,10 @@ class ConversationActionRecommender(ActionRecommender):
                 f'Multiple conversation sources not yet supported.'
             )
         
-        # Sort features by SSE reduction (importance)
+        # Sort features by R squared (importance)
         sorted_features = sorted(
             [fws for fws, _ in conv_features],
-            key=lambda fws: fws.stats.relationship.sse_reduction,
+            key=lambda fws: fws.stats.relationship.r_squared,
             reverse=True
         )
         
@@ -216,22 +216,22 @@ class ConversationActionRecommender(ActionRecommender):
             include_in_batch_id=is_batch
         )
 
-    def _format_sse_reduction_dict(
+    def _format_r_squared_dict(
         self, features_with_stats: list[FeatureWithFullStats]
     ) -> str:
-        """Format SSE reduction dictionary as a readable string.
+        """Format R squared dictionary as a readable string.
 
         Args:
             features_with_stats: Features sorted by importance
             
         Returns:
-            Formatted string showing feature descriptions and SSE reductions
+            Formatted string showing feature descriptions and R squared values
         """
         lines = []
         for i, fws in enumerate(features_with_stats[:self.top_k_features], 1):
-            sse_reduction = fws.stats.relationship.sse_reduction
+            r_squared = fws.stats.relationship.r_squared
             description = fws.feature.description
-            lines.append(f'{i}. {description}: {sse_reduction:.4f}')
+            lines.append(f'{i}. {description}: {r_squared:.4f}')
         return '\n'.join(lines)
 
     async def _verify_conversation_references(
@@ -381,12 +381,12 @@ class ConversationActionRecommender(ActionRecommender):
         outcomes: list[str],
         raw_report: str,
     ) -> RecommendationsReport:
-        """Convert Pydantic report to attrs report, enriching with SSE reduction and conversation data.
-        non-existing features appear with SSE=0, and are to be pruned in the filtering later on in the flow.
+        """Convert Pydantic report to attrs report, enriching with R squared and conversation data.
+        non-existing features appear with R_squared=0, and are to be pruned in the filtering later on in the flow.
 
         Args:
             pydantic_report: The Pydantic model from LLM structured output
-            features_with_stats: Features with their statistics (for SSE lookup)
+            features_with_stats: Features with their statistics (for R squared lookup)
             conversations: Tuple of Conversation objects (in same order as shown to LLM)
             conversation_ids: List of actual database conversation IDs (in same order as conversations)
             outcomes: List of outcome values (in same order as conversations)
@@ -426,7 +426,7 @@ class ConversationActionRecommender(ActionRecommender):
         all_conversation_indices: set[int] = set()
 
         for rec in pydantic_report.recommendations:
-            # Enrich supporting features with SSE values
+            # Enrich supporting features with R squared values
             supporting_features = tuple(
                 FeatureWithScore(
                     name=feat_name,
@@ -490,7 +490,7 @@ class ConversationActionRecommender(ActionRecommender):
         """Filter out recommendations with no valid supporting features.
 
         Removes:
-        - Features with SSE reduction = 0.0 (non-existent or non-predictive) from supporting features list in recommendations.
+        - Features with R squared = 0.0 (non-existent or non-predictive) from supporting features list in recommendations.
         - Recommendations that have no remaining features after filtering
 
         Args:
@@ -503,7 +503,7 @@ class ConversationActionRecommender(ActionRecommender):
         filtered_out: list[str] = []
 
         for rec in report.recommendations:
-            # Filter out features with SSE=0 (non-existent or non-predictive)
+            # Filter out features with R squared=0 (non-existent or non-predictive)
             meaningful_features = tuple(
                 f for f in rec.supporting_features if f.r_squared > 0.0
             )
@@ -568,7 +568,7 @@ class ConversationActionRecommender(ActionRecommender):
                 agent_description=self.agent_description,
                 instance_description=formatter.description,
                 problem=problem,
-                sse_reduction_dict=self._format_sse_reduction_dict(sorted_features),
+                r_squared_dict=self._format_r_squared_dict(sorted_features),
                 conversations=formatted_conversations,
             )
 
@@ -639,7 +639,7 @@ class ConversationActionRecommender(ActionRecommender):
         # 5. Structure the report using LLM (returns Pydantic model)
         pydantic_report = await prompts.structure_report_with_llm(
             report=raw_report,
-            sse_reduction_dict=self._format_sse_reduction_dict(sorted_features),
+            r_squared_dict=self._format_r_squared_dict(sorted_features),
             model=self.model,
             structuring_model=self.structuring_model,
         )
@@ -649,7 +649,7 @@ class ConversationActionRecommender(ActionRecommender):
         outcomes = [str(val) for val in sampled_data.data[problem.target_column.name].to_list()]
         conversations = conversation_strategy.get_conversations(sampled_data, conn)
         conversation_ids = sampled_data.data[conversation_strategy.main_table_id_column.name].to_list()
-        
+
         # Convert Pydantic to attrs
         report = self._convert_pydantic_to_attrs(
             pydantic_report, sorted_features, tuple(conversations),

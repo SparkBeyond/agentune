@@ -19,7 +19,7 @@ We did an extensive semantic analysis of {instance_description}
 {comparison_description}
 
 We will give you 
-(1) the results of this analysis - features along with their predictive power measured by SSE reduction
+(1) the results of this analysis - features along with their predictive power measured by R squared
 (2) Sample conversations of the agent with different outcomes 
 Please observe both carefully. We will then ask you to create a prioritized implementation plan for the agent builder.
 (3) Additional guidelines and the output format we expect
@@ -29,9 +29,9 @@ Identify specific moments or missing actions in those conversations that could h
 These negative examples are extremely valuable for understanding what to avoid or what to add.
 
 ---
-Features found during our Semantic analysis along with their SSE reductions (higher = more predictive)
+Features found during our Semantic analysis along with their R squared values (higher = more predictive)
 
-{sse_reduction_dict}
+{r_squared_dict}
 
 ---
 Sample Conversations with various outcomes
@@ -51,7 +51,7 @@ State the user-facing problem or business-level issue concisely.
 
 **Analysis & Impact (The "Why"):**
 Describe the root cause and its impact. Support your analysis with:
-- Quantitative evidence (SSE scores, percentages, patterns in the data)
+- Quantitative evidence (R squared values, percentages, patterns in the data)
 - Qualitative evidence (specific examples from conversations)
 - Business impact (effect on sales, user experience, etc.)
 
@@ -67,7 +67,7 @@ def create_conversation_analysis_prompt(
     agent_description: str,
     instance_description: str,
     problem: Problem,
-    sse_reduction_dict: str,
+    r_squared_dict: str,
     conversations: str,
 ) -> str:
     """Create a formatted conversation analysis prompt for LLM.
@@ -79,8 +79,8 @@ def create_conversation_analysis_prompt(
         agent_description: Description of the agent being analyzed
         instance_description: Description of the instances (e.g., "transcripts of conversations")
         problem: Problem object containing target and desired outcome
-        sse_reduction_dict: Formatted string of features and their SSE reductions
-        conversations: Formatted string of sample conversations
+        r_squared_dict: Formatted string of features and their R squared values
+        conversations: Formatted string of sampled conversations
         
     Returns:
         Formatted prompt string ready for LLM
@@ -115,7 +115,7 @@ def create_conversation_analysis_prompt(
         instance_description=instance_description,
         comparison_description=comparison_description,
         goal_description=goal_description,
-        sse_reduction_dict=sse_reduction_dict,
+        r_squared_dict=r_squared_dict,
         conversations=conversations,
     )
 
@@ -167,7 +167,7 @@ REPORT:
 ---
 
 AVAILABLE FEATURES (for exact matching):
-{sse_reduction_dict}
+{r_squared_dict}
 ---
 
 Extract information EXACTLY as written in the report. Do not rephrase or rewrite.
@@ -201,7 +201,7 @@ For each distinct recommendation you can identify (even if not in a "# Recommend
 5.  **Extract supporting_features:**
     * Look for mentions of features in the recommendation text
     * For each feature mentioned, find and return its exact description from the "AVAILABLE FEATURES" list above
-    * Return ONLY the feature description text (without the list number or SSE score)
+    * Return ONLY the feature description text (without the list number or R squared value)
     * Do NOT paraphrase or reword - copy the text exactly as it appears in the list
 
 6.  **Extract supporting_conversations:**
@@ -220,7 +220,7 @@ You are part of an AI agent improvement system. This system analyzes conversatio
 
 WHAT IS A RECOMMENDATION:
 A recommendation is an actionable suggestion for improving the agent, generated from:
-- Semantic analysis showing which conversation features predict outcomes (measured by SSE reduction)
+- Semantic analysis showing which conversation features predict outcomes (measured by R squared)
 - Sample conversations demonstrating these patterns
 - LLM analysis identifying what agent builders should implement
 
@@ -329,7 +329,7 @@ EVIDENCE_AND_RATIONALE_CLEANING_PROMPT = PromptTemplate(EVIDENCE_AND_RATIONALE_C
 
 async def structure_report_with_llm(
     report: str,
-    sse_reduction_dict: str,
+    r_squared_dict: str,
     model: LLMWithSpec,
     structuring_model: LLMWithSpec | None = None,
 ) -> StructuredReport:
@@ -337,7 +337,7 @@ async def structure_report_with_llm(
     
     Args:
         report: The full text report (with # Analysis and # Recommendations sections)
-        sse_reduction_dict: Formatted string of features and their SSE reductions
+        r_squared_dict: Formatted string of features and their R squared values
         model: LLM model to use for structuring (fallback if structuring_model not provided)
         structuring_model: Optional faster model specifically for structuring (e.g., gpt-4o)
 
@@ -353,7 +353,7 @@ async def structure_report_with_llm(
         output_cls=StructuredReport,
         prompt=prompt,
         report=report,
-        sse_reduction_dict=sse_reduction_dict,
+        r_squared_dict=r_squared_dict,
     )
 
 async def clean_evidence_and_rationale_with_llm(
