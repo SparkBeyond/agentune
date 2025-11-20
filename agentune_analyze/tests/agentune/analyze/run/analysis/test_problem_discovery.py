@@ -36,18 +36,18 @@ def test_discover_problem_int_target(ddb_manager: DuckdbManager, conn: DuckDBPyC
         else:
             assert problem == RegressionProblem(description, Field('target', types.int64))
 
-    dotest(ProblemDescription('target'), True)
-    dotest(ProblemDescription('target', problem_type='classification'), True)
-    dotest(ProblemDescription('target', problem_type='regression'), False)
-    dotest(ProblemDescription('target', target_desired_outcome=RegressionDirection.up), False)
-    dotest(ProblemDescription('target', target_desired_outcome=1), True)
+    dotest(ProblemDescription('target', 'Test problem'), True)
+    dotest(ProblemDescription('target', 'Test problem', problem_type='classification'), True)
+    dotest(ProblemDescription('target', 'Test problem', problem_type='regression'), False)
+    dotest(ProblemDescription('target', 'Test problem', target_desired_outcome=RegressionDirection.up), False)
+    dotest(ProblemDescription('target', 'Test problem', target_desired_outcome=1), True)
 
     with pytest.raises(ValueError, match='not in list of classes'):
-        dotest(ProblemDescription('target', target_desired_outcome=3), True)
+        dotest(ProblemDescription('target', 'Test problem', target_desired_outcome=3), True)
     with pytest.raises(ValueError, match='not in list of classes'):
-        dotest(ProblemDescription('target', target_desired_outcome='1'), True)
+        dotest(ProblemDescription('target', 'Test problem', target_desired_outcome='1'), True)
     with pytest.raises(ValueError, match='more than 2 classes'):
-        dotest(ProblemDescription('target'), True, 2)
+        dotest(ProblemDescription('target', 'Test problem'), True, 2)
 
 
 def test_discover_problem_float_target(ddb_manager: DuckdbManager, conn: DuckDBPyConnection) -> None:
@@ -61,14 +61,14 @@ def test_discover_problem_float_target(ddb_manager: DuckdbManager, conn: DuckDBP
         problem_discovery.validate_input(input_data, problem, conn)
         assert problem == RegressionProblem(description, Field('target', types.float64))
 
-    dotest(ProblemDescription('target'))
-    dotest(ProblemDescription('target', problem_type='regression'))
-    dotest(ProblemDescription('target', target_desired_outcome=RegressionDirection.up))
+    dotest(ProblemDescription('target', 'Test problem'))
+    dotest(ProblemDescription('target', 'Test problem', problem_type='regression'))
+    dotest(ProblemDescription('target', 'Test problem', target_desired_outcome=RegressionDirection.up))
 
     with pytest.raises(ValueError, match='not supported for classification'):
-        dotest(ProblemDescription('target', problem_type='classification'))
+        dotest(ProblemDescription('target', 'Test problem', problem_type='classification'))
     with pytest.raises(ValueError, match='not supported with desired outcome 1'):
-        dotest(ProblemDescription('target', target_desired_outcome=1))
+        dotest(ProblemDescription('target', 'Test problem', target_desired_outcome=1))
 
 
 def test_discover_problem_str_target(ddb_manager: DuckdbManager, conn: DuckDBPyConnection) -> None:
@@ -85,14 +85,14 @@ def test_discover_problem_str_target(ddb_manager: DuckdbManager, conn: DuckDBPyC
         problem_discovery.validate_input(input_data, problem, conn)
         assert problem == ClassificationProblem(description, Field('target', types.string), labels)
 
-    dotest(ProblemDescription('target'))
-    dotest(ProblemDescription('target', problem_type='classification'))
-    dotest(ProblemDescription('target', target_desired_outcome='B'))
+    dotest(ProblemDescription('target', 'Test problem'))
+    dotest(ProblemDescription('target', 'Test problem', problem_type='classification'))
+    dotest(ProblemDescription('target', 'Test problem', target_desired_outcome='B'))
 
     with pytest.raises(ValueError, match='regression target must be numeric'):
-        dotest(ProblemDescription('target', problem_type='regression'))
+        dotest(ProblemDescription('target', 'Test problem', problem_type='regression'))
     with pytest.raises(ValueError, match='dtype str not supported with desired outcome up'):
-        dotest(ProblemDescription('target', target_desired_outcome=RegressionDirection.up))
+        dotest(ProblemDescription('target', 'Test problem', target_desired_outcome=RegressionDirection.up))
 
 
 def test_target_dtype_preserved(ddb_manager: DuckdbManager, conn: DuckDBPyConnection) -> None:
@@ -100,7 +100,7 @@ def test_target_dtype_preserved(ddb_manager: DuckdbManager, conn: DuckDBPyConnec
         'x': [float(x % 10) for x in range(1, 1000)],
         'target': [int(t % 3) for t in range(1, 1000)],
     }, schema_overrides={'target': types.int16.polars_type}))
-    problem = problem_discovery.discover_problem(input_data, ProblemDescription('target'), conn, 20)
+    problem = problem_discovery.discover_problem(input_data, ProblemDescription('target', 'Test problem'), conn, 20)
     assert problem.target_column.dtype == types.int16, 'Correct target column dtype'
 
 
@@ -111,7 +111,7 @@ def test_fail_on_invalid_int_target_values(ddb_manager: DuckdbManager) -> None:
             'target': [int(t % 3) for t in range(1, 1000)],
         }))
         problem = RegressionProblem(
-            ProblemDescription('target'),
+            ProblemDescription('target', 'Test problem'),
             input_data.feature_search.schema['target']
         )
 
@@ -147,7 +147,7 @@ def test_fail_on_invalid_float_target_values(ddb_manager: DuckdbManager) -> None
             'target': [float(t % 3) for t in range(1, 1000)],
         }))
         problem = RegressionProblem(
-            ProblemDescription('target'),
+            ProblemDescription('target', 'Test problem'),
             input_data.feature_search.schema['target']
         )
         
@@ -195,46 +195,46 @@ def test_table_descriptions(ddb_manager: DuckdbManager, conn: DuckDBPyConnection
     ]))
 
     problem = RegressionProblem(
-        ProblemDescription('target'),
+        ProblemDescription('target', 'Test problem'),
         input_data.feature_search.schema['target']
     )
     problem_discovery.validate_input(input_data, problem, conn) # No descriptions - OK
 
     problem = RegressionProblem(
-        ProblemDescription('target', main_table=TableDescription(column_descriptions={'x': 'x column', 'target': 'target column'})),
+        ProblemDescription('target', 'Test problem', main_table=TableDescription(column_descriptions={'x': 'x column', 'target': 'target column'})),
         input_data.feature_search.schema['target']
     )
     problem_discovery.validate_input(input_data, problem, conn) # Description of main table column - OK
 
     with pytest.raises(ValueError, match='column y but it does not exist in analysis input'):
         problem = RegressionProblem(
-            ProblemDescription('target', main_table=TableDescription(column_descriptions={'y': 'y column'})),
+            ProblemDescription('target', 'Test problem', main_table=TableDescription(column_descriptions={'y': 'y column'})),
             input_data.feature_search.schema['target']
         )
         problem_discovery.validate_input(input_data, problem, conn)
 
     problem = RegressionProblem(
-        ProblemDescription('target', secondary_tables={secondary_table.name: TableDescription('secondary table')}),
+        ProblemDescription('target', 'Test problem', secondary_tables={secondary_table.name: TableDescription('secondary table')}),
         input_data.feature_search.schema['target']
     )
     problem_discovery.validate_input(input_data, problem, conn) # Description of secondary table - OK
 
     problem = RegressionProblem(
-        ProblemDescription('target', secondary_tables={secondary_table.name: TableDescription('secondary table', column_descriptions={'y': 'y column'})}),
+        ProblemDescription('target', 'Test problem', secondary_tables={secondary_table.name: TableDescription('secondary table', column_descriptions={'y': 'y column'})}),
         input_data.feature_search.schema['target']
     )
     problem_discovery.validate_input(input_data, problem, conn) # Description of secondary table column - OK
 
     with pytest.raises(ValueError, match='it does not exist in analysis input'):
         problem = RegressionProblem(
-            ProblemDescription('target', secondary_tables={DuckdbName.qualify('tertiary', conn): TableDescription('secondary table', column_descriptions={'y': 'y column'})}),
+            ProblemDescription('target', 'Test problem', secondary_tables={DuckdbName.qualify('tertiary', conn): TableDescription('secondary table', column_descriptions={'y': 'y column'})}),
             input_data.feature_search.schema['target']
         )
         problem_discovery.validate_input(input_data, problem, conn)
 
     with pytest.raises(ValueError, match='column z but it does not exist in table'):
         problem = RegressionProblem(
-            ProblemDescription('target', secondary_tables={secondary_table.name: TableDescription('secondary table', column_descriptions={'z': 'z column'})}),
+            ProblemDescription('target', 'Test problem', secondary_tables={secondary_table.name: TableDescription('secondary table', column_descriptions={'z': 'z column'})}),
             input_data.feature_search.schema['target']
         )
         problem_discovery.validate_input(input_data, problem, conn)

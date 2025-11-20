@@ -41,7 +41,7 @@ async def test_e2e_flow_synthetic(input_data_csv_path: Path, tmp_path: Path) -> 
     async with await RunContext.create() as ctx:
         input = await ctx.data.from_csv(input_data_csv_path).copy_to_table('input')
         split_input = await input.split()
-        problem_description = ProblemDescription('target')
+        problem_description = ProblemDescription('target', 'Test synthetic data problem')
 
         with pytest.raises(NoFeaturesFoundError): # Default generators can't do anything with this synthetic data
             await ctx.ops.analyze(problem_description, split_input)
@@ -73,7 +73,7 @@ async def test_rename_main_database(input_data_csv_path: Path, tmp_path: Path) -
     async with await RunContext.create(DuckdbOnDisk(dbpath)) as ctx:
         input = await ctx.data.from_csv(input_data_csv_path).copy_to_table('input')
         split_input = await input.split()
-        problem_description = ProblemDescription('target')
+        problem_description = ProblemDescription('target', 'Test synthetic data problem')
 
         components = AnalyzeComponents(
             generators=(ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator(), ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator()),
@@ -101,7 +101,7 @@ async def test_analyze_separate_test_input(input_data_csv_path: Path) -> None:
     async with await RunContext.create() as ctx:
         input = await ctx.data.from_csv(input_data_csv_path).copy_to_table('input')
         split_input = await input.split()
-        problem_description = ProblemDescription('target')
+        problem_description = ProblemDescription('target', 'Test synthetic data problem')
         components = AnalyzeComponents(
             generators=(ToySyncFeatureGenerator(),),
             selector=ToyAsyncEnrichedFeatureSelector()
@@ -138,7 +138,7 @@ async def test_e2e_flow_real(test_data_conversations: dict[str, Path], tmp_path:
         split_input = await main.split()
         secondary = await ctx.data.from_csv(secondary_path, ReadCsvParams(dtype={'timestamp': 'timestamp'})).copy_to_table('secondary')
         join = secondary.join_strategy.conversation('conversations', 'id', 'id', 'timestamp', 'role', 'content')
-        problem_description = ProblemDescription('outcome', target_desired_outcome='resolved')
+        problem_description = ProblemDescription('outcome', 'Test conversation outcome prediction', target_desired_outcome='resolved')
         results = await ctx.ops.analyze(problem_description, split_input, secondary_tables=[secondary], join_strategies=[join])
         assert len(results.features) > 0
 

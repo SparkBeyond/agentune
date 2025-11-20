@@ -88,8 +88,8 @@ def define_problem(config: dict[str, str | int]) -> Problem:
     target_col = str(config['target_col'])
     target_dtype = types.int64 # This is not true for all datasets, change this if the selector starts using the dtype
     target_field = Field(target_col, target_dtype)
-    return ClassificationProblem(ProblemDescription(target_col), target_field, (0, 1)) if task_type == 'classification' \
-        else RegressionProblem(ProblemDescription(target_col), target_field)
+    return ClassificationProblem(ProblemDescription(target_col, 'Test problem'), target_field, (0, 1)) if task_type == 'classification' \
+        else RegressionProblem(ProblemDescription(target_col, 'Test problem'), target_field)
 
 # All tests below instantiate EnrichedBuilder to construct Dataset/Source/Features
 def test_linear_pairwise_timing_sweep_real_datasets(conn: duckdb.DuckDBPyConnection) -> None:
@@ -253,12 +253,12 @@ def test_enriched_api_synthetic_data(selector_name: str, task_type: str, conn: d
         y_prob = 1 / (1 + np.exp(-(x[:, 0] + 0.5 * x[:, 1] - 0.3 * x[:, 2])))
         y = (rng.random(n_rows) < y_prob).astype(int)
         target_col = 'target_class'
-        problem = ClassificationProblem(ProblemDescription('target_class'), Field('target_class', types.int64), (0, 1))
+        problem = ClassificationProblem(ProblemDescription('target_class', 'Test classification problem'), Field('target_class', types.int64), (0, 1))
     else:  # regression
         # Regression: linear combination with noise
         y = x[:, 0] + 0.5 * x[:, 1] - 0.3 * x[:, 2] + 0.1 * rng.normal(size=n_rows)
         target_col = 'target_value'
-        problem = RegressionProblem(ProblemDescription('target_value'), Field('target_value', types.float64))
+        problem = RegressionProblem(ProblemDescription('target_value', 'Test regression problem'), Field('target_value', types.float64))
     
     # Create DataFrame
     feature_cols = [f'feature_{i}' for i in range(n_features)]
@@ -307,13 +307,13 @@ def test_edge_cases(conn: duckdb.DuckDBPyConnection) -> None:
     
     # Test 1: Empty features list
     selector = LinearPairWiseFeatureSelector()
-    regression_problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
+    regression_problem = RegressionProblem(ProblemDescription('target', 'Test regression problem'), Field('target', types.float64))
     selected = selector.select_features([], 5, source, regression_problem, conn)
     assert len(selected) == 0, 'Empty features should return empty selection'
     
     # Test 2: max_features_to_select > available features
     selector = LinearPairWiseFeatureSelector()  # max_features_to_select > available
-    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    classification_problem = ClassificationProblem(ProblemDescription('target', 'Test classification problem'), Field('target', types.int64), (0, 1))
     selected = selector.select_features(features, 10, source, classification_problem, conn)
     assert len(selected) <= len(features), 'Should not exceed available features'
     assert len(selected) > 0, 'Should still select available features'
@@ -351,7 +351,7 @@ def test_fake_category_minimal_impact(conn: duckdb.DuckDBPyConnection) -> None:
     builder = EnrichedBuilder()
     features_base, source_base = builder.build(df_base, 'target')
     selector_base = create_selector('Linear PairWise')
-    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    classification_problem = ClassificationProblem(ProblemDescription('target', 'Test classification problem'), Field('target', types.int64), (0, 1))
     selected_base = selector_base.select_features(features_base, 3, source_base, classification_problem, conn)
     selected_names_base = {f.name for f in selected_base}
     
@@ -407,7 +407,7 @@ def test_linear_pairwise_threshold_functionality(conn: duckdb.DuckDBPyConnection
     
     # Test 1: Default threshold (1e-8) - should work as before
     selector_default = LinearPairWiseFeatureSelector()
-    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    classification_problem = ClassificationProblem(ProblemDescription('target', 'Test classification problem'), Field('target', types.int64), (0, 1))
     selected_default = selector_default.select_features(features,5,  source, classification_problem, conn)
     assert len(selected_default) > 0, 'Default threshold should select features'
     assert len(selected_default) <= 5, 'Should not exceed max_features_to_select'
@@ -464,7 +464,7 @@ def test_linear_pairwise_threshold_early_stopping(conn: duckdb.DuckDBPyConnectio
     
     # Test with moderate threshold - should stop early and select only good features
     selector = LinearPairWiseFeatureSelector(min_marginal_reduction_threshold=0.01)
-    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    classification_problem = ClassificationProblem(ProblemDescription('target', 'Test classification problem'), Field('target', types.int64), (0, 1))
     selected = selector.select_features(features, 10, source, classification_problem, conn)
     
     # Should select fewer than max_features_to_select due to early stopping
@@ -515,7 +515,7 @@ def test_boolean_feature_handling(selector_name: str, conn: duckdb.DuckDBPyConne
 
     # Create selector and select features
     selector = create_selector(selector_name)
-    classification_problem = ClassificationProblem(ProblemDescription('target'), Field('target', types.int64), (0, 1))
+    classification_problem = ClassificationProblem(ProblemDescription('target', 'Test classification problem'), Field('target', types.int64), (0, 1))
     selected = selector.select_features(features, 3, source, classification_problem, conn)
 
     # Assertions
@@ -568,7 +568,7 @@ def test_linear_pairwise_selection_order(conn: duckdb.DuckDBPyConnection) -> Non
     
     # Create selector and select top 3 features
     selector = LinearPairWiseFeatureSelector()
-    regression_problem = RegressionProblem(ProblemDescription('target'), Field('target', types.float64))
+    regression_problem = RegressionProblem(ProblemDescription('target', 'Test regression problem'), Field('target', types.float64))
     selected = selector.select_features(features, 3, source, regression_problem, conn)
     
     # Get selected feature names in order

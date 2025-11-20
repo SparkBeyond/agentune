@@ -32,7 +32,7 @@ from agentune.analyze.join.base import JoinStrategy
 def _classification_problem(target_series: pl.Series) -> ClassificationProblem:
     """Create a ClassificationProblem for testing with string target."""
     return ClassificationProblem(
-        problem_description=ProblemDescription('y', problem_type='classification'),
+        problem_description=ProblemDescription('y', 'Test classification problem', problem_type='classification'),
         target_column=Field('y', string),
         classes=tuple(sorted(target_series.drop_nulls().unique().to_list()))
     )
@@ -40,7 +40,7 @@ def _classification_problem(target_series: pl.Series) -> ClassificationProblem:
 def _regression_problem() -> RegressionProblem:
     """Create a RegressionProblem for testing with float target."""
     return RegressionProblem(
-        problem_description=ProblemDescription('y', problem_type='regression'),
+        problem_description=ProblemDescription('y', 'Test regression problem', problem_type='regression'),
         target_column=Field('y', float64)
     )
 
@@ -412,7 +412,7 @@ def test_class_ordering_follows_problem_definition() -> None:
     4. For regression or classification with numeric targets: Uses data ordering (since classes come from binning)
     """
     # Create a problem with specific class ordering: ['A', 'B', 'C'] (must be sorted)
-    problem_desc = ProblemDescription(target_column='target')
+    problem_desc = ProblemDescription(target_column='target', description='Test problem')
     target_field = Field(name='target', dtype=string)
     problem = ClassificationProblem(
         problem_description=problem_desc,
@@ -464,7 +464,7 @@ def test_numeric_classification_not_rebinned() -> None:
     the target values are treated as categorical labels (not binned into quantiles).
     """
     # Create a numeric classification problem with classes [0, 1, 2]
-    problem_desc = ProblemDescription(target_column='target', problem_type='classification')
+    problem_desc = ProblemDescription(target_column='target', description='Test problem', problem_type='classification')
     target_field = Field(name='target', dtype=int64)
     classification_problem = ClassificationProblem(
         problem_description=problem_desc,
@@ -473,7 +473,7 @@ def test_numeric_classification_not_rebinned() -> None:
     )
     
     # Create a regression problem for comparison
-    regression_desc = ProblemDescription(target_column='target', problem_type='regression')
+    regression_desc = ProblemDescription(target_column='target', description='Test problem', problem_type='regression')
     regression_problem = RegressionProblem(
         problem_description=regression_desc,
         target_column=target_field
@@ -536,7 +536,7 @@ def test_constant_feature_sse_reduction() -> None:
     target_series = pl.Series(['A', 'A'])  # No variance - all samples same class
     
     # Create problem with 2 classes even though data only has class A
-    problem_desc = ProblemDescription(target_column='y', problem_type='classification')
+    problem_desc = ProblemDescription(target_column='y', description='Test problem', problem_type='classification')
     target_field = Field('y', string)
     problem = ClassificationProblem(
         problem_description=problem_desc,

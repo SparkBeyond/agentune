@@ -32,7 +32,7 @@ from agentune.analyze.feature.stats.stats_calculators import (
 # Helper functions for creating test objects
 def _regression_problem() -> RegressionProblem:
     """Create a RegressionProblem for testing."""
-    problem_desc = ProblemDescription(target_column='target')
+    problem_desc = ProblemDescription(target_column='target', description='Test problem')
     return RegressionProblem(
         problem_description=problem_desc,
         target_column=Field('target', float64)
@@ -41,7 +41,7 @@ def _regression_problem() -> RegressionProblem:
 
 def _classification_problem() -> ClassificationProblem:
     """Create a ClassificationProblem for testing."""
-    problem_desc = ProblemDescription(target_column='target')
+    problem_desc = ProblemDescription(target_column='target', description='Test problem')
     return ClassificationProblem(
         problem_description=problem_desc,
         target_column=Field('target', int32),
@@ -249,7 +249,7 @@ def test_numeric_histograms_in_classification() -> None:
     float_feature = MockFloatFeature()
     
     # Create a classification problem with numeric classes (0, 1, 2)
-    problem_desc = ProblemDescription(target_column='target')
+    problem_desc = ProblemDescription(target_column='target', description='Test problem')
     classification_problem = ClassificationProblem(
         problem_description=problem_desc,
         target_column=Field('target', int32),
