@@ -94,7 +94,9 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
         num_samples_for_enrichment: Number of conversation samples used when enriching queries
         num_features_per_round: Number of features to generate in each actionable round
         num_actionable_rounds: Number of rounds to generate actionable features
-        num_creative_features: Number of additional creative features to generate
+        num_creative_features: Number of additional creative features to generate 
+        min_queries_percentage: Minimum percentage of requested queries that must be generated. 
+            Requested queries = num_features_per_round * num_actionable_rounds + num_creative_features.
         random_seed: Random seed for reproducible sampling
         max_categorical: Maximum number of unique values allowed for categorical features
         max_empty_percentage: Maximum percentage of empty/None values allowed in features
@@ -119,6 +121,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
     num_features_per_round: int = 20
     num_actionable_rounds: int = 2
     num_creative_features: int = 20
+    min_queries_percentage: float = 0.5
 
     random_seed: int | None = 42
     max_categorical: int = 9  # Max unique values for a categorical field
@@ -292,6 +295,13 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
 
             # 1. Generate queries
             query_batch = await self._generate_queries(conversation_strategy, filtered_feature_search, problem, conn)
+
+            # Check that we generated enough queries
+            max_queries = self.num_actionable_rounds * self.num_features_per_round + self.num_creative_features
+            if len(query_batch) < self.min_queries_percentage * max_queries:
+                logger.error(f'Generated only {len(query_batch)} queries, which is less than the minimum required {self.min_queries_percentage * 100:.1f}% of {max_queries} requested queries.')
+                raise RuntimeError(f'Generated only {len(query_batch)} queries, which is less than the minimum required {self.min_queries_percentage * 100:.1f}% of {max_queries} requested queries.'
+                                   ' Try lowering num_features_per_round or adjusting other feature-generation parameters.')
 
             # 2. Enrich the queries with additional conversation information
             sampler = self._get_sampler(problem)
