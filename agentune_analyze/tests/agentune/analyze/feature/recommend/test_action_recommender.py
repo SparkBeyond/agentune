@@ -178,10 +178,6 @@ async def test_action_recommender(
     ser_context: SerializationContext,
 ) -> None:
     """End-to-end test of ConversationActionRecommender (action recommender) with real data."""
-    # Check for API key
-    if not os.getenv('OPENAI_API_KEY'):
-        pytest.skip('OPENAI_API_KEY not set')
-    
     # Load test data from centralized data directory (normalized CSVs)
     data_dir = Path(__file__).parent.parent.parent / 'data' / 'conversations'
     main_csv_path = data_dir / 'example_main.csv'
@@ -370,10 +366,6 @@ async def test_action_recommender_with_long_conversations_token_sampling(
     3. Some conversations are excluded due to token limits (last one should not be there)
     4. The recommender still produces valid results
     """
-    # Check for API key
-    if not os.getenv('OPENAI_API_KEY'):
-        pytest.skip('OPENAI_API_KEY not set')
-
     # Load test data from centralized data directory (normalized CSVs)
     data_dir = Path(__file__).parent.parent.parent / 'data' / 'conversations'
     main_csv_path = data_dir / 'example_main.csv'
@@ -761,10 +753,6 @@ async def test_filter_and_clean_unrelated_conversation(
     structuring_llm_with_spec: LLMWithSpec,
 ) -> None:
     """Test that unrelated conversations are filtered and removed from evidence and rationale."""
-    # Check for API key
-    if not os.getenv('OPENAI_API_KEY'):
-        pytest.skip('OPENAI_API_KEY not set')
-
     # Create simple conversations
     # Conversation 1: About pricing (related to recommendation)
     conv_1_messages = (Message(
