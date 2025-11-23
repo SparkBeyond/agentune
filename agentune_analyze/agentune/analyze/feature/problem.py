@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Literal, cast, override
@@ -10,7 +12,7 @@ from agentune.analyze.core.database import DuckdbName
 from agentune.analyze.core.schema import Field
 from agentune.analyze.core.types import Dtype
 from agentune.analyze.util.attrutil import frozendict_converter
-from agentune.analyze.util.cattrutil import UseTypeTag
+from agentune.analyze.util.cattrutil import OverrideTypeTag, UseTypeTag
 
 type TargetKind = Literal['classification', 'regression']
 type Classification = Literal['classification']
@@ -26,6 +28,46 @@ when they appear as scalars in Python code.
 class RegressionDirection(StrEnum):
     up = 'up'
     down = 'down'
+
+@frozen
+class DesiredTargetOutcome(UseTypeTag, OverrideTypeTag):
+    """The desired (preferred) outcome when analyzing data; either a classification class or a regression direction."""
+    @property
+    @abstractmethod
+    def desired(self) -> ClassificationClass | RegressionDirection: ...
+
+    @classmethod
+    @override
+    def _type_tag(cls) -> str:
+        if cls is DesiredClass: return 'classification'
+        elif cls is DesiredRegressionDirection: return 'regression'
+        else: raise ValueError(f'Unsupported DesiredTargetOutcome type: {cls}')
+
+    def __str__(self) -> str:
+        return str(self.desired)
+
+
+@frozen
+class DesiredClass(DesiredTargetOutcome):
+    """The desired class when analyzing data in classification mode, e.g. 'win'.
+
+    The dtype of the target column can be narrower than the type ClassificationClass, e.g. it can be uint16 or an enum.
+    The value given here matches the type of the target values when they appear as scalars in Python code (int, str, etc).
+    """
+    desired: ClassificationClass
+
+@frozen
+class DesiredRegressionDirection(DesiredTargetOutcome):
+    """The desired regression direction when analyzing data in regression mode, e.g. 'up' if higher values are better."""
+    desired: RegressionDirection
+
+def _convert_target_desired_outcome(value: DesiredTargetOutcome | RegressionDirection | ClassificationClass | None) -> DesiredTargetOutcome | None:
+    match value:
+        case DesiredTargetOutcome() as desired: return desired
+        case RegressionDirection() as dir: return DesiredRegressionDirection(dir)
+        case int() | str() | bool() as cls: return DesiredClass(cls)
+        case None: return None
+        case _: raise TypeError(f'Unsupported target_desired_outcome type: {type(value)}')
 
 @frozen
 class TableDescription:
@@ -67,6 +109,9 @@ class ProblemDescription:
                                 For classification problems, this is a target value, which must exactly match one of the
                                 target values present in the train data. For regression problems, this indicates whether
                                 higher or lower target values are better (`RegressionDirection.up` or `RegressionDirection.down`).
+                                A bare value will be converter to the appropriate wrapper type:
+                                a string, int or bool will be treated as a class value, and a RegressionDirection enum member
+                                as a DesiredRegressionDirection.
         name:         a short name for the problem being analyzed, e.g. 'Kitten adoption'.
         target_description: any additional information on the target and the possible outcomes, e.g.
                       'how long the kitten spent in the shelter before being adopted'.
@@ -82,7 +127,7 @@ class ProblemDescription:
     target_column: str
     description: str
     problem_type: TargetKind | None = None
-    target_desired_outcome: ClassificationClass | RegressionDirection | None = None
+    target_desired_outcome: DesiredTargetOutcome | None = field(default=None, converter=_convert_target_desired_outcome)
     name: str | None = None
     target_description: str | None = None
     business_domain: str | None = None
@@ -91,13 +136,19 @@ class ProblemDescription:
     main_table: TableDescription | None = None # To comment on other columns of the main table
     secondary_tables: frozendict[DuckdbName, TableDescription] = field(default=frozendict(), converter=frozendict_converter)
 
+    @property
+    def target_desired_outcome_value(self) -> ClassificationClass | RegressionDirection | None:
+        """The desired target outcome, unwrapped: a bare string/bool/int for classes and an enum member for regression."""
+        match self.target_desired_outcome:
+            case None: return None
+            case some: return some.desired
+
     def __attrs_post_init__(self) -> None:
-        if self.problem_type == 'classification' and isinstance(self.target_desired_outcome, RegressionDirection):
+        if self.problem_type == 'classification' and isinstance(self.target_desired_outcome, DesiredRegressionDirection):
             raise ValueError('RegressionDirection cannot be used with classification problem type.')
         if self.problem_type == 'regression' and \
-                self.target_desired_outcome is not None and not isinstance(self.target_desired_outcome, RegressionDirection):
+                self.target_desired_outcome is not None and not isinstance(self.target_desired_outcome, DesiredRegressionDirection):
             raise ValueError('Desired outcome class cannot be used with regression problem type.')
-
 
 @frozen
 class Problem(ABC, UseTypeTag):
@@ -137,10 +188,9 @@ class ClassificationProblem(Problem):
     date_column: Field | None = None # Redeclare optional parameters to put them after mandatory parameters
 
     @property
-    def target_desired_outcome(self) -> ClassificationClass | None:
+    def target_desired_outcome_value(self) -> ClassificationClass | None:
         """Same value as self.problem_description.target_desired_outcome but narrower type, guaranteed by ctor check."""
-        # This should need a cast(), but mypy doesn't want it and complains if it's present
-        return self.problem_description.target_desired_outcome
+        return self.problem_description.target_desired_outcome_value
 
     def __attrs_post_init__(self) -> None:
         super().__attrs_post_init__()
@@ -150,13 +200,13 @@ class ClassificationProblem(Problem):
 
         if self.problem_description.problem_type == 'regression':
             raise ValueError('Mismatch with problem_description: problem type')
-        if isinstance(self.problem_description.target_desired_outcome, RegressionDirection):
+        if isinstance(self.problem_description.target_desired_outcome_value, RegressionDirection):
             raise ValueError('RegressionDirection.up/down cannot be used with classification problem')
 
         if len(self.classes) < 2: # noqa: PLR2004
             raise ValueError('Classification problem must have at least 2 classes.')
-        if self.target_desired_outcome is not None and self.target_desired_outcome not in self.classes:
-            raise ValueError(f'Desired outcome class {self.target_desired_outcome} not in list of classes: {self.classes}')
+        if self.target_desired_outcome_value is not None and self.target_desired_outcome_value not in self.classes:
+            raise ValueError(f'Desired outcome class {self.target_desired_outcome_value} not in list of classes: {self.classes}')
 
         # Same as python_type_from_duckdb for the dtypes we allow here
         expected_python_type = types.python_type_from_polars(self.target_column.dtype)
@@ -187,17 +237,17 @@ class ClassificationProblem(Problem):
 class RegressionProblem(Problem):
 
     @property
-    def target_desired_outcome(self) -> RegressionDirection | None:
+    def target_desired_outcome_value(self) -> RegressionDirection | None:
         """Same value as self.problem_description.target_desired_outcome but narrower type, guaranteed by ctor check."""
-        return cast(RegressionDirection | None, self.problem_description.target_desired_outcome)
+        return cast(RegressionDirection | None, self.problem_description.target_desired_outcome_value)
 
     def __attrs_post_init__(self) -> None:
         super().__attrs_post_init__()
 
         if self.problem_description.problem_type == 'classification':
             raise ValueError('Mismatch with problem_description: problem type')
-        if self.problem_description.target_desired_outcome is not None and \
-                not isinstance(self.problem_description.target_desired_outcome, RegressionDirection):
+        if self.problem_description.target_desired_outcome_value is not None and \
+                not isinstance(self.problem_description.target_desired_outcome_value, RegressionDirection):
             raise ValueError('target_desired_outcome class value cannot be used with regression problem')
 
         if not self.target_column.dtype.is_numeric():

@@ -89,9 +89,9 @@ def discover_problem(data: AnalyzeInputData, description: ProblemDescription,
             return RegressionProblem(description, target_column, date_column)
 
         case None:
-            if ClassificationProblem.is_allowed_dtype(target_dtype) and not isinstance(description.target_desired_outcome, RegressionDirection):
+            if ClassificationProblem.is_allowed_dtype(target_dtype) and not isinstance(description.target_desired_outcome_value, RegressionDirection):
                 return discover_problem(data, description, conn, max_classes, target_kind_override='classification')
-            elif target_dtype.is_numeric() and (isinstance(description.target_desired_outcome, RegressionDirection) or description.target_desired_outcome is None):
+            elif target_dtype.is_numeric() and (isinstance(description.target_desired_outcome_value, RegressionDirection) or description.target_desired_outcome is None):
                 return discover_problem(data, description, conn, max_classes, target_kind_override='regression')
             else:
                 raise ValueError(f'Target column {description.target_column} dtype {target_dtype} not supported '

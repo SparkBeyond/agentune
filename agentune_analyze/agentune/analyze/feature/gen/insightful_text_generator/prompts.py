@@ -38,15 +38,15 @@ def questionnaire_prompt_context(
     target_name = problem.target_column.name
     
     if isinstance(problem, RegressionProblem):
-        # For regression problems, target_desired_outcome is RegressionDirection (up/down)
-        direction = 'high' if problem.target_desired_outcome == RegressionDirection.up else 'low'
+        # For regression problems, target_desired_outcome_value is RegressionDirection (up/down)
+        direction = 'high' if problem.target_desired_outcome_value == RegressionDirection.up else 'low'
         other_direction = 'low' if direction == 'high' else 'high'
         
         comparison_description = f'We want to understand what distinguishes cases with {direction} {target_name} values from cases with {other_direction} {target_name} values.'
         goal_description = f'We will then give our data scientists to analyze the results in order to better understand what leads to {direction}er {target_name}.'
     else:
-        # For classification problems, target_desired_outcome is a specific class value
-        desired_value = problem.problem_description.target_desired_outcome
+        # For classification problems, target_desired_outcome_value is a specific class value
+        desired_value = problem.problem_description.target_desired_outcome_value
         comparison_description = (f'We want to understand what is special about those with {target_name} = {desired_value} '
                                   f'and what is special about those with {target_name} != {desired_value}.')
         goal_description = f'We will then give our data scientists to analyze the results in order to better understand what characterizes the {desired_value} cases.'

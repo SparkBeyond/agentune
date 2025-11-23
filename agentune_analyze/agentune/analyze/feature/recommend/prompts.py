@@ -88,8 +88,8 @@ def create_conversation_analysis_prompt(
     target_name = problem.target_column.name
     
     if isinstance(problem, RegressionProblem):
-        # For regression problems, target_desired_outcome is RegressionDirection (up/down)
-        direction = 'high' if problem.target_desired_outcome == RegressionDirection.up else 'low'
+        # For regression problems, target_desired_outcome_value is RegressionDirection (up/down)
+        direction = 'high' if problem.target_desired_outcome_value == RegressionDirection.up else 'low'
         other_direction = 'low' if direction == 'high' else 'high'
         
         comparison_description = (
@@ -100,8 +100,8 @@ def create_conversation_analysis_prompt(
             f'Focus your analysis on understanding what leads to {direction}er {target_name} values. '
         )
     else:
-        # For classification problems, target_desired_outcome is a specific class value
-        desired_value = problem.problem_description.target_desired_outcome
+        # For classification problems, target_desired_outcome_value is a specific class value
+        desired_value = problem.problem_description.target_desired_outcome_value
         comparison_description = (
             f'to understand what is special about those with {target_name} = {desired_value} '
             f'and what is special about those with {target_name} != {desired_value}.'

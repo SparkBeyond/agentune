@@ -1,9 +1,13 @@
 {
   "problem": {
+    "_type": "ClassificationProblem",
     "problem_description": {
       "target_column": "outcome",
       "problem_type": "classification",
-      "target_desired_outcome": "resolved",
+      "target_desired_outcome": {
+        "_type": "classification",
+        "desired": "resolved"
+      },
       "name": "Customer Support Resolution Prediction",
       "description": "Predict whether customer support conversations will be resolved successfully",
       "target_description": "Whether the conversation resulted in a resolved outcome",

@@ -115,10 +115,8 @@ def register_use_type_tag(converter: Converter, tag_name: str = '_type') -> None
 
 
 class OverrideTypeTag(ABC):
-    """Extend this class to override the type tag (discriminator value) used when de/structuring instances.
-
-    This affects lazy_include_subclasses_by_name(), not any of the other methods in this module or any standard
-    cattr strategies.
+    """Extend this class to override the type tag (discriminator value) used when de/structuring instances of classes
+    that extend UseTypeTag.
 
     It applies to any class that extends this class, so you have to either return the right value for your subclasses
     or override this method again in every sublass.

@@ -71,12 +71,12 @@ def _load_features_stats(file_path: Path) -> dict:
         return json.load(f)
 
 
-def _extract_problem_info(features_and_stats: dict) -> tuple[str, str]:
+def _extract_problem_info(features_and_stats: dict, converter: Converter) -> tuple[str, str]:
     """Extract target column and desired outcome from features stats."""
-    problem = features_and_stats['problem']
-    target_column = problem['target_column']['name']
-    desired_outcome = problem['problem_description'].get('target_desired_outcome', 'positive')
-    return target_column, desired_outcome
+    problem = converter.structure(features_and_stats['problem'], ClassificationProblem)
+    target_column = problem.target_column.name
+    target_desired_outcome = cast(str, problem.target_desired_outcome_value or 'positive')
+    return target_column, target_desired_outcome
 
 
 def _load_main_dataset(csv_path: Path) -> Dataset:
@@ -189,7 +189,7 @@ async def test_action_recommender(
     
     # Load features and extract problem info
     features_and_stats = _load_features_stats(features_file_path)
-    target_column, desired_target_class = _extract_problem_info(features_and_stats)
+    target_column, desired_target_class = _extract_problem_info(features_and_stats, converter)
     
     # Load main dataset from normalized CSV (much simpler!)
     dataset = _load_main_dataset(main_csv_path)
@@ -377,7 +377,7 @@ async def test_action_recommender_with_long_conversations_token_sampling(
 
     # Load features and extract problem info
     features_and_stats = _load_features_stats(features_file_path)
-    target_column, desired_target_class = _extract_problem_info(features_and_stats)
+    target_column, desired_target_class = _extract_problem_info(features_and_stats, converter)
 
     # Load main dataset from normalized CSV
     dataset = _load_main_dataset(main_csv_path)
