@@ -24,6 +24,10 @@ from agentune.analyze.feature.gen.insightful_text_generator.features import (
 from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
     ShortDateConversationFormatter,
 )
+from agentune.analyze.feature.problem import (
+    ProblemDescription,
+    RegressionDirection,
+)
 from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.join.conversation import ConversationJoinStrategy
 from agentune.analyze.join.lookup import LookupJoinStrategy
@@ -160,4 +164,20 @@ def test_llmwithspec_does_not_leak_key(httpx_async_client: httpx.AsyncClient) ->
     finally:
         if prev is not None:
             os.environ['OPENAI_API_KEY'] = prev
+
+def test_problem_description(converter: JsonConverter) -> None:
+    # Regression test: ProblemDescription.target_desired_outcome was not serializable
+    for tdo in [None, RegressionDirection.up, RegressionDirection.down, 'up', 'win', 123, True]:
+        desc = ProblemDescription('target', '', target_desired_outcome=tdo)
+        assert converter.loads(converter.dumps(desc), ProblemDescription) == desc
+
+    assert converter.unstructure(ProblemDescription('target', '', target_desired_outcome='this'))['target_desired_outcome'] == \
+           { 'desired': 'this', '_type': 'classification' }
+    assert converter.unstructure(ProblemDescription('target', '', target_desired_outcome=1))['target_desired_outcome'] == \
+           { 'desired': 1, '_type': 'classification' }
+    assert converter.unstructure(ProblemDescription('target', '', target_desired_outcome=True))['target_desired_outcome'] == \
+           { 'desired': True, '_type': 'classification' }
+    assert converter.unstructure(ProblemDescription('target', '', target_desired_outcome=None))['target_desired_outcome'] is None
+    assert converter.unstructure(ProblemDescription('target', '', target_desired_outcome=RegressionDirection.up))['target_desired_outcome'] == \
+           { 'desired': 'up', '_type': 'regression' }
 

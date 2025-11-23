@@ -9,7 +9,7 @@ from attrs import field, frozen
 # (instances of these classes are transient, created on-demand by the containing dataclass's __eq__).
 
 @frozen(eq=False, hash=False)
-class ComparablePolarsSeries: #noqa: PLW1641 # polars series is not hashable
+class ComparablePolarsSeries: # noqa: PLW1641 # polars series is not hashable
     series: pl.Series
 
     @override
@@ -23,7 +23,7 @@ class ComparablePolarsSeries: #noqa: PLW1641 # polars series is not hashable
             return False
     
 @frozen(eq=False, hash=False)
-class ComparablePolarsDataFrame: #noqa: PLW1641 # polars series is not hashable
+class ComparablePolarsDataFrame: # noqa: PLW1641 # polars DF is not hashable
     df: pl.DataFrame
 
     @override

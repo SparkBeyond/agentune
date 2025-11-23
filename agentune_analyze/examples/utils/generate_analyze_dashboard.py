@@ -101,7 +101,7 @@ def extract_dashboard_data(results: AnalyzeResults) -> dict:
         target_distribution = dict(zip(target_classes, totals_per_class, strict=False))
         # Extract desired outcome from problem description
         if hasattr(results.problem, 'problem_description') and results.problem.problem_description:
-            desired_outcome = results.problem.problem_description.target_desired_outcome
+            desired_outcome = results.problem.problem_description.target_desired_outcome_value
 
     # Extract actual dataset size from first feature (if available)
     actual_dataset_rows = None
