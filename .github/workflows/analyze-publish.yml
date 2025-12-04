@@ -1,23 +1,23 @@
-name: Publish agentune-analyze to PyPI
+name: Publish agentune to PyPI
 
 on:
   push:
     tags:
-      - 'analyze-v*'
+      - 'agentune-v*'
 
 jobs:
   test:
     uses: ./.github/workflows/python-tests.yml
     with:
-      src_path: "agentune_analyze"
+      src_path: "."
 
 
   build:
     needs: test
     uses: ./.github/workflows/build.yml
     with:
-      src_path: "agentune_analyze"
-      tag_ref: "analyze-v"
+      src_path: "."
+      tag_ref: "agentune-v"
 
 
   publish:
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: release
-      url: https://pypi.org/p/agentune-analyze
+      url: https://pypi.org/p/agentune
     permissions:
       id-token: write
     steps:
