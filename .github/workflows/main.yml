@@ -1,0 +1,37 @@
+name: Agentune-main
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'agentune/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - 'mypy.ini'
+      - '.ruff.toml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'agentune/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - 'mypy.ini'
+      - '.ruff.toml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+  packages: write
+
+jobs:
+  python_tests:
+    uses: ./.github/workflows/python-tests.yml
+    with:
+      src_path: "."
+
+
