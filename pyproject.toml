@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "agentune"
-version = "0.1.2"
+version = "0.1.1"
 description = "Analyze AI agents to understand their performance and get improvement suggestions to make them better"
 authors = [{name = "Agentune dev team", email = "agentune-dev@sparkbeyond.com"}]
 readme = "README.md"
