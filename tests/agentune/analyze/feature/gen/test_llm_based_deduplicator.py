@@ -1,6 +1,5 @@
 import logging
 
-import httpx
 import pytest
 
 from agentune.analyze.feature.gen.insightful_text_generator.dedup.llm_based_deduplicator import (
@@ -14,12 +13,11 @@ from agentune.core.sercontext import LLMWithSpec
 _logger = logging.getLogger(__name__)
 
 @pytest.fixture
-async def llm_with_spec_for_dedup(httpx_async_client: httpx.AsyncClient) -> LLMWithSpec:
+async def llm_with_spec_for_dedup(llm_context_nocache: LLMContext) -> LLMWithSpec:
     """Create a real LLM for end-to-end testing."""
-    llm_context = LLMContext(httpx_async_client)
     llm_spec = LLMSpec('openai', 'o3')
     llm_with_spec = LLMWithSpec(
-        llm=llm_context.from_spec(llm_spec),
+        llm=llm_context_nocache.from_spec(llm_spec),
         spec=llm_spec
     )
     return llm_with_spec

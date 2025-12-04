@@ -19,6 +19,7 @@ from agentune.core.llm import LLMContext
 from agentune.core.llmcache.base import LLMCacheBackend
 from agentune.core.llmcache.serializing_kvstore import SerializingKVStore
 from agentune.core.llmcache.sqlite_lru import SqliteLru, threadlocal_connections
+from agentune.core.openai import OpenAIProvider
 from agentune.core.sercontext import SerializationContext
 from agentune.core.util.lrucache import LRUCache
 
@@ -78,7 +79,11 @@ def test_data_conversations(test_data_dir: Path) -> dict[str, Path]:
 
 @pytest.fixture
 def llm_context(httpx_async_client: httpx.AsyncClient, memory_llm_cache: LLMCacheBackend) -> LLMContext:
-    return LLMContext(httpx_async_client, cache_backend=memory_llm_cache)
+    return LLMContext(httpx_async_client, (OpenAIProvider(),), cache_backend=memory_llm_cache)
+
+@pytest.fixture
+def llm_context_nocache(httpx_async_client: httpx.AsyncClient) -> LLMContext:
+    return LLMContext(httpx_async_client, (OpenAIProvider(),), cache_backend=None)
 
 @pytest.fixture
 def ser_context(llm_context: LLMContext) -> SerializationContext:

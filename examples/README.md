@@ -117,6 +117,8 @@ The tutorials require an OpenAI API key. You can:
 
 2. **Set in notebook**: Each notebook includes a cell for API key setup
 
+3. **Pass manually**: Pass the API key as a parameter to `OpenAIProvider` (see [examples.md](examples.md) for an example)
+
 ## Documentation
 
 - [Main README](../README.md) - Library overview

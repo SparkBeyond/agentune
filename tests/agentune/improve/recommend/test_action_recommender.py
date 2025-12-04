@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import Mock
 
-import httpx
 import polars as pl
 import pytest
 from cattrs import Converter
@@ -42,24 +41,22 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSpec:
+async def real_llm_with_spec(llm_context_nocache: LLMContext) -> LLMWithSpec:
     """Create a real LLM for end-to-end testing."""
-    llm_context = LLMContext(httpx_async_client)
     llm_spec = LLMSpec('openai', 'o3')
     llm_with_spec = LLMWithSpec(
-        llm=llm_context.from_spec(llm_spec),
+        llm=llm_context_nocache.from_spec(llm_spec),
         spec=llm_spec
     )
     return llm_with_spec
 
 
 @pytest.fixture
-async def structuring_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSpec:
+async def structuring_llm_with_spec(llm_context_nocache: LLMContext) -> LLMWithSpec:
     """Create a faster LLM for structuring (gpt-4o to avoid o3 timeouts and bugs)."""
-    llm_context = LLMContext(httpx_async_client)
     llm_spec = LLMSpec('openai', 'gpt-4o')
     llm_with_spec = LLMWithSpec(
-        llm=llm_context.from_spec(llm_spec),
+        llm=llm_context_nocache.from_spec(llm_spec),
         spec=llm_spec
     )
     return llm_with_spec

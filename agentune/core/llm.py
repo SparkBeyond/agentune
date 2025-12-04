@@ -4,36 +4,67 @@ import logging
 import threading
 import weakref
 from abc import ABC, abstractmethod
-from typing import override
+from collections.abc import Callable
+from typing import Any, cast, override
 
 import attrs
 import httpx
 from attrs import field, frozen
+from frozendict import frozendict
 from llama_index.core.base.llms.types import ChatResponse, CompletionResponse
 from llama_index.core.llms import LLM
 
 from agentune.core.llmcache.base import LLMCacheBackend, LLMCacheKey
-from agentune.core.llmcache.openai_cache import CachingOpenAI, CachingOpenAIResponses
 from agentune.core.util.lrucache import LRUCache
 
 _logger = logging.getLogger(__name__)
 
 
+type Jsonable = str | int | float | bool | None |  list[Jsonable] | dict[str, Jsonable]
+
+
 @frozen
 class LLMSpec:
-    """Serializable specification of a model (but not how or where to access it)."""
-    origin: str 
-    # Logical provider of the model, e.g. 'openai' (even if hosted on azure).
-    # This lets us instantiate models even if we're not familiar with the model name.
+    """Serializable specification of a model (but not how or where to access it).
+
+    If the arguments specified here (besides the origin and model name) conflict with overrides passed to the LLMProvider,
+    an error is raised. There is no precedence currently defined between the two.
+
+    Args:
+        origin: the name of the API standard, e.g. 'openai' (even if hosted on Azure).
+        model_name: the model to use, e.g. 'gpt-4o'.
+                    Different APIs use different names for this parameter, including but not always 'model',
+                    so we don't call this 'model' because that wouldn't automatically work with all providers.
+        kwargs: keyword arguments specific to the LLM type. They can affect the llama-index LLM instance
+                and, depending on the LLM type, underlying libraries such as the openai client instance.
+                This class can't validate whether the arguments given really exist or have legal values,
+                but trying to create an LLM instance with them will fail later.
+                Arguments whose value is None are silently ignored.
+    """
+    origin: str
     model_name: str
-    llm_type_str: str = LLM.__name__
-    # Local name of a subclass of class LLM (e.g. output of `type(llm).__name__`).
-    # Can be used to demand a subtype of class LLM, whether generic (eg FunctionCallingLLM) or specific (eg OpenAI).
+    kwargs: frozendict[str, Jsonable] = frozendict()
 
-    def llm_type_matches[T](self, model: type) -> bool:
-        return any(tpe.__name__ == self.llm_type_str for tpe in model.mro())
- 
+    # We store all additional args in kwargs to keep the json format compatible.
+    # When we want to declare a particular (optional) parameter for user convenience, we add a constructor parameter
+    # and a @property accessor, like 'timeout' below.
 
+    def __init__(self, origin: str, model_name: str,
+                 timeout: float | None = None,
+                 **kwargs: Jsonable) -> None:
+        if kwargs.keys() == { 'kwargs' }:
+            # When deserializing, because we don't declare a normal 'kwargs' argument in the ctor, the kwargs dict is wrapped
+            kwargs = cast(dict[str, Jsonable], kwargs['kwargs'])
+        if timeout is not None:
+            kwargs['timeout'] = timeout
+        self.__attrs_init__(origin, model_name, frozendict(kwargs)) # type: ignore[attr-defined] # mypy doesn't know about __attrs_init__
+
+    @property
+    def timeout(self) -> float | None:
+        return cast(float | None, self.kwargs.get('timeout'))
+
+
+@attrs.define
 class LLMProvider(ABC):
     """Converts between LLM instances and LLMSpecs in both directions.
     
@@ -49,15 +80,43 @@ class LLMProvider(ABC):
         """
         ...
 
-    @abstractmethod
-    def to_spec(self, model: LLM) -> LLMSpec | None: ...
+    def for_specs(self, filter: Callable[[LLMSpec], bool]) -> LLMProvider:
+        """Return a provider that calls the original one only for specs that match the given predicate."""
+        return FilteredLLMProvider(self, filter, '(filtered)')
+
+    def for_models(self, *models: str) -> LLMProvider:
+        """Return a provider that calls the original one only for model names that match the given list."""
+        return FilteredLLMProvider(self, lambda spec: spec.model_name in models, f'(for models {', '.join(models)})')
+
+    def _compose_kwargs(self, self_args: dict[str, Jsonable], spec: LLMSpec) -> dict[str, Any]:
+        """Combine the parameters to this class with the parameters in the spec, ignoring any fields set to None.
+
+        If both sides specify different values for the same parameter, an error is raised.
+        """
+        self_args = {k: v for k, v in self_args.items() if v is not None}
+        spec_args = {k: v for k, v in spec.kwargs.items() if v is not None}
+        for k in spec_args.keys() & self_args.keys():
+            if spec_args[k] != self_args[k]:
+                raise ValueError(f'Conflicting values for argument {k}: {spec_args[k]} in LLMSpec, {self_args[k]} in LLMProvider')
+        return {**self_args, **spec_args}
 
 
-class LLMSetupHook(ABC):
-    """A signature for a user callback to further configure a newly created LLM instance."""
-    
-    @abstractmethod
-    def __call__[T: LLM](self, model: T, context: LLMContext, spec: LLMSpec) -> T: ...
+@frozen(eq=False, hash=False)
+class FilteredLLMProvider(LLMProvider):
+    """A provider that calls the inner one only for specs that match the given predicate."""
+    inner: LLMProvider
+    filter: Callable[[LLMSpec], bool]
+    filter_desc: str
+
+    def from_spec(self, spec: LLMSpec, context: LLMContext) -> LLM | None:
+        if self.filter(spec):
+            return self.inner.from_spec(spec, context)
+        else:
+            return None
+
+    def __str__(self) -> str:
+        return f'{self.inner} {self.filter_desc}'
+
 
 class FakeTransport(httpx.BaseTransport):
     """A transport that fails all requests."""
@@ -67,59 +126,6 @@ class FakeTransport(httpx.BaseTransport):
 
 # A synchronous httpx.Client that fails all requests. Used to prevent accidental use of synchronous HTTP requests.
 fake_httpx_client: httpx.Client = httpx.Client(transport=FakeTransport())
-
-
-class DefaultLLMProvider(LLMProvider):
-    """Provides the standard llama-index LLM types.
-    
-    Can raise ImportError if a spec requests a model from a provider whose package is not installed.
-    """
-
-    @override
-    def from_spec(self, spec: LLMSpec, context: LLMContext) -> LLM | None:
-        match context.httpx_async_client.timeout.read:
-            case None: read_timeout = 60.0*60*24 # None means no timeout in httpx; set a very high limit but not literally infinite
-            case timeout: read_timeout = float(timeout)
-
-        match spec.origin:
-            case 'openai':
-                try:
-                    from llama_index.llms.openai import OpenAI, OpenAIResponses
-                    # Prefer OpenAIResponses if a nonspecific type is requested
-                    llm: LLM
-                    if spec.llm_type_matches(OpenAIResponses):
-                        llm = OpenAIResponses(model=spec.model_name, http_client=context.httpx_client,
-                                              async_http_client=context.httpx_async_client,
-                                              timeout=read_timeout)
-                        if context.cache_backend is not None:
-                            return CachingOpenAIResponses.adapt(llm, context.cache_backend)
-                        return llm
-                    if spec.llm_type_matches(OpenAI):
-                        llm = OpenAI(model=spec.model_name, http_client=context.httpx_client,
-                                     async_http_client=context.httpx_async_client,
-                                     timeout=read_timeout)
-                        if context.cache_backend is not None:
-                            return CachingOpenAI.adapt(llm, context.cache_backend)
-                        return llm
-                    raise ValueError(f'Spec for "openai" model has unsatisfiable llm type {spec.llm_type_str}')
-                except ImportError as e:
-                    e.add_note('Install the llama-index-llms-openai package to use this model.')
-                    raise
-            case _:
-                return None
-    
-    @override
-    def to_spec(self, model: LLM) -> LLMSpec | None:
-        try:
-            from llama_index.llms.openai import OpenAI, OpenAIResponses
-            if isinstance(model, OpenAI):
-                return LLMSpec(origin='openai', model_name=model.model, llm_type_str=OpenAI.__name__)
-            elif isinstance(model, OpenAIResponses):
-                return LLMSpec(origin='openai', model_name=model.model, llm_type_str=OpenAIResponses.__name__)
-        except ImportError:
-            pass
-
-        return None
 
 @frozen(eq=False, hash=False)
 class LLMContext:
@@ -133,17 +139,15 @@ class LLMContext:
                               being requested, fail if this is True, and proceed without caching if this is False.
     """
 
-    # These are needed to create (most) model instances.
+    # This is needed to create (most) model instances.
     # The existence of an AsyncClient implies that we're in an asyncio context; this code cannot be used otherwise.
     httpx_async_client: httpx.AsyncClient
+    providers: tuple[LLMProvider, ...]
 
     httpx_client: httpx.Client = fake_httpx_client # Disallow synchronous HTTP requests by default
 
     cache_backend: LLMCacheBackend | None = field(factory=lambda: LRUCache[LLMCacheKey, CompletionResponse | ChatResponse](1000))
     fail_if_cannot_cache: bool = True
-
-    hooks: tuple[LLMSetupHook, ...] = ()
-    providers: tuple[LLMProvider, ...] = field(factory=lambda: (DefaultLLMProvider(),))
 
     # Weakly cache LLM instances so we don't e.g. create an instance per Feature unnecessarily.
     # init=False ensures copies of the context (e.g. with different providers or hooks) don't share the cache.
@@ -161,9 +165,6 @@ class LLMContext:
     def without_provider(self, provider: LLMProvider) -> LLMContext:
         return attrs.evolve(self, providers=tuple(p for p in self.providers if p != provider))
 
-    def with_hook(self, hook: LLMSetupHook) -> LLMContext:
-        return attrs.evolve(self, hooks=(*self.hooks, hook))
-
     def from_spec(self, spec: LLMSpec) -> LLM:
         with self.cache_lock:
             ret = self.cache.get(spec)
@@ -178,14 +179,5 @@ class LLMContext:
         for provider in self.providers:
             llm = provider.from_spec(spec, self)
             if llm is not None:
-                for hook in self.hooks:
-                    llm = hook(llm, self, spec)
                 return llm
         raise ValueError(f'No provider found for spec {spec}')
-
-    def to_spec(self, model: LLM) -> LLMSpec: 
-        for provider in self.providers:
-            spec = provider.to_spec(model)
-            if spec is not None:
-                return spec
-        raise ValueError(f'No provider found for model type {type(model)}')

@@ -5,6 +5,8 @@ so changing at runtime them has no effect.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import httpx
 from attrs import frozen
 
@@ -30,6 +32,8 @@ from agentune.analyze.run.enrich.base import EnrichRunner
 from agentune.analyze.run.enrich.impl import EnrichRunnerImpl
 from agentune.api.base import RunContext
 from agentune.core import default_duckdb_batch_size
+from agentune.core.llm import LLMProvider
+from agentune.core.openai import OpenAIProvider
 from agentune.core.util.httpx_limit import AsyncLimitedTransport
 from agentune.improve.recommend import ConversationActionRecommender
 
@@ -67,6 +71,9 @@ def create_default_httpx_async_client(max_concurrent: int = default_max_concurre
         AsyncLimitedTransport.add_limits(base, max_concurrent)
     return base
 
+def default_llm_providers() -> Sequence[LLMProvider]:
+    return [OpenAIProvider()]
+
 @frozen
 class BoundDefaults:
     """Default values for various component classes and parameters."""
@@ -102,3 +109,6 @@ class BoundDefaults:
 
     def conversation_action_recommender(self) -> ConversationActionRecommender:
         return ConversationActionRecommender.default(self.run_context._llm_context)
+
+    def llm_providers(self) -> Sequence[LLMProvider]:
+        return default_llm_providers()

@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-import httpx
 import pytest
 from attrs import frozen
 from cattrs.preconf.json import JsonConverter
@@ -36,13 +35,11 @@ from agentune.core.types import Dtype, _SerDtype
 _logger = logging.getLogger(__name__)
 
 @pytest.fixture
-def converter(httpx_async_client: httpx.AsyncClient) -> JsonConverter:
-    llm_context = LLMContext(httpx_async_client)
+def converter(llm_context: LLMContext) -> JsonConverter:
     ser_context = SerializationContext(llm_context)
     return ser_context.converter
 
-async def test_llm_serialization(httpx_async_client: httpx.AsyncClient) -> None:
-    llm_context = LLMContext(httpx_async_client)
+async def test_llm_serialization(llm_context: LLMContext) -> None:
     serialization_context = SerializationContext(llm_context)
 
     llm_spec = LLMSpec('openai', 'gpt-4o')
@@ -110,9 +107,8 @@ def test_join_strategy_serialization(converter: JsonConverter) -> None:
     assert converter.loads(converter.dumps(conv_strat), ConversationJoinStrategy) == conv_strat
     assert converter.loads(converter.dumps(conv_strat), JoinStrategy) == conv_strat # type: ignore[type-abstract]
 
-def test_serialize_feature(converter: JsonConverter, httpx_async_client: httpx.AsyncClient) -> None:
+def test_serialize_feature(converter: JsonConverter, llm_context: LLMContext) -> None:
     """Add all real (production) concrete subclasses of Feature here"""
-    llm_context = LLMContext(httpx_async_client)
     serialization_context = SerializationContext(llm_context)
     converter = serialization_context.converter
 
@@ -142,8 +138,7 @@ def test_serialize_feature(converter: JsonConverter, httpx_async_client: httpx.A
         for tpe in [Feature[Any], Feature, InsightfulTextFeature, LlmFeature, type(feature)]:
             assert converter.loads(converter.dumps(feature), tpe) == feature, f'Roundtrip {feature.__class__.__name__} with formal type {tpe}' # type: ignore[arg-type]
 
-def test_llmwithspec_does_not_leak_key(httpx_async_client: httpx.AsyncClient) -> None:
-    llm_context = LLMContext(httpx_async_client)
+def test_llmwithspec_does_not_leak_key(llm_context: LLMContext) -> None:
     serialization_context = SerializationContext(llm_context)
     converter = serialization_context.converter
     spec = LLMSpec('openai', 'gpt-4o')

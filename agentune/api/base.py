@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import typing
+from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from datetime import timedelta
 from pathlib import Path
@@ -17,7 +18,7 @@ from agentune.core.database import (
     DuckdbInMemory,
     DuckdbManager,
 )
-from agentune.core.llm import LLMContext
+from agentune.core.llm import LLMContext, LLMProvider
 from agentune.core.llmcache import sqlite_lru
 from agentune.core.llmcache.base import LLMCacheBackend, LLMCacheKey
 from agentune.core.llmcache.sqlite_lru import ConnectionProviderFactory, SqliteLru
@@ -108,6 +109,7 @@ class RunContext:
     async def create(duckdb: DuckdbDatabase | DuckdbManager = DuckdbInMemory(),
                      duckdb_config: DuckdbConfig = DuckdbConfig(),
                      httpx_async_client: httpx.AsyncClient | None = None,
+                     llm_providers: LLMProvider | Sequence[LLMProvider] | None = None,
                      llm_cache: LlmCacheInMemory | LlmCacheOnDisk | LLMCacheBackend | None = LlmCacheInMemory(1000),
                      ) -> RunContext:
         """Create a new context instance (see the class doc). Remember to close it when you are done, by using it as
@@ -160,7 +162,13 @@ class RunContext:
             case _:
                 llm_cache_backend = llm_cache
 
-        ser_context = SerializationContext(LLMContext(httpx_async_client, cache_backend=llm_cache_backend))
+        match llm_providers:
+            case LLMProvider(): llm_providers = [llm_providers]
+            case None:
+                from .defaults import default_llm_providers
+                llm_providers = default_llm_providers()
+
+        ser_context = SerializationContext(LLMContext(httpx_async_client, providers=tuple(llm_providers), cache_backend=llm_cache_backend))
 
         return RunContext(ser_context, ddb_manager, components)
 
