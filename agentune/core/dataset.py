@@ -125,6 +125,11 @@ class Dataset(CopyToThread): # noqa: PLW1641 # polars DF is not hashable
         """Note that some schema information is not represented in a polars DataFrame.
         A schema created from a dataframe will have some erased types.
         """
+        # This needs to keep matching the behavior of duckdbio.sniff_schema, which similarly strips casts timezone-aware
+        # columns to timezone-naive types. Note that polars doesn't have a timezone-aware date-without-time type.
+        dtypes_with_tz = [ dtype for dtype in df.dtypes if isinstance(dtype, pl.datatypes.Datetime) and dtype.time_zone is not None ]
+        if len(dtypes_with_tz) > 0:
+            df = df.cast({ dtype: pl.datatypes.Datetime(dtype.time_unit) for dtype in dtypes_with_tz }, strict=True)
         return Dataset(Schema.from_polars(df), df)
 
     def as_source(self) -> DatasetSource:
