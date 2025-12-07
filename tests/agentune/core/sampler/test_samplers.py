@@ -3,6 +3,7 @@
 import polars as pl
 import pytest
 
+from agentune.core.dataset import Dataset
 from agentune.core.sampler.base import (
     RandomSampler,
 )
@@ -14,7 +15,6 @@ from agentune.core.sampler.samplers import (
     validate_field_exists_and_matches_schema,
     validate_field_is_numeric,
 )
-from agentune.core.dataset import Dataset
 from agentune.core.schema import Field, Schema
 from agentune.core.types import EnumDtype, boolean, float64, int32, string
 

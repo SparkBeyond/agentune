@@ -15,10 +15,6 @@ from agentune.analyze.feature.gen.insightful_text_generator.dedup.llm_based_dedu
     LLMBasedDeduplicator,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.features import create_feature
-from agentune.core.formatter.base import DataFormatter
-from agentune.core.formatter.conversation import (
-    ShortDateConversationFormatter,
-)
 from agentune.analyze.feature.gen.insightful_text_generator.prompts import (
     ACTIONABLE_QUESTIONNAIRE_PROMPT,
     CREATIVE_FEATURES_PROMPT,
@@ -26,14 +22,6 @@ from agentune.analyze.feature.gen.insightful_text_generator.prompts import (
 )
 from agentune.analyze.feature.gen.insightful_text_generator.query_generator import (
     ConversationQueryGenerator,
-)
-from agentune.core.sampler.base import (
-    DataSampler,
-    RandomSampler,
-)
-from agentune.core.sampler.samplers import (
-    BalancedClassSampler,
-    ProportionalNumericSampler,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.schema import PARSER_OUT_FIELD, Query
 from agentune.analyze.feature.gen.insightful_text_generator.type_detector import (
@@ -51,9 +39,21 @@ from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.join.conversation import ConversationJoinStrategy
 from agentune.core import types
 from agentune.core.dataset import Dataset
+from agentune.core.formatter.base import DataFormatter
+from agentune.core.formatter.conversation import (
+    ShortDateConversationFormatter,
+)
 from agentune.core.llm import LLMContext, LLMSpec
 from agentune.core.progress.base import stage_scope
 from agentune.core.progress.util import execute_and_count
+from agentune.core.sampler.base import (
+    DataSampler,
+    RandomSampler,
+)
+from agentune.core.sampler.samplers import (
+    BalancedClassSampler,
+    ProportionalNumericSampler,
+)
 from agentune.core.sercontext import LLMWithSpec
 
 logger = logging.getLogger(__name__)
