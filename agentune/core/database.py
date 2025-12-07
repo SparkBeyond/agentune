@@ -275,19 +275,29 @@ class DuckdbConfig:
     Params:
         max_memory: The maximum amount of memory to use for both in-memory databases and temporary storage during
                     queries on all databases. When this limit is exceeded, duckdb starts writing to the temp directory.
-                    Can be specified in units of bytes (with various prefixes, eg '1GB') or as a percentage of
-                    reported system memory (e.g. '80%').
-                    The default is 80% of available system RAM.
+                    Can be specified in units of bytes with various suffixes, eg '1GB'.
+
+                    The default is 80% of available system RAM. (You cannot currently specify a different percentage.)
         temp_dir:   The directory to write to when duckdb runs out of memory. This applies to in-memory databases
                     that don't fit in memory and also to temporary storage during queries.
                     The directory will only be created when duckdb runs out of in-process memory, and it will be deleted
                     on exit.
-                    The default is '.tmp' in the current working dir in in-memory mode, or <database_name>.tmp otherwise.
+                    The default if this field is set to None is '.tmp' in the current working dir in in-memory mode,
+                    or <database_name>.tmp otherwise.
         max_temp_directory_size: The maximum size of the temp directory. When this limit is exceeded, queries fail.
-                                 Can be specified in units of bytes (with various prefixes, eg '1GB') or as a percentage of
-                                 free disk space (e.g. '80%').
-                                 The default is 90% of free disk space.
-        threads:    number of (native) threads used by duckdb. The default is the number of CPU cores.
+                                 Can be specified in units of bytes with various suffixes, eg '1GB'.
+
+                                 The default is 90% of the current free disk space. (You cannot currently specify a
+                                 different percentage.)
+                                 Note that the free disk space is checked only once, on startup. If the space is later
+                                 consumed by some other data (including the non-temporary data in the same database!)
+                                 the filesystem can still run out of free space. Thus, setting this to a percentage
+                                 is mostly useful when you place the temp directory on a different filesystem from the
+                                 main database.
+        threads:    number of (native) threads used by duckdb. The default if this field is set to None
+                    is the number of CPU cores available.
+        config:     additional parameters that will be passed to duckdb as-is (see the `config` parameter to `duckdb.connect`).
+                    Fields explicitly declared in this class override values in the config dict.
     """
     max_memory: str | None = None
     temp_dir: str | None = None
