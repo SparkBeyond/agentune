@@ -15,14 +15,14 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.feature.gen.insightful_text_generator.features import InsightfulTextFeature
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import DataFormatter
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
+from agentune.core.formatter.base import DataFormatter
+from agentune.core.formatter.conversation import (
     ShortDateConversationFormatter,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import (
+from agentune.core.sampler.base import (
     DataSampler,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.samplers import (
+from agentune.core.sampler.samplers import (
     BalancedClassSampler,
     BalancedNumericSampler,
 )

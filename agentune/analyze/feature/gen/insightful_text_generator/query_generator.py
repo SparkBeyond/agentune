@@ -10,13 +10,13 @@ from abc import ABC, abstractmethod
 from attrs import define
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
+from agentune.core.formatter.base import (
     DataFormatter,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.prompts import (
     questionnaire_prompt_context,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import (
+from agentune.core.sampler.base import (
     DataSampler,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query

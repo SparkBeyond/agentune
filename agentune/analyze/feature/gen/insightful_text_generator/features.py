@@ -18,7 +18,7 @@ from agentune.analyze.feature.base import (
     IntFeature,
     LlmFeature,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
+from agentune.core.formatter.base import (
     DataFormatter,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.prompts import (

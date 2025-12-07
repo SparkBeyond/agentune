@@ -13,10 +13,10 @@ from agentune.analyze.feature.gen.insightful_text_generator.features import (
     InsightfulIntFeature,
     create_feature,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
+from agentune.core.formatter.base import (
     DataFormatter,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
+from agentune.core.formatter.conversation import (
     ShortDateConversationFormatter,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query

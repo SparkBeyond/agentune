@@ -15,8 +15,8 @@ from agentune.analyze.feature.gen.insightful_text_generator.dedup.llm_based_dedu
     LLMBasedDeduplicator,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.features import create_feature
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import DataFormatter
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
+from agentune.core.formatter.base import DataFormatter
+from agentune.core.formatter.conversation import (
     ShortDateConversationFormatter,
 )
 from agentune.analyze.feature.gen.insightful_text_generator.prompts import (
@@ -27,11 +27,11 @@ from agentune.analyze.feature.gen.insightful_text_generator.prompts import (
 from agentune.analyze.feature.gen.insightful_text_generator.query_generator import (
     ConversationQueryGenerator,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import (
+from agentune.core.sampler.base import (
     DataSampler,
     RandomSampler,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.samplers import (
+from agentune.core.sampler.samplers import (
     BalancedClassSampler,
     ProportionalNumericSampler,
 )

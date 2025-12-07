@@ -8,8 +8,8 @@ from typing import override
 import attrs
 import polars as pl
 
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import DataSampler
 from agentune.core.dataset import Dataset
+from agentune.core.sampler.base import DataSampler
 from agentune.core.schema import Field
 
 MIN_NUM_BINS = 2

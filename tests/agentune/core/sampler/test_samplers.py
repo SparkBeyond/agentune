@@ -3,10 +3,10 @@
 import polars as pl
 import pytest
 
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import (
+from agentune.core.sampler.base import (
     RandomSampler,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.samplers import (
+from agentune.core.sampler.samplers import (
     BalancedClassSampler,
     BalancedNumericSampler,
     ProportionalClassSampler,

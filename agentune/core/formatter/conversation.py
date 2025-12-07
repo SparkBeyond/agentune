@@ -7,11 +7,11 @@ import attrs
 import polars as pl
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import DataFormatter
 from agentune.analyze.join.base import JoinStrategy
 from agentune.analyze.join.conversation import ConversationJoinStrategy
 from agentune.core.database import DuckdbTable
 from agentune.core.dataset import Dataset
+from agentune.core.formatter.base import DataFormatter
 from agentune.core.schema import Field, Schema
 
 
