@@ -21,7 +21,7 @@ from agentune.core.database import (
     DuckdbOnDisk,
     DuckdbTable,
 )
-from agentune.core.dataset import Dataset, DatasetSource, ReadCsvParams
+from agentune.core.dataset import Dataset, DatasetSource
 
 _logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ async def test_e2e_flow_real(test_data_conversations: dict[str, Path], tmp_path:
         # Analyze
         main = await ctx.data.from_csv(main_path).copy_to_table('input')
         split_input = await main.split()
-        secondary = await ctx.data.from_csv(secondary_path, ReadCsvParams(dtype={'timestamp': 'timestamp'})).copy_to_table('secondary')
+        secondary = await ctx.data.from_csv(secondary_path).copy_to_table('secondary')
         join = secondary.join_strategy.conversation('conversations', 'id', 'id', 'timestamp', 'role', 'content')
         problem_description = ProblemDescription('outcome', 'Test conversation outcome prediction', target_desired_outcome='resolved')
         results = await ctx.ops.analyze(problem_description, split_input, secondary_tables=[secondary], join_strategies=[join])

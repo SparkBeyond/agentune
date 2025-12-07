@@ -1,8 +1,11 @@
+import logging
 import tempfile
 from collections.abc import Callable, Iterator
 from io import StringIO
 from pathlib import Path
+from typing import cast
 
+import duckdb.sqltypes
 import polars as pl
 import pytest
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -22,6 +25,7 @@ from agentune.core.dataset import (
 from agentune.core.duckdbio import IfTargetExists
 from agentune.core.schema import Field, Schema
 
+_logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def sample_dataset() -> Dataset:
@@ -422,3 +426,47 @@ def test_from_json_stringio(conn: DuckDBPyConnection) -> None:
     assert dataset.data['id'].to_list() == [1, 2, 3]
     assert dataset.data['name'].to_list() == ['Alice', 'Bob', 'Charlie']
     assert dataset.data['active'].to_list() == [True, False, True]
+
+def test_datetime_with_tz_parsing(conn: DuckDBPyConnection) -> None:
+    csv_string = '''id,timestamp
+0,2025-04-27T22:22:05Z
+0,2025-04-27T22:22:12Z
+0,2025-04-27T22:22:20Z
+0,2025-04-27T22:22:28Z
+0,2025-04-27T22:22:40Z
+0,2025-04-27T22:22:47Z
+0,2025-04-27T22:23:02Z
+0,2025-04-27T22:23:09Z
+'''
+
+    # Read naively with duckdb, get a timezone aware type
+    rel = conn.read_csv(StringIO(csv_string)) # type: ignore [arg-type]
+    assert rel.types == [duckdb.sqltypes.BIGINT, duckdb.sqltypes.TIMESTAMP_TZ]
+
+    # Read with our code (as a DatasetSource, using duckdb), get a plain timezone type
+    source = DatasetSource.from_csv(StringIO(csv_string), conn)
+    assert source.schema.dtypes == [types.int64, types.timestamp]
+
+    # Get the dataframe matching the timezone-aware type
+    df_with_tz = rel.pl()
+    df_with_tz_dtype = df_with_tz['timestamp'].dtype
+    assert isinstance(df_with_tz_dtype, pl.Datetime)
+    assert df_with_tz_dtype.time_zone is not None
+
+    # The dataframe our source returns is timezone-naive
+    expected_df = source.to_dataset(conn).data
+    assert not df_with_tz.equals(expected_df)
+    expected_dtype = expected_df['timestamp'].dtype
+    assert isinstance(expected_dtype, pl.Datetime)
+    assert expected_dtype.time_zone is None
+
+    # Ingesting a dataframe with a timezone-aware type changes the type
+    # Remove the us precision from the original df_with_tz; we want ms precision and the precision difference isn't what this test is about
+    orig_pl_dtype = cast(pl.datatypes.Datetime, df_with_tz['timestamp'].dtype)
+    df_with_tz = df_with_tz.cast({orig_pl_dtype: pl.datatypes.Datetime('ms', orig_pl_dtype.time_zone)})
+    dataset = Dataset.from_polars(df_with_tz)
+    assert dataset.data is not df_with_tz
+    assert dataset.data['timestamp'].dtype == pl.datatypes.Datetime('ms', None)
+
+
+

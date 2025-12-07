@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import Self, override
 
+import duckdb
+import duckdb.sqltypes
 import pyarrow as pa
 from attrs import frozen
 from duckdb import CatalogException, DuckDBPyConnection, DuckDBPyRelation
@@ -102,11 +104,36 @@ class DatasetSourceFromDuckdb(DatasetSource):
     def to_duckdb(self, conn: DuckDBPyConnection) -> DuckDBPyRelation:
         return self._opener(conn)
 
+def _has_timezone_columns(relation: DuckDBPyRelation) -> bool:
+    return duckdb.sqltypes.TIMESTAMP_TZ in relation.types or duckdb.sqltypes.TIME_TZ in relation.types
+
+def _cast_without_timezone(col: str, dtype: duckdb.sqltypes.DuckDBPyType) -> str:
+    """If the column type contains timezone information, return a cast expression to a non-timezone-aware type."""
+    if dtype == duckdb.sqltypes.TIMESTAMP_TZ:
+        return f'"{col}"::timestamp as "{col}"'
+    elif dtype == duckdb.sqltypes.TIME_TZ:
+        return f'"{col}"::time as "{col}"'
+    else:
+        return f'"{col}"'
+
+def _cast_without_timezones(relation: DuckDBPyRelation) -> DuckDBPyRelation:
+    """Cast any columns that have timezone types to the equivalent non-timezone type.
+
+    We don't support timzeones (in our types.py / schema).
+    """
+    exprs = [_cast_without_timezone(col, dtype) for col, dtype in zip(relation.columns, relation.types, strict=False)]
+    return relation.project(', '.join(exprs))
 
 def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection,
                  batch_size: int = default_duckdb_batch_size) -> DatasetSourceFromDuckdb:
-    """Open the source once to determine its schema."""
+    """Open the source once to determine its schema, and return a DatasetSource that will read it."""
     relation = opener(conn)
+    if _has_timezone_columns(relation):
+        relation = _cast_without_timezones(relation)
+        orig_opener = opener
+        def new_opener(conn: DuckDBPyConnection) -> DuckDBPyRelation:
+            return _cast_without_timezones(orig_opener(conn))
+        opener = new_opener
     schema = Schema.from_duckdb(relation)
     return DatasetSourceFromDuckdb(schema, opener, batch_size)
 
