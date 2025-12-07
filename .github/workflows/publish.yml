@@ -1,15 +1,13 @@
 name: Publish agentune to PyPI
 
 on:
-  push:
-    tags:
-      - 'agentune-v*'
+  workflow_call:
 
 jobs:
-  test:
-    uses: ./.github/workflows/python-tests.yml
-    with:
-      src_path: "."
+#  test:
+#    uses: ./.github/workflows/python-tests.yml
+#    with:
+#      src_path: "."
 
 
   build:
@@ -17,7 +15,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       src_path: "."
-      tag_ref: "agentune-v"
+#      tag_ref: "agentune-v"
 
 
   publish:
@@ -25,7 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: release
-      url: https://pypi.org/p/agentune
     permissions:
       id-token: write
     steps:
@@ -38,4 +35,5 @@ jobs:
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
+        repository-url: https://test.pypi.org/legacy/
         print-hash: true

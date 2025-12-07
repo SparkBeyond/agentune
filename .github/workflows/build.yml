@@ -7,10 +7,10 @@ on:
         description: 'Source Path'
         required: false
         type: string
-      tag_ref:
-        description: 'Tag reference'
-        required: false
-        type: string
+#      tag_ref:
+#        description: 'Tag reference'
+#        required: false
+#        type: string
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
+      version: '0.1.2'
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -41,14 +41,14 @@ jobs:
           cd ${{ inputs.src_path }}
           poetry install --sync --no-interaction
 
-      - name: Get version from tag
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/${{ inputs.tag_ref }}}" >> $GITHUB_OUTPUT
+#      - name: Get version from tag
+#        id: get_version
+#        run: echo "version=${GITHUB_REF#refs/tags/${{ inputs.tag_ref }}}" >> $GITHUB_OUTPUT
 
       - name: Update version in pyproject.toml
         run: |
           cd ${{ inputs.src_path }}
-          poetry version ${{ steps.get_version.outputs.version }}
+          poetry version 0.1.2
 
       - name: Build package
         run: |
