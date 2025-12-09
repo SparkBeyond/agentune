@@ -110,22 +110,6 @@ def sniff_schema(opener: DuckdbDatasetOpener, conn: DuckDBPyConnection,
     schema = Schema.from_duckdb(relation)
     return DatasetSourceFromDuckdb(schema, opener, batch_size)
 
-def ingest(conn: DuckDBPyConnection, table: DuckdbTable | DuckdbName | str, data: DatasetSource) -> DuckdbTableSource:
-    """Copy data into a duckdb table."""
-    match table:
-        case DuckdbTable():
-            table_name = table.name
-        case DuckdbName():
-            table_name = table
-            table = DuckdbTable(table, data.schema)
-        case str():
-            table_name = DuckdbName.qualify(table, conn)
-            table = DuckdbTable(table_name, data.schema)
-
-    sink = DuckdbTableSink(table_name)
-    sink.write(data, conn)
-    return DuckdbTableSource(table)
-
 @frozen
 class DuckdbTableSink(DatasetSink):
     """A sink that writes to a duckdb database.
