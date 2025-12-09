@@ -22,11 +22,12 @@ from agentune.analyze.feature.gen.insightful_text_generator.insightful_text_gene
 from agentune.analyze.feature.problem import ClassificationProblem, ProblemDescription
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.join.conversation import ConversationJoinStrategy
-from agentune.core import duckdbio
 from agentune.core.dataset import Dataset
 from agentune.core.llm import LLMContext, LLMSpec
 from agentune.core.schema import Field, Schema
 from agentune.core.sercontext import LLMWithSpec
+
+from .test_e2e import ingest
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -68,8 +69,8 @@ def test_dataset_with_strategy(test_data_conversations: dict[str, Path], conn: D
     secondary_dataset = Dataset(schema=secondary_schema, data=conversations_df)
 
     # Ingest tables
-    duckdbio.ingest(conn, 'main', main_dataset.as_source())
-    context_table = duckdbio.ingest(conn, 'conversations', secondary_dataset.as_source())
+    ingest(conn, 'main', main_dataset.as_source())
+    context_table = ingest(conn, 'conversations', secondary_dataset.as_source())
 
     conversation_strategy = ConversationJoinStrategy[int].on_table(
         'conversations',

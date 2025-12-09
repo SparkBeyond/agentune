@@ -17,14 +17,33 @@ from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
 from agentune.analyze.feature.problem import ClassificationProblem, ProblemDescription
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.analyze.join.conversation import ConversationJoinStrategy
-from agentune.core import duckdbio
-from agentune.core.dataset import Dataset
+from agentune.core.database import DuckdbName, DuckdbTable
+from agentune.core.dataset import Dataset, DatasetSource
+from agentune.core.duckdbio import DuckdbTableSink, DuckdbTableSource
 from agentune.core.llm import LLMContext, LLMSpec
 from agentune.core.schema import Field, Schema
 from agentune.core.sercontext import LLMWithSpec
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def ingest(conn: DuckDBPyConnection, table: DuckdbTable | DuckdbName | str, data: DatasetSource) -> DuckdbTableSource:
+    """Copy data into a duckdb table."""
+    match table:
+        case DuckdbTable():
+            table_name = table.name
+        case DuckdbName():
+            table_name = table
+            table = DuckdbTable(table, data.schema)
+        case str():
+            table_name = DuckdbName.qualify(table, conn)
+            table = DuckdbTable(table_name, data.schema)
+
+    sink = DuckdbTableSink(table_name)
+    sink.write(data, conn)
+    return DuckdbTableSource(table)
+
 
 
 @pytest.fixture
@@ -63,8 +82,8 @@ def test_dataset_with_strategy(test_data_conversations: dict[str, Path], conn: D
     secondary_dataset = Dataset(schema=secondary_schema, data=conversations_df)
 
     # Ingest tables
-    duckdbio.ingest(conn, 'main', main_dataset.as_source())
-    context_table = duckdbio.ingest(conn, 'conversations', secondary_dataset.as_source())
+    ingest(conn, 'main', main_dataset.as_source())
+    context_table = ingest(conn, 'conversations', secondary_dataset.as_source())
 
     conversation_strategy = ConversationJoinStrategy[int].on_table(
         'conversations',
@@ -155,8 +174,8 @@ def _load_long_conversations_for_feature_gen(
     secondary_dataset = Dataset(schema=secondary_schema, data=long_conversations_df)
 
     # Ingest tables
-    duckdbio.ingest(conn, 'main', main_dataset.as_source())
-    context_table = duckdbio.ingest(conn, 'conversations', secondary_dataset.as_source())
+    ingest(conn, 'main', main_dataset.as_source())
+    context_table = ingest(conn, 'conversations', secondary_dataset.as_source())
 
     conversation_strategy = ConversationJoinStrategy[int].on_table(
         'conversations',
