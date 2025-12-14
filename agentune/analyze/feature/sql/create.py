@@ -1,3 +1,4 @@
+import datetime
 import enum
 from collections.abc import Sequence
 
@@ -72,7 +73,8 @@ def feature_from_query(conn: DuckDBPyConnection,
 
                        name: str | None = None,
                        description: str = '',
-                       technical_description: str | None = None) -> SqlBackedFeature:
+                       technical_description: str | None = None,
+                       timeout: datetime.timedelta | None = None) -> SqlBackedFeature:
     """Create an SqlBackedFeature of the appropriate type, if possible, or raise an error.
 
     The feature type is autodetected from the query.
@@ -128,7 +130,7 @@ def feature_from_query(conn: DuckDBPyConnection,
                                         params=params, secondary_tables=tuple(secondary_tables), join_strategies=(),
                                         primary_table_name=primary_table_name, index_column_name=index_column_name,
                                         name=name, description=description, technical_description=technical_description,
-                                        default_for_missing=False)
+                                        default_for_missing=False, timeout=timeout)
         elif dtype in [types.float32, types.float64]:
             return FloatSqlBackedFeature(sql_query=sql_query,
                                          params=params, secondary_tables=tuple(secondary_tables), join_strategies=(),
@@ -136,14 +138,14 @@ def feature_from_query(conn: DuckDBPyConnection,
                                          name=name, description=description,
                                          technical_description=technical_description,
                                          default_for_missing=0.0, default_for_nan=0.0, default_for_infinity=0.0,
-                                         default_for_neg_infinity=0.0)
+                                         default_for_neg_infinity=0.0, timeout=timeout)
         elif dtype in [types.int8, types.uint8, types.int16, types.uint16, types.int32, types.uint32, types.int64]:
             return IntSqlBackedFeature(sql_query=sql_query,
                                        params=params, secondary_tables=tuple(secondary_tables), join_strategies=(),
                                        primary_table_name=primary_table_name, index_column_name=index_column_name,
                                        name=name, description=description,
                                        technical_description=technical_description,
-                                       default_for_missing=0)
+                                       default_for_missing=0, timeout=timeout)
         elif dtype == types.string:
             return CategoricalSqlBackedFeature(sql_query=sql_query,
                                                params=params, secondary_tables=tuple(secondary_tables),
@@ -153,7 +155,7 @@ def feature_from_query(conn: DuckDBPyConnection,
                                                name=name, description=description,
                                                technical_description=technical_description,
                                                default_for_missing=CategoricalFeature.other_category,
-                                               categories=('nonesuch',))
+                                               categories=('nonesuch',), timeout=timeout)
         elif isinstance(dtype, types.EnumDtype):
             return CategoricalSqlBackedFeature(sql_query=sql_query,
                                                params=params, secondary_tables=tuple(secondary_tables),
@@ -163,7 +165,7 @@ def feature_from_query(conn: DuckDBPyConnection,
                                                name=name, description=description,
                                                technical_description=technical_description,
                                                default_for_missing=CategoricalFeature.other_category,
-                                               categories=dtype.values)
+                                               categories=dtype.values, timeout=timeout)
         else:
             raise FeatureValidationError(QueryValidationCode.dtype,
                                          f'SQL query returned unsupported type {dtype.duckdb_type}')
@@ -179,6 +181,7 @@ def int_feature_from_query(conn: DuckDBPyConnection,
                            name: str | None = None,
                            description: str = '',
                            technical_description: str | None = None,
+                           timeout: datetime.timedelta | None = None,
 
                            default_for_missing: int = 0) -> IntSqlBackedFeature:
     """As feature_from_query, but always creates an Int feature and raises an error if the query returns a different type."""
@@ -195,7 +198,8 @@ def int_feature_from_query(conn: DuckDBPyConnection,
                                        primary_table_name=primary_table_name, index_column_name=index_column_name,
                                        name=name, description=description,
                                        technical_description=technical_description,
-                                       default_for_missing=default_for_missing)
+                                       default_for_missing=default_for_missing,
+                                       timeout=timeout)
         else:
             raise FeatureValidationError(QueryValidationCode.dtype,
                                          f'SQL query returned type {dtype.duckdb_type} and not an integer type')
@@ -211,6 +215,7 @@ def bool_feature_from_query(conn: DuckDBPyConnection,
                             name: str | None = None,
                             description: str = '',
                             technical_description: str | None = None,
+                            timeout: datetime.timedelta | None = None,
 
                             default_for_missing: bool = False) -> BoolSqlBackedFeature:
     """As feature_from_query, but always creates a boolean feature and raises an error if the query returns a different type."""
@@ -226,6 +231,7 @@ def bool_feature_from_query(conn: DuckDBPyConnection,
                                         params=params, secondary_tables=tuple(secondary_tables), join_strategies=(),
                                         primary_table_name=primary_table_name, index_column_name=index_column_name,
                                         name=name, description=description, technical_description=technical_description,
+                                        timeout=timeout,
                                         default_for_missing=default_for_missing)
         else:
             raise FeatureValidationError(QueryValidationCode.dtype,
@@ -242,6 +248,7 @@ def float_feature_from_query(conn: DuckDBPyConnection,
                              name: str | None = None,
                              description: str = '',
                              technical_description: str | None = None,
+                             timeout: datetime.timedelta | None = None,
 
                              default_for_missing: float = 0.0,
                              default_for_nan: float = 0.0,
@@ -260,7 +267,7 @@ def float_feature_from_query(conn: DuckDBPyConnection,
                                          params=params, secondary_tables=tuple(secondary_tables), join_strategies=(),
                                          primary_table_name=primary_table_name, index_column_name=index_column_name,
                                          name=name, description=description,
-                                         technical_description=technical_description,
+                                         technical_description=technical_description, timeout=timeout,
                                          default_for_missing=default_for_missing, default_for_nan=default_for_nan,
                                          default_for_infinity=default_for_infinity,
                                          default_for_neg_infinity=default_for_neg_infinity)
@@ -279,6 +286,7 @@ def categorical_feature_from_query(conn: DuckDBPyConnection,
                                    name: str | None = None,
                                    description: str = '',
                                    technical_description: str | None = None,
+                                   timeout: datetime.timedelta | None = None,
 
                                    default_for_missing: str = CategoricalFeature.other_category) -> CategoricalSqlBackedFeature:
     """As feature_from_query, but always creates a categorical feature and raises an error if the query returns a different type."""
@@ -296,7 +304,7 @@ def categorical_feature_from_query(conn: DuckDBPyConnection,
                                                primary_table_name=primary_table_name,
                                                index_column_name=index_column_name,
                                                name=name, description=description,
-                                               technical_description=technical_description,
+                                               technical_description=technical_description, timeout=timeout,
                                                default_for_missing=default_for_missing,
                                                categories=('nonesuch',))
         elif isinstance(dtype, types.EnumDtype):
@@ -306,7 +314,7 @@ def categorical_feature_from_query(conn: DuckDBPyConnection,
                                                primary_table_name=primary_table_name,
                                                index_column_name=index_column_name,
                                                name=name, description=description,
-                                               technical_description=technical_description,
+                                               technical_description=technical_description, timeout=timeout,
                                                default_for_missing=default_for_missing,
                                                categories=dtype.values)
         else:

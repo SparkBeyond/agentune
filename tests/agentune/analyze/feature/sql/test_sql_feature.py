@@ -1,3 +1,5 @@
+import datetime
+import time
 
 import attrs
 import duckdb
@@ -12,7 +14,9 @@ from agentune.analyze.feature.sql.base import (
     FloatSqlBackedFeature,
     IntSqlBackedFeature,
 )
+from agentune.analyze.feature.sql.create import int_feature_from_query
 from agentune.analyze.feature.validate.base import FeatureValidationError
+from agentune.api.base import RunContext
 from agentune.core import types
 from agentune.core.database import DuckdbTable
 from agentune.core.dataset import Dataset
@@ -39,7 +43,8 @@ def test_int_feature(conn: DuckDBPyConnection) -> None:
         secondary_tables=(context_table,),
         join_strategies=(),
         technical_description='',
-        default_for_missing=0
+        default_for_missing=0,
+        timeout=None
     )
 
     assert feature.compute((1,), conn) == 2
@@ -111,7 +116,8 @@ def test_float_feature(conn: DuckDBPyConnection) -> None:
         default_for_missing=0.0,
         default_for_nan=0.0,
         default_for_infinity=0.0,
-        default_for_neg_infinity=0.0
+        default_for_neg_infinity=0.0,
+        timeout=None
     )
 
     assert feature.compute((1,), conn) == 2.5
@@ -156,6 +162,7 @@ def test_bool_feature(conn: DuckDBPyConnection) -> None:
         join_strategies=(),
         technical_description='',
         default_for_missing=False,
+        timeout=None
     )
 
     assert feature.compute((1,), conn) is False
@@ -188,7 +195,8 @@ def test_categorical_feature(conn: DuckDBPyConnection) -> None:
         join_strategies=(),
         technical_description='',
         categories=('2', '4'),
-        default_for_missing=CategoricalFeature.other_category
+        default_for_missing=CategoricalFeature.other_category,
+        timeout=None
     )
 
     assert feature.compute((1,), conn) == '2'
@@ -226,10 +234,31 @@ def test_synthetic_rowid(conn: DuckDBPyConnection) -> None:
         secondary_tables=(main_table,),
         join_strategies=(),
         technical_description='',
-        default_for_missing=0
+        default_for_missing=0,
+        timeout=None
     )
 
     batch_input = Dataset(feature.params, pl.DataFrame({'key': range(10)}))
     batch_expected_result = pl.Series('my feature', range(10), dtype=pl.Int64)
     assert feature.compute_batch(batch_input, conn).equals(batch_expected_result, check_names=True, check_dtypes=True)
 
+async def test_timeout(ctx: RunContext) -> None:
+    with ctx.db.cursor() as conn:
+        def slow(i: int) -> int:
+            time.sleep(0.01)
+            return i + 1
+
+        conn.create_function('slow', slow, [duckdb.sqltypes.INTEGER], duckdb.sqltypes.INTEGER)
+
+        conn.execute('create table primary_table as select i::integer as i from unnest(range(10)) as t(i)')
+        dataset = DuckdbTable.from_duckdb('primary_table', conn).as_source().to_dataset(conn)
+
+        feature = int_feature_from_query(conn, 'select slow(i) from primary_table order by primary_table.rowid',
+                                         dataset.schema, [],
+                                         timeout=datetime.timedelta(seconds=0.01))
+        with pytest.raises(FeatureValidationError, match='timed out'):
+            await feature.acompute_batch(dataset, conn)
+
+        feature = attrs.evolve(feature, timeout=datetime.timedelta(seconds=1))
+        result = await feature.acompute_batch(dataset, conn)
+        assert result.equals(pl.Series(feature.name, [i+1 for i in range(10)], dtype=pl.Int32), check_names=True, check_dtypes=True)
