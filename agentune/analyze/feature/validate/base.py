@@ -21,9 +21,9 @@ class FeatureValidationError(Exception):
         self.code = code
         self.message = message
 
-class FeatureValidator(ABC):
+class FeatureValidator[F: Feature](ABC):
     @abstractmethod
-    async def validate(self, feature: Feature, input: Dataset, conn: DuckDBPyConnection) -> None:
+    async def validate(self, feature: F, input: Dataset, conn: DuckDBPyConnection) -> None:
         """Raise a FeatureValidationError if the feature is invalid.
 
         If an error of any other type is raised, it is either raised by the feature itself or is a bug in the validator.

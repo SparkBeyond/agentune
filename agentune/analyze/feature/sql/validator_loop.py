@@ -1,3 +1,4 @@
+import datetime
 from collections.abc import Sequence
 
 import attrs
@@ -45,6 +46,7 @@ class ValidateAndRetryParams:
     name: str | None = None
     description: str = ''
     technical_description: str | None = None
+    timeout: datetime.timedelta | None = None
 
 
 async def validate_and_retry(params: ValidateAndRetryParams) -> Feature | None:
@@ -72,7 +74,7 @@ async def _validate_and_retry(params: ValidateAndRetryParams,
                               remaining_local_retries: int) -> Feature | None:
     try:
         feature = params.feature_ctor(params.conn, params.sql_query, params.params, params.secondary_tables, params.primary_table_name,
-                                      params.index_column_name, params.name, params.description, params.technical_description)
+                                      params.index_column_name, params.name, params.description, params.technical_description, params.timeout)
     except FeatureValidationError as error:
         return await _handle_error(params, current_error_code, remaining_global_retries, remaining_local_retries, error)
 

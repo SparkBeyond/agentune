@@ -35,7 +35,7 @@ class LawAndOrderValidationCode(FeatureValidationCode):
 
 
 @frozen
-class LawAndOrderValidator(FeatureValidator):
+class LawAndOrderValidator(FeatureValidator[Feature]):
     """Validates these rules for a feature:
 
     - Behavior is consistent over multiple calls

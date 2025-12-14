@@ -1,8 +1,10 @@
+import datetime
 import enum
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Protocol, override
 
+import duckdb
 import polars as pl
 from attrs import define, frozen
 from duckdb import DuckDBPyConnection
@@ -21,6 +23,7 @@ from agentune.core import types
 from agentune.core.database import DuckdbTable
 from agentune.core.dataset import Dataset, DatasetSourceFromDataset, duckdb_to_polars
 from agentune.core.schema import Field, Schema
+from agentune.core.util import duckdbutil
 
 
 def _register_input_table_with_index(conn: DuckDBPyConnection, dataset: Dataset,
@@ -36,6 +39,7 @@ class ComputeValidationCode(FeatureValidationCode):
     width = enum.auto()
     height = enum.auto()
     dtype = enum.auto()
+    timeout = enum.auto()
 
 @define
 class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
@@ -51,6 +55,8 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
     Note that `primary_table` is a string, not a DuckdbName, because it is register()ed with the connection
     and only names in the current catalog and schema can be registered. That means the query can't assume
     that the original name that we are shadowing is from a different catalog or schema.
+
+    If the query does not complete within self.timeout, raises TimeoutError.
 
     A valid query must (this is not validated here):
     - Select FROM the ‘self.primary_table’ table
@@ -78,13 +84,25 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
     secondary_tables: tuple[DuckdbTable, ...]
     join_strategies: tuple[JoinStrategy, ...]
 
+    timeout: datetime.timedelta | None
+
     @override
     def compute_batch(self, input: Dataset, conn: DuckDBPyConnection) -> pl.Series:
         # Separate cursor to register the main table
         with conn.cursor() as cursor:
             _register_input_table_with_index(cursor, input, self.primary_table_name, self.index_column_name)
             relation = cursor.sql(self.sql_query)
-            result = duckdb_to_polars(relation)
+
+            if self.timeout is None:
+                result = duckdb_to_polars(relation)
+            else:
+                try:
+                    with duckdbutil.conn_timeout(cursor, self.timeout):
+                        result = duckdb_to_polars(relation)
+                except duckdb.InterruptException as e:
+                    raise FeatureValidationError(ComputeValidationCode.timeout,
+                                                 f'SQL query timed out after {self.timeout}') from e
+
             if result.width != 1:
                 raise FeatureValidationError(ComputeValidationCode.width,
                                              f'SQL query returned {result.width} columns instead of one')
@@ -153,5 +171,6 @@ class FeatureFromQueryCtor(Protocol):
 
                  name: str | None = None,
                  description: str = '',
-                 technical_description: str | None = None) -> SqlBackedFeature: ...
+                 technical_description: str | None = None,
+                 timeout: datetime.timedelta | None = None) -> SqlBackedFeature: ...
 
