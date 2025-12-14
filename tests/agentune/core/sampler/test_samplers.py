@@ -3,10 +3,11 @@
 import polars as pl
 import pytest
 
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import (
+from agentune.core.dataset import Dataset
+from agentune.core.sampler.base import (
     RandomSampler,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.samplers import (
+from agentune.core.sampler.samplers import (
     BalancedClassSampler,
     BalancedNumericSampler,
     ProportionalClassSampler,
@@ -14,7 +15,6 @@ from agentune.analyze.feature.gen.insightful_text_generator.sampling.samplers im
     validate_field_exists_and_matches_schema,
     validate_field_is_numeric,
 )
-from agentune.core.dataset import Dataset
 from agentune.core.schema import Field, Schema
 from agentune.core.types import EnumDtype, boolean, float64, int32, string
 

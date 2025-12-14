@@ -15,9 +15,6 @@ from agentune.analyze.feature.gen.insightful_text_generator.features import (
     InsightfulIntFeature,
     InsightfulTextFeature,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
-    ShortDateConversationFormatter,
-)
 from agentune.analyze.feature.problem import (
     ProblemDescription,
     RegressionDirection,
@@ -28,6 +25,9 @@ from agentune.analyze.join.lookup import LookupJoinStrategy
 from agentune.analyze.join.timeseries import KtsJoinStrategy
 from agentune.core import types
 from agentune.core.database import ArtIndex, DuckdbIndex, DuckdbName, DuckdbTable
+from agentune.core.formatter.conversation import (
+    ShortDateConversationFormatter,
+)
 from agentune.core.llm import LLMContext, LLMSpec
 from agentune.core.schema import Field, Schema
 from agentune.core.sercontext import LLMWithSpec, SerializationContext

@@ -18,9 +18,6 @@ from agentune.analyze.feature.base import (
     IntFeature,
     LlmFeature,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
-    DataFormatter,
-)
 from agentune.analyze.feature.gen.insightful_text_generator.prompts import (
     QUERY_FEATURE_PROMPT,
     get_output_instructions,
@@ -37,6 +34,9 @@ from agentune.analyze.join.base import JoinStrategy
 from agentune.core import types
 from agentune.core.database import DuckdbTable
 from agentune.core.dataset import Dataset
+from agentune.core.formatter.base import (
+    DataFormatter,
+)
 from agentune.core.schema import Schema
 from agentune.core.sercontext import LLMWithSpec
 from agentune.core.util.attrutil import frozendict_converter

@@ -13,17 +13,17 @@ from agentune.analyze.feature.gen.insightful_text_generator.features import (
     InsightfulIntFeature,
     create_feature,
 )
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import (
-    DataFormatter,
-)
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
-    ShortDateConversationFormatter,
-)
 from agentune.analyze.feature.gen.insightful_text_generator.schema import Query
 from agentune.analyze.join.conversation import ConversationJoinStrategy
 from agentune.core import types
 from agentune.core.database import DuckdbName, DuckdbTable
 from agentune.core.dataset import Dataset
+from agentune.core.formatter.base import (
+    DataFormatter,
+)
+from agentune.core.formatter.conversation import (
+    ShortDateConversationFormatter,
+)
 from agentune.core.llm import LLMContext, LLMSpec
 from agentune.core.schema import Field, Schema
 from agentune.core.sercontext import LLMWithSpec

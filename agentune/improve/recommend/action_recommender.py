@@ -15,17 +15,6 @@ from attrs import frozen
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.feature.gen.insightful_text_generator.features import InsightfulTextFeature
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.base import DataFormatter
-from agentune.analyze.feature.gen.insightful_text_generator.formatting.conversation import (
-    ShortDateConversationFormatter,
-)
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.base import (
-    DataSampler,
-)
-from agentune.analyze.feature.gen.insightful_text_generator.sampling.samplers import (
-    BalancedClassSampler,
-    BalancedNumericSampler,
-)
 from agentune.analyze.feature.gen.insightful_text_generator.util import (
     achat_raw,
     estimate_tokens,
@@ -39,7 +28,18 @@ from agentune.analyze.feature.problem import (
 from agentune.analyze.feature.stats.base import FeatureWithFullStats
 from agentune.analyze.join.conversation import Conversation, ConversationJoinStrategy
 from agentune.core.dataset import Dataset
+from agentune.core.formatter.base import DataFormatter
+from agentune.core.formatter.conversation import (
+    ShortDateConversationFormatter,
+)
 from agentune.core.llm import LLMContext, LLMSpec
+from agentune.core.sampler.base import (
+    DataSampler,
+)
+from agentune.core.sampler.samplers import (
+    BalancedClassSampler,
+    BalancedNumericSampler,
+)
 from agentune.core.sercontext import LLMWithSpec
 from agentune.improve.recommend import prompts
 from agentune.improve.recommend.base import ActionRecommender
