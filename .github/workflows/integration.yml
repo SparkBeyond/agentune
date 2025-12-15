@@ -39,7 +39,6 @@ jobs:
 
       - name: Run tests
         run: |
-          cd agentune
           poetry run python -m pytest -m integration
 
 
