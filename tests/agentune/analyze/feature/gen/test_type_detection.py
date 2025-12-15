@@ -1,6 +1,5 @@
 """Tests for type detection utilities."""
 
-import httpx
 import polars as pl
 import pytest
 
@@ -261,12 +260,11 @@ class TestDecideDtype:
 
 
 @pytest.fixture
-async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSpec:
+async def real_llm_with_spec(llm_context_nocache: LLMContext) -> LLMWithSpec:
     """Create a real LLM for end-to-end testing."""
-    llm_context = LLMContext(httpx_async_client)
     llm_spec = LLMSpec('openai', 'o3')  # Use a smart model for testing
     llm_with_spec = LLMWithSpec(
-        llm=llm_context.from_spec(llm_spec),
+        llm=llm_context_nocache.from_spec(llm_spec),
         spec=llm_spec
     )
     return llm_with_spec

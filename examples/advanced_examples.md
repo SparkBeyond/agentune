@@ -103,6 +103,51 @@ results = await ctx.ops.analyze(..., components=custom_components)
 
 Note: `query_generator_model` is the model used to generate features; `query_enrich_model` is the model used to compute those features, during `analyze` and any later `enrich` operation. You can control them separately. 
 
+## Provisioning LLM models
+
+Usecase: you need to specify custom parameters to access a model, e.g. an api_key callback function which can't be passed using environment variables
+Usecase: you need to access different models using different base_url or api_key values 
+Usecase: you want to set different timeouts or other parameters for different models or components
+
+The method `RunContext.create` has an argument `llm_providers`. It defaults to a single `OpenAIProvider()`, whose default behavior is to use the environment varialbes OPENAI_API_KEY and OPENAI_API_BASE. You can explicitly pass one or several custom provider instances to customize this behavior:
+
+```python
+from agentune.core.openai import OpenAIProvider
+async with await RunContext.create(llm_providers=[OpenAIProvider(api_key='my-key', base_url='https://my-url', timeout=60.0, ...)]) as ctx: ...
+```
+
+Besides the api_key, base_url and timeout, you can set any other parameter supported by the OpenAI API.
+
+To specify different parameters for different models, create several OpenAIProvider instances and tell each one which models it should manage:
+
+```python
+from agentune.core.openai import OpenAIProvider
+async with await RunContext.create(llm_providers=[
+    OpenAIProvider(api_key='my-key1', base_url='https://my-url1', timeout=60.0, ...).for_models('gpt-4o', 'gpt-4.1'),
+    OpenAIProvider(api_key='my-key2', base_url='https://my-url2', timeout=50.0, ...).for_models('gpt-5.1-mini'),
+    OpenAIProvider(api_key='my-key3', base_url='https://my-url3', timeout=40.0, ...),
+]) as ctx: ...
+```
+
+The providers are tried in order, so the last one should be a catch-all not restricted to a single model.
+
+You can also configure LLM settings for specific components, by passing the same parameters to `LLMSpec` as you would to `OpenAIProvider`, _except_ for base_url and api_key which can only be set on the provider.
+
+In the example 'using different LLM models' above, add parameters to the LLMSpec to set the timeout and max_retries for a particular component: 
+
+```python
+import attrs
+from agentune.core.llm import LLMSpec
+
+llm = ctx.llm.get_with_spec(LLMSpec('openai', 'gpt-4.1-mini', timeout=120.0, max_retries=0))
+default_generator = ctx.defaults.conversation_query_feature_generator()
+custom_generator = attrs.evolve(default_generator,
+                                query_generator_model=llm, query_enrich_model=llm)
+custom_components = attrs.evolve(ctx.defaults.analyze_components(),
+                                 generators=(custom_generator,))
+results = await ctx.ops.analyze(..., components=custom_components)
+```
+
 ## Using on-disk LLM cache
 
 Usecase: cache LLM responses, reuse them across multiple runs, and store them on disk.  

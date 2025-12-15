@@ -9,7 +9,6 @@ import logging
 import math
 from pathlib import Path
 
-import httpx
 import polars as pl
 import pytest
 from duckdb import DuckDBPyConnection
@@ -91,12 +90,11 @@ def test_dataset_with_strategy(test_data_conversations: dict[str, Path], conn: D
 
 
 @pytest.fixture
-async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSpec:
+async def real_llm_with_spec(llm_context_nocache: LLMContext) -> LLMWithSpec:
     """Create a real LLM for end-to-end testing."""
-    llm_context = LLMContext(httpx_async_client)
     llm_spec = LLMSpec('openai', 'gpt-4o-mini')  # Use a smaller, faster model for testing
     llm_with_spec = LLMWithSpec(
-        llm=llm_context.from_spec(llm_spec),
+        llm=llm_context_nocache.from_spec(llm_spec),
         spec=llm_spec
     )
     return llm_with_spec

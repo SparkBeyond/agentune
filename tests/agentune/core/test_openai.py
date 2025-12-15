@@ -15,7 +15,7 @@ from llama_index.core.base.llms.types import (
 from llama_index.llms.openai import OpenAI, OpenAIResponses
 
 from agentune.core.llmcache.base import CanonicalizedChatMessage, LLMCacheBackend, LLMCacheKey
-from agentune.core.llmcache.openai_cache import CachingOpenAI, CachingOpenAIResponses
+from agentune.core.openai import CachingOpenAI, CachingOpenAIResponses
 
 _logger = logging.getLogger(__name__)
 

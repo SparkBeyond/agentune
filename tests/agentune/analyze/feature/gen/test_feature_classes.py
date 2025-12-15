@@ -1,6 +1,5 @@
 """Tests for insightful text feature classes."""
 
-import httpx
 import polars as pl
 import pytest
 from attrs import frozen
@@ -55,12 +54,11 @@ def formatter() -> DataFormatter:
 
 
 @pytest.fixture
-async def real_llm_with_spec(httpx_async_client: httpx.AsyncClient) -> LLMWithSpec:
+async def real_llm_with_spec(llm_context_nocache: LLMContext) -> LLMWithSpec:
     """Create a real LLM for testing."""
-    llm_context = LLMContext(httpx_async_client)
     llm_spec = LLMSpec('openai', 'gpt-4o')
     llm_with_spec = LLMWithSpec(
-        llm=llm_context.from_spec(llm_spec),
+        llm=llm_context_nocache.from_spec(llm_spec),
         spec=llm_spec
     )
     return llm_with_spec

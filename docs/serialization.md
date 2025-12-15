@@ -68,11 +68,6 @@ A serializalbe class that needs an LLM instance at runtime should take a paramet
 When such a class is serialized, the LLMSpec will appear in the JSON data, and the LLMWithSpec (including the LLM instance)
 will be repopulated when the class is deserialized.
 
-Note that the `LLMSpec` only specifies the model and provider. If you use non-default model parameters that affect 
-its output, you need to deterministically pass the same parameter values on every call (depending on your input),
-or else to include those parameters as additional (serializable) class fields. In other words, your class instance
-must behave the same (wrt the LLM) after serializing and deserializing it.
-
 ## Abstract class hierarchies
 
 Class hierarchies are serialized with an extra JSON field '_type' whose value is the name of the class.
