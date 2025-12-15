@@ -39,8 +39,3 @@ jobs:
       - name: Run tests
         run: |
           poetry run python -m pytest -m integration
-
-
-          
-          
-
