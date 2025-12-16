@@ -51,12 +51,13 @@ class LogReporter(ProgressReporter):
         events: list[tuple[datetime.datetime, tuple[str, ...], str, int | None, int | None]] = []
         now = datetime.datetime.now()
         for diff in diffs:
+            stage = ProgressStage._find_by_path(snapshot, diff.path)
             if diff.added:
                 start_count = 0 if diff.new_count is not None else None
-                events.append((diff.started_at or now, diff.path, 'started', start_count, diff.new_total))
+                events.append((stage.started, diff.path, 'started', start_count, diff.new_total))
             if diff.completed:
-                events.append((diff.completed_at or now, diff.path, 'completed', diff.new_count, diff.new_total))
-            elif not diff.added and (diff.count_changed or diff.total_changed) and diff.new_count != diff.new_total:
+                events.append((stage.completed, diff.path, 'completed', diff.new_count, diff.new_total))
+            elif not diff.added and (diff.count_changed or diff.total_changed):
                 events.append((now, diff.path, 'progress', diff.new_count, diff.new_total))
         
         def sort_key(e: tuple[datetime.datetime, tuple[str, ...], str, int | None, int | None]) -> tuple[datetime.datetime, int]:
