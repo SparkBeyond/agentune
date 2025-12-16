@@ -30,6 +30,8 @@ class StageDiff:
     new_count: int | None
     old_total: int | None
     new_total: int | None
+    started_at: datetime.datetime | None = None
+    completed_at: datetime.datetime | None = None
 
     @property
     def count_changed(self) -> bool:
@@ -234,6 +236,8 @@ class ProgressStage:
             new_count=new_count,
             old_total=old_total,
             new_total=new_total,
+            started_at=new_stage.started if added else None,
+            completed_at=new_stage.completed if completed else None,
         )
         if added or diff.count_changed or diff.total_changed or completed:
             result.append(diff)
@@ -270,6 +274,8 @@ class ProgressStage:
                     new_count=stage.count,
                     old_total=None,
                     new_total=stage.total,
+                    started_at=stage.started,
+                    completed_at=stage.completed,
                 )]
                 for child in stage.children:
                     result.extend(add_all_as_new(child, (*path, child.name)))

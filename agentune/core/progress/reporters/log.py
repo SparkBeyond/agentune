@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 from datetime import timedelta
 from typing import override
@@ -46,17 +47,22 @@ class LogReporter(ProgressReporter):
         
         diffs = ProgressStage.diff(self._previous_snapshot, snapshot)
         
-        # Separate completion diffs from others - we want to log children completions before parents
-        completion_diffs = [d for d in diffs if d.completed]
-        other_diffs = [d for d in diffs if not d.completed]
+        # Collect all events with timestamps and sort chronologically
+        events: list[tuple[datetime.datetime, tuple[str, ...], str, int | None, int | None]] = []
+        now = datetime.datetime.now()
+        for diff in diffs:
+            if diff.added:
+                start_count = 0 if diff.new_count is not None else None
+                events.append((diff.started_at or now, diff.path, 'started', start_count, diff.new_total))
+            if diff.completed:
+                events.append((diff.completed_at or now, diff.path, 'completed', diff.new_count, diff.new_total))
+            elif not diff.added and (diff.count_changed or diff.total_changed):
+                # Skip progress events where count == total (will be logged as completed later)
+                if diff.new_count != diff.new_total:
+                    events.append((now, diff.path, 'progress', diff.new_count, diff.new_total))
         
-        # Log non-completion diffs first (in original order)
-        for diff in other_diffs:
-            self._log_diff(diff)
-        
-        # Log completion diffs deepest-first (children before parents)
-        for diff in sorted(completion_diffs, key=lambda d: len(d.path), reverse=True):
-            self._log_diff(diff)
+        for _, path, event, count, total in sorted(events, key=lambda e: e[0]):
+            self._log_stage_event(path, event, count, total)
         
         self._previous_snapshot = snapshot.deepcopy()
 
@@ -69,17 +75,6 @@ class LogReporter(ProgressReporter):
             await self.update(final_snapshot)
         
         self._previous_snapshot = None
-
-    def _log_diff(self, diff: StageDiff) -> None:
-        """Log a single diff event."""
-        if diff.added:
-            # Ensure the start count is being logged as 0 even if the count has already progressed
-            start_count = 0 if diff.new_count is not None else None
-            self._log_stage_event(diff.path, 'started', start_count, diff.new_total)
-        if diff.completed:
-            self._log_stage_event(diff.path, 'completed', diff.new_count, diff.new_total)
-        elif not diff.added and (diff.count_changed or diff.total_changed):
-            self._log_stage_event(diff.path, 'progress', diff.new_count, diff.new_total)
 
     def _log_stage_event(
         self,
