@@ -7,6 +7,38 @@ import itertools
 import threading
 from collections.abc import Generator
 
+from attrs import frozen
+
+
+@frozen
+class StageDiff:
+    """Represents changes to a single stage between two snapshots.
+    
+    Args:
+        path: Path from root to this stage as a tuple of stage names.
+        added: True if this stage is new (didn't exist in old snapshot).
+        completed: True if stage just completed (wasn't completed before, is now).
+        old_count: Previous count value (None if didn't exist or count was None).
+        new_count: New count value (None if doesn't exist or count is None).
+        old_total: Previous total value (None if didn't exist or total was None).
+        new_total: New total value (None if doesn't exist or total is None).
+    """
+    path: tuple[str, ...]
+    added: bool
+    completed: bool
+    old_count: int | None
+    new_count: int | None
+    old_total: int | None
+    new_total: int | None
+
+    @property
+    def count_changed(self) -> bool:
+        return self.old_count != self.new_count
+
+    @property
+    def total_changed(self) -> bool:
+        return self.old_total != self.new_total
+
 
 class ProgressStage:
     """A node publishing progress information, with a name, optional count and total, start date and completion information.
@@ -144,6 +176,112 @@ class ProgressStage:
             copy._completed = self.completed
             copy._children = tuple(child.deepcopy() for child in self.children)
             return copy
+
+    def _get_path(self) -> tuple[str, ...]:
+        """Get the path from root to this stage as a tuple of stage names."""
+        if self.parent is None:
+            return (self.name,)
+        return (*self.parent._get_path(), self.name)
+
+    @staticmethod
+    def _find_by_path(root: ProgressStage, path: tuple[str, ...]) -> ProgressStage | None:
+        """Find a stage in the tree by its path from root."""
+        if not path:
+            return None
+        
+        # First element must match root name
+        if root.name != path[0]:
+            return None
+        
+        # If path is just the root, return it
+        if len(path) == 1:
+            return root
+        
+        # Find child with matching name for next path element
+        for child in root.children:
+            if child.name == path[1]:
+                # Recursively search in this child with remaining path
+                return ProgressStage._find_by_path(child, path[1:])
+        
+        return None
+
+    @staticmethod
+    def _compute_diff(
+        old_stage: ProgressStage | None,
+        new_stage: ProgressStage,
+        path: tuple[str, ...],
+    ) -> list[StageDiff]:
+        """Recursively compute differences between old and new stage trees."""
+        result: list[StageDiff] = []
+
+        added = old_stage is None
+        old_count = old_total = None
+        new_count = new_stage.count
+        new_total = new_stage.total
+        
+        if old_stage is not None:
+            old_count = old_stage.count
+            old_total = old_stage.total
+            completed = not old_stage.is_completed and new_stage.is_completed
+        else:
+            completed = new_stage.is_completed
+
+        diff = StageDiff(
+            path=path,
+            added=added,
+            completed=completed,
+            old_count=old_count,
+            new_count=new_count,
+            old_total=old_total,
+            new_total=new_total,
+        )
+        if added or diff.count_changed or diff.total_changed or completed:
+            result.append(diff)
+        
+        old_children_by_name: dict[str, ProgressStage] = {}
+        if old_stage is not None:
+            for child in old_stage.children:
+                old_children_by_name[child.name] = child
+        
+        for new_child in new_stage.children:
+            child_path = (*path, new_child.name)
+            old_child = old_children_by_name.get(new_child.name)
+            result.extend(ProgressStage._compute_diff(old_child, new_child, child_path))
+        
+        return result
+
+    @staticmethod
+    def diff(old_root: ProgressStage | None, new_root: ProgressStage | None) -> list[StageDiff]:
+        """Compute differences between two stage trees.
+        
+        Not threadsafe: callers should pass snapshots (via deepcopy()) if the stages
+        may be modified concurrently.
+        """
+        if new_root is None:
+            return []
+        
+        if old_root is None:
+            def add_all_as_new(stage: ProgressStage, path: tuple[str, ...]) -> list[StageDiff]:
+                result = [StageDiff(
+                    path=path,
+                    added=True,
+                    completed=stage.is_completed,
+                    old_count=None,
+                    new_count=stage.count,
+                    old_total=None,
+                    new_total=stage.total,
+                )]
+                for child in stage.children:
+                    result.extend(add_all_as_new(child, (*path, child.name)))
+                return result
+            
+            return add_all_as_new(new_root, (new_root.name,))
+        
+        return ProgressStage._compute_diff(old_root, new_root, (new_root.name,))
+
+    def diff_from(self, old_snapshot: ProgressStage) -> list[StageDiff]:
+        """Compute diff from an old snapshot to this stage."""
+        return ProgressStage.diff(old_snapshot.deepcopy(), self.deepcopy())
 
 _progress = contextvars.ContextVar[ProgressStage | None]('progress_stage', default=None)
 

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import typing
+from abc import ABC
 from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from datetime import timedelta
@@ -22,6 +24,8 @@ from agentune.core.llm import LLMContext, LLMProvider
 from agentune.core.llmcache import sqlite_lru
 from agentune.core.llmcache.base import LLMCacheBackend, LLMCacheKey
 from agentune.core.llmcache.sqlite_lru import ConnectionProviderFactory, SqliteLru
+from agentune.core.progress.reporters.base import ProgressReporter, progress_setup
+from agentune.core.progress.reporters.log import LogReporter
 from agentune.core.sercontext import SerializationContext
 from agentune.core.util.lrucache import LRUCache
 
@@ -56,6 +60,18 @@ class LlmCacheOnDisk:
     maxbytes: int
     cleanup_interval: timedelta = timedelta(seconds=60)
     connection_provider_factory: ConnectionProviderFactory = sqlite_lru.threadlocal_connections()
+
+
+@frozen
+class ProgressReporterParams(ABC):
+    poll_interval: timedelta
+
+@frozen
+class WriteProgressToLog(ProgressReporterParams):
+    """Writes progress updates periodically to the standard log system"""
+    poll_interval: timedelta = timedelta(seconds=30)
+    logger_name: str = 'agentune.progress'
+    log_level: int = logging.INFO
 
 
 @frozen
@@ -111,6 +127,7 @@ class RunContext:
                      httpx_async_client: httpx.AsyncClient | None = None,
                      llm_providers: LLMProvider | Sequence[LLMProvider] | None = None,
                      llm_cache: LlmCacheInMemory | LlmCacheOnDisk | LLMCacheBackend | None = LlmCacheInMemory(1000),
+                     progress_reporter: WriteProgressToLog | ProgressReporter | None = WriteProgressToLog()
                      ) -> RunContext:
         """Create a new context instance (see the class doc). Remember to close it when you are done, by using it as
         a context manager or by calling the aclose() method explicitly.
@@ -137,6 +154,8 @@ class RunContext:
                        Can be stored in memory (LlmCacheInMemory) or on disk (LlmCacheOnDisk). An in-memory cached
                        will be discarded when the context is closed. An on-disk cache holds a file open until the
                        context is closed.
+            progress_reporter: how to display progress during long-running operations. The default setting writes a log message periodically.
+                               Can receive an instance of the ProgressReporter implementation. Can be disabled by passing None.
         """
         components = AsyncExitStack()
 
@@ -169,6 +188,18 @@ class RunContext:
                 llm_providers = default_llm_providers()
 
         ser_context = SerializationContext(LLMContext(httpx_async_client, providers=tuple(llm_providers), cache_backend=llm_cache_backend))
+
+        reporter_instance: ProgressReporter | None = None
+        owns_reporter = True
+        match progress_reporter:
+            case WriteProgressToLog(poll_interval, logger_name, log_level):
+                reporter_instance = LogReporter(poll_interval, logger_name, log_level)
+            case ProgressReporter() as reporter:
+                reporter_instance = reporter
+                owns_reporter = False
+        if reporter_instance is not None:
+            await components.enter_async_context(progress_setup(reporter_instance, owns_reporter=owns_reporter))
+
 
         return RunContext(ser_context, ddb_manager, components)
 
