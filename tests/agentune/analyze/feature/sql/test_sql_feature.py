@@ -6,13 +6,13 @@ import pytest
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.feature.base import CategoricalFeature
-from agentune.analyze.feature.sql.sql_feature import (
+from agentune.analyze.feature.sql.base import (
     BoolSqlBackedFeature,
     CategoricalSqlBackedFeature,
     FloatSqlBackedFeature,
     IntSqlBackedFeature,
-    feature_from_query,
 )
+from agentune.analyze.feature.validate.base import FeatureValidationError
 from agentune.core import types
 from agentune.core.database import DuckdbTable
 from agentune.core.dataset import Dataset
@@ -67,7 +67,7 @@ def test_int_feature(conn: DuckDBPyConnection) -> None:
 
     # Value cannot be represented exactly as an int32; SQL query succeeds but polars cast fails
     feature = attrs.evolve(feature, sql_query = f'select {2**32} from main_table')
-    with pytest.raises(pl.exceptions.InvalidOperationError, match='conversion'):
+    with pytest.raises(FeatureValidationError, match='cannot be cast'):
         feature.compute_batch(batch_input, conn)
 
     # Query returns the wrong number of rows
@@ -77,12 +77,12 @@ def test_int_feature(conn: DuckDBPyConnection) -> None:
                                                          JOIN context_table ON main_table.key = context_table.key
                                                 ORDER BY main_table.rowid
                                                 ''')
-    with pytest.raises(ValueError, match='rows'):
+    with pytest.raises(FeatureValidationError, match='wrong number of rows'):
         feature.compute_batch(batch_input, conn)
 
     # Query returns the wrong number of columns
     feature = attrs.evolve(feature, sql_query='select key as key1, key as key2 from main_table')
-    with pytest.raises(ValueError, match='one column'):
+    with pytest.raises(FeatureValidationError, match='2 columns instead of one'):
         feature.compute_batch(batch_input, conn)
 
 # Non-int feature tests don't repeat testing functionality that's in the base class e.g. query returning a wrong number
@@ -204,61 +204,6 @@ def test_categorical_feature(conn: DuckDBPyConnection) -> None:
         feature = attrs.evolve(feature, sql_query = f'select value::{tpe.duckdb_type} from ({sql_query})')
         assert feature.compute_batch(batch_input, conn).equals(batch_expected_result, check_names=True, check_dtypes=True), \
             'Feature returns different but compatible dtype'
-
-def test_feature_from_query(conn: DuckDBPyConnection) -> None:
-    conn.execute('CREATE TABLE context_table (key int, value int)')
-    conn.execute('INSERT INTO context_table VALUES (1, 2), (3, 4)')
-
-    feature = feature_from_query(conn,
-                                 '''select key from my_table''',
-                                 Schema((Field('key', types.int32), )),
-                                 (),
-                                 'my_table')
-    assert isinstance(feature, IntSqlBackedFeature)
-    assert feature.name == 'key'
-
-    feature = feature_from_query(conn,
-                                 '''select key::utinyint as key from my_table''',
-                                 Schema((Field('key', types.int32), )),
-                                 (),
-                                 'my_table')
-    assert isinstance(feature, IntSqlBackedFeature)
-    assert feature.name == 'key'
-
-    feature = feature_from_query(conn,
-                                 '''select key > 1 as foo from my_table''',
-                                 Schema((Field('key', types.int32), )),
-                                 (),
-                                 'my_table')
-    assert isinstance(feature, BoolSqlBackedFeature)
-    assert feature.name == 'foo'
-
-    feature = feature_from_query(conn,
-                                 '''select key::double as key from my_table''',
-                                 Schema((Field('key', types.int32), )),
-                                 (),
-                                 'my_table')
-    assert isinstance(feature, FloatSqlBackedFeature)
-    assert feature.name == 'key'
-
-    feature = feature_from_query(conn,
-                                 '''select key::varchar as key from my_table''',
-                                 Schema((Field('key', types.int32), )),
-                                 (),
-                                 'my_table')
-    assert isinstance(feature, CategoricalSqlBackedFeature)
-    assert feature.name == 'key'
-    assert feature.categories == ('nonesuch',)
-
-    feature = feature_from_query(conn,
-                                 '''select key::enum('1', '2') as key from my_table''',
-                                 Schema((Field('key', types.int32), )),
-                                 (),
-                                 'my_table')
-    assert isinstance(feature, CategoricalSqlBackedFeature)
-    assert feature.name == 'key'
-    assert feature.categories == ('1', '2')
-
 
 def test_synthetic_rowid(conn: DuckDBPyConnection) -> None:
     conn.execute('CREATE TABLE main_table (key int)')

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import random
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, cast, override
 
@@ -499,3 +500,27 @@ class DuckdbManager:
     def create_table(self, table: DuckdbTable) -> None:
         with self.cursor() as conn:
             table.create(conn)
+
+
+@contextlib.contextmanager
+def temp_schema(conn: DuckDBPyConnection, basename: str) -> Iterator[str]:
+    """Create an empty schema with a random name (starting with basename) and drop it at the end of the context.
+
+    Note that this is NOT a temporary schema in the sense of a temporary table or view;
+    it is not scoped to a connection and will not be automatically dropped by duckdb.
+
+    # TODO there should be some guarantee of dropping this schema on a later startup if the current process dies,
+    #  just as for DuckdbManager's temp schema. If this temp schema is only going to be used for guaranteed-small data
+    #  (e.g. only view definitions) then we can put it in a dedicated in-memory database that DuckdbManager would always
+    #  attach as a secondary database for that purpose.
+    """
+    # Use a cursor so that if the original connection is closed inside the context we still have a connection we can use
+    # to drop the schema
+    with conn.cursor() as curr:
+        temp_schema_name = DuckdbManager.random_name(basename)
+        curr.execute(f'create schema "{temp_schema_name}"')
+        try:
+            yield temp_schema_name
+        finally:
+            curr.execute(f'drop schema "{temp_schema_name}" cascade')
+
