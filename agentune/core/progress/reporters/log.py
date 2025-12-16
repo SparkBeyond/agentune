@@ -52,10 +52,10 @@ class LogReporter(ProgressReporter):
         now = datetime.datetime.now()
         for diff in diffs:
             stage = ProgressStage._find_by_path(snapshot, diff.path)
-            if diff.added:
+            if diff.added and stage:
                 start_count = 0 if diff.new_count is not None else None
                 events.append((stage.started, diff.path, 'started', start_count, diff.new_total))
-            if diff.completed:
+            if diff.completed and stage and stage.completed:
                 events.append((stage.completed, diff.path, 'completed', diff.new_count, diff.new_total))
             elif not diff.added and (diff.count_changed or diff.total_changed):
                 events.append((now, diff.path, 'progress', diff.new_count, diff.new_total))
