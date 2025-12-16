@@ -24,8 +24,8 @@ from agentune.core.types import Dtype
 
 def _register_input_table_with_index(conn: DuckDBPyConnection, dataset: Dataset,
                                      primary_table_name: str, index_column_name: str) -> None:
-    input_with_index_data = dataset.data.with_row_index(index_column_name, dataset.data.width)
-    input_with_index_schema = dataset.schema + Field(index_column_name, types.uint32)
+    input_with_index_data = dataset.data.with_row_index(index_column_name)
+    input_with_index_schema = Schema((Field(index_column_name, types.uint32), *dataset.schema.cols))
     input_with_index = Dataset(input_with_index_schema, input_with_index_data)
     # Go through DatasetSourceFromDataset to make the registered relation have the right duckdb schema
     input_relation = DatasetSourceFromDataset(input_with_index).to_duckdb(conn)
