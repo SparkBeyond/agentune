@@ -59,7 +59,13 @@ class LogReporter(ProgressReporter):
             elif not diff.added and (diff.count_changed or diff.total_changed) and diff.new_count != diff.new_total:
                 events.append((now, diff.path, 'progress', diff.new_count, diff.new_total))
         
-        for _, path, event, count, total in sorted(events, key=lambda e: e[0]):
+        def sort_key(e: tuple[datetime.datetime, tuple[str, ...], str, int | None, int | None]) -> tuple[datetime.datetime, int]:
+            timestamp, path, event_type, _, _ = e
+            # For completed events, ensure children are logged before parents if the timestamp is the same
+            depth = -len(path) if event_type == 'completed' else len(path)
+            return (timestamp, depth)
+        
+        for _, path, event, count, total in sorted(events, key=sort_key):
             self._log_stage_event(path, event, count, total)
         
         self._previous_snapshot = snapshot.deepcopy()
