@@ -260,3 +260,31 @@ def test_feature_from_query(conn: DuckDBPyConnection) -> None:
     assert feature.categories == ('1', '2')
 
 
+def test_synthetic_rowid(conn: DuckDBPyConnection) -> None:
+    conn.execute('CREATE TABLE main_table (key int)')
+    conn.execute('INSERT INTO main_table VALUES (1), (2,)')
+    
+    assert conn.execute('select rowid from main_table').fetchall() == [(0,), (1,)], 'Native rowid is 0-based'
+
+    sql_query = '''
+                SELECT rowid
+                FROM main_table
+                ORDER BY main_table.rowid
+                '''
+
+    main_table = DuckdbTable.from_duckdb('main_table', conn)
+    feature = IntSqlBackedFeature(
+        sql_query=sql_query,
+        primary_table_name='main_table', index_column_name='rowid',
+        name='my feature', description='',
+        params = Schema((Field('key', types.int32), )),
+        secondary_tables=(main_table,),
+        join_strategies=(),
+        technical_description='',
+        default_for_missing=0
+    )
+
+    batch_input = Dataset(feature.params, pl.DataFrame({'key': range(10)}))
+    batch_expected_result = pl.Series('my feature', range(10), dtype=pl.Int32)
+    assert feature.compute_batch(batch_input, conn).equals(batch_expected_result, check_names=True, check_dtypes=True)
+
