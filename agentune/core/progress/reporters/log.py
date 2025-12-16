@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 from datetime import timedelta
-from typing import override
+from typing import cast, override
 
 from agentune.core.progress.base import ProgressStage, root_stage
 from agentune.core.progress.reporters.base import ProgressReporter
@@ -51,12 +51,12 @@ class LogReporter(ProgressReporter):
         events: list[tuple[datetime.datetime, tuple[str, ...], str, int | None, int | None]] = []
         now = datetime.datetime.now()
         for diff in diffs:
-            stage = ProgressStage._find_by_path(snapshot, diff.path)
-            if diff.added and stage:
+            stage = cast(ProgressStage, ProgressStage._find_by_path(snapshot, diff.path))
+            if diff.added:
                 start_count = 0 if diff.new_count is not None else None
                 events.append((stage.started, diff.path, 'started', start_count, diff.new_total))
-            if diff.completed and stage and stage.completed:
-                events.append((stage.completed, diff.path, 'completed', diff.new_count, diff.new_total))
+            if diff.completed:
+                events.append((cast(datetime.datetime, stage.completed), diff.path, 'completed', diff.new_count, diff.new_total))
             elif not diff.added and (diff.count_changed or diff.total_changed):
                 events.append((now, diff.path, 'progress', diff.new_count, diff.new_total))
         
