@@ -4,8 +4,8 @@ from __future__ import annotations
 import contextlib
 import logging
 import typing
-from collections.abc import Sequence
 from abc import ABC
+from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from datetime import timedelta
 from pathlib import Path
@@ -188,7 +188,7 @@ class RunContext:
                 llm_providers = default_llm_providers()
 
         ser_context = SerializationContext(LLMContext(httpx_async_client, providers=tuple(llm_providers), cache_backend=llm_cache_backend))
-        
+
         reporter_instance: ProgressReporter | None = None
         owns_reporter = True
         match progress_reporter:

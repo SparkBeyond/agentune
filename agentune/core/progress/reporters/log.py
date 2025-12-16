@@ -5,7 +5,7 @@ import logging
 from datetime import timedelta
 from typing import override
 
-from agentune.core.progress.base import ProgressStage, StageDiff, root_stage
+from agentune.core.progress.base import ProgressStage, root_stage
 from agentune.core.progress.reporters.base import ProgressReporter
 
 
@@ -56,10 +56,8 @@ class LogReporter(ProgressReporter):
                 events.append((diff.started_at or now, diff.path, 'started', start_count, diff.new_total))
             if diff.completed:
                 events.append((diff.completed_at or now, diff.path, 'completed', diff.new_count, diff.new_total))
-            elif not diff.added and (diff.count_changed or diff.total_changed):
-                # Skip progress events where count == total (will be logged as completed later)
-                if diff.new_count != diff.new_total:
-                    events.append((now, diff.path, 'progress', diff.new_count, diff.new_total))
+            elif not diff.added and (diff.count_changed or diff.total_changed) and diff.new_count != diff.new_total:
+                events.append((now, diff.path, 'progress', diff.new_count, diff.new_total))
         
         for _, path, event, count, total in sorted(events, key=lambda e: e[0]):
             self._log_stage_event(path, event, count, total)
