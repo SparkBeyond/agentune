@@ -46,7 +46,7 @@ jobs:
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
         run: |
-          uv pip install pytest \
+          pip install pytest \
                pytest-asyncio \
                mypy \
                ruff \
@@ -58,7 +58,7 @@ jobs:
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
         run: |
-          uv pip install pytest \
+          uv pip install --system pytest \
                          pytest-asyncio \
                          mypy \
                          ruff \
