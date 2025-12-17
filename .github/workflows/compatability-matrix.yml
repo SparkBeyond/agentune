@@ -46,7 +46,7 @@ jobs:
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
         run: |
-          pip -r dev-dependencies.txt
+          pip install -r dev-dependencies.txt
           pip install dist/*.whl
 
       - name: Install package (oldest supported dependency versions)
