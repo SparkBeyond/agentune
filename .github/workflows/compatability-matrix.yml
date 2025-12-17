@@ -45,8 +45,8 @@ jobs:
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
         run: |
-          pip install -r dev-dependencies.txt
-          pip install dist/*.whl
+          poetry install --only dev
+          pip install --system .
 
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
