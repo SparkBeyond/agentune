@@ -51,7 +51,7 @@ jobs:
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
         run: |
-          uv pip install --system -r dev-dependencies.txt
+          poetry install --only dev
           uv pip install --system --resolution=lowest-direct .
 
       - name: Run tests
