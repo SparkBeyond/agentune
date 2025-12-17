@@ -2,7 +2,9 @@ name: Dependency Compatability Matrix
 on:
 #  schedule:
 #    - cron: "0 3 * * *"   # daily
+  pull_request:
   workflow_dispatch:
+
 
 jobs:
   test-dependency-matrix:
