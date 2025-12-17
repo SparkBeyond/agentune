@@ -46,26 +46,14 @@ jobs:
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
         run: |
-          pip install pytest \
-               pytest-asyncio \
-               mypy \
-               ruff \
-               pytest-mypy-plugins \
-               pyarrow-stubs \
-               matplotlib
+          pip -r dev-dependencies.txt
           pip install dist/*.whl
 
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
         run: |
-          uv pip install --system pytest \
-                         pytest-asyncio \
-                         mypy \
-                         ruff \
-                         pytest-mypy-plugins \
-                         pyarrow-stubs \
-                         matplotlib
-          uv pip install --resolution=lowest-direct dist/*.whl
+          uv pip install --system -r dev-dependencies.txt
+          uv pip install --system --resolution=lowest-direct dist/*.whl
 
       - name: Run tests
         run: |
