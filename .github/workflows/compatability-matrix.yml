@@ -38,15 +38,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install uv
 
-      - name: Build wheel
-        run: |
-          poetry build --format wheel
-
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
         run: |
-          poetry install --only dev
-          pip install --system .
+          poetry install --sync --no-interaction
 
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
