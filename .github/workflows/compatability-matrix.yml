@@ -52,7 +52,7 @@ jobs:
         if: matrix.dep-mode == 'lowest'
         run: |
           uv pip install --system -r dev-dependencies.txt
-          uv pip install --system --resolution=lowest-direct dist/*.whl
+          uv pip install --system --resolution=lowest-direct .
 
       - name: Run tests
         run: |
