@@ -41,7 +41,8 @@ jobs:
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
         run: |
-          poetry install --sync --no-interaction
+          poetry install --only dev
+          uv pip install . --resolution highest --upgrade --upgrade-strategy eager
 
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
