@@ -64,6 +64,7 @@ more-itertools = "^10.7.0"
 llama-index-core = "^0.14.7"
 llama-index-llms-openai = "^0.6.7"
 lightgbm = "^4.6.0"
+rich = "^14.0.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.18.2"
