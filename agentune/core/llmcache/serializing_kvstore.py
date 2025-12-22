@@ -1,8 +1,8 @@
 import pickle
+from typing import override
 
 from attrs import frozen
 from llama_index.core.base.llms.types import ChatResponse, CompletionResponse
-from sklearn.externals.array_api_extra.testing import override
 
 from agentune.core.llmcache.base import LLMCacheKey
 from agentune.core.util.asyncmap import KVStore
