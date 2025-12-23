@@ -365,11 +365,16 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
             case CategoricalFeature():
                 return attrs.evolve(feature, default_for_missing=CategoricalFeature.other_category)
             case FloatFeature():
-                finite_values = enriched.replace([math.inf, -math.inf], [None, None])
-                max_val = cast(float, finite_values.max()) + 1
-                min_val = cast(float, finite_values.min()) - 1
-                substituted = enriched.replace([math.inf, -math.inf], [max_val, min_val])
-                median = cast(float, substituted.median())
+                finite_values = enriched.replace([math.inf, -math.inf], [None, None]).drop_nulls().drop_nans()
+                if finite_values.is_empty():
+                    max_val = 1.0
+                    min_val = -1.0
+                    median = 0.0
+                else:
+                    max_val = cast(float, finite_values.max()) + 1
+                    min_val = cast(float, finite_values.min()) - 1
+                    substituted = enriched.replace([math.inf, -math.inf], [max_val, min_val]).drop_nulls().drop_nans()
+                    median = cast(float, substituted.median())
                 return attrs.evolve(feature, default_for_missing=median, default_for_nan=median,
                                     default_for_infinity=max_val, default_for_neg_infinity=min_val)
             case _:
