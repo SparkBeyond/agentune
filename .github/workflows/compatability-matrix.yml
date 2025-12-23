@@ -40,7 +40,7 @@ jobs:
 
       - name: Generate development dependencies list
         run: |
-          chmod +x ./ci/scripts/generate-dev-reqs.sh
+          chmod +x ci/scripts/generate-dev-reqs.sh
           ./ci/scripts/generate-dev-reqs.sh
 
       - name: Install package (latest dependency versions)
