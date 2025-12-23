@@ -38,17 +38,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install uv
 
+      - name: Generate development dependencies list
+        run: |
+          chmod +x ./ci/scripts/generate-dev-reqs.sh
+          ./ci/scripts/generate-dev-reqs.sh
+
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
         run: |
           uv pip install --system --resolution highest --upgrade .
-          poetry install --only dev --no-root --no-update
+          uv pip install -r requirements-dev.txt
 
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
         run: |
           uv pip install --system --resolution=lowest-direct .
-          poetry install --only dev --no-root --no-update
+          uv pip install -r requirements-dev.txt
 
       - name: Run tests
         run: |
