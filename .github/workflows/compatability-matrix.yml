@@ -41,7 +41,7 @@ jobs:
       - name: Generate development dependencies list
         run: |
           chmod +x ${GITHUB_WORKSPACE}/ci/scripts/generate-dev-deps.sh
-          ./${GITHUB_WORKSPACE}/ci/scripts/generate-dev-deps.sh
+          .${GITHUB_WORKSPACE}/ci/scripts/generate-dev-deps.sh
 
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
