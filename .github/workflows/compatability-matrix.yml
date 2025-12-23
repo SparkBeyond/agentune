@@ -2,6 +2,7 @@ name: Dependency Compatability Matrix
 on:
 #  schedule:
 #    - cron: "0 3 * * *"   # daily
+  pull_request:
   workflow_dispatch:
 
 
@@ -40,14 +41,14 @@ jobs:
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
         run: |
-          poetry install --only dev
           uv pip install --system --resolution highest --upgrade .
+          poetry install --only dev --no-root --no-update
 
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
         run: |
-          poetry install --only dev
           uv pip install --system --resolution=lowest-direct .
+          poetry install --only dev --no-root --no-update
 
       - name: Run tests
         run: |
