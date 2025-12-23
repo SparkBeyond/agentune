@@ -47,13 +47,13 @@ jobs:
         if: matrix.dep-mode == 'latest'
         run: |
           uv pip install --system --resolution highest --upgrade .
-          uv pip install -r requirements-dev.txt
+          uv pip install --system -r requirements-dev.txt
 
       - name: Install package (oldest supported dependency versions)
         if: matrix.dep-mode == 'lowest'
         run: |
           uv pip install --system --resolution=lowest-direct .
-          uv pip install -r requirements-dev.txt
+          uv pip install --system -r requirements-dev.txt
 
       - name: Run tests
         run: |
