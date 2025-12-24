@@ -197,12 +197,12 @@ def test_categorical_feature(conn: DuckDBPyConnection) -> None:
 
     batch_input = Dataset(feature.params, pl.DataFrame({'key': [3, 2, 1, 3, 1]}))
     batch_expected_result = pl.Series('my feature', ['4', None, '2', '4', '2'], dtype=pl.Enum(categories=['2', '4', CategoricalFeature.other_category]))
-    batch_result = feature.compute_batch(batch_input, conn)
+    batch_result = feature.compute_batch_safe(batch_input, conn)
     assert batch_result.equals(batch_expected_result, check_names=True, check_dtypes=True)
 
     for tpe in [types.string, types.EnumDtype('2', '4', '5')]:
         feature = attrs.evolve(feature, sql_query = f'select value::{tpe.duckdb_type} from ({sql_query})')
-        assert feature.compute_batch(batch_input, conn).equals(batch_expected_result, check_names=True, check_dtypes=True), \
+        assert feature.compute_batch_safe(batch_input, conn).equals(batch_expected_result, check_names=True, check_dtypes=True), \
             'Feature returns different but compatible dtype'
 
 def test_synthetic_rowid(conn: DuckDBPyConnection) -> None:

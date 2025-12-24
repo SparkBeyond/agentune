@@ -100,7 +100,7 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
             # and it is willing to cast anything to a string or a number to a boolean.
             # It only helps in the specific case of casting a float or a bigger int to a smaller int and losing precision.
             try:
-                return result_series.cast(self.dtype.polars_type, strict=True, wrap_numerical=False).rename(self.name)
+                return result_series.cast(self.raw_dtype.polars_type, strict=True, wrap_numerical=False).rename(self.name)
             except pl.exceptions.InvalidOperationError as e:
                 raise FeatureValidationError(ComputeValidationCode.dtype,
                                              f'SQL query returned type {relation.dtypes[0]} which cannot be cast to {self.dtype.duckdb_type}: {e}') from e
