@@ -29,13 +29,15 @@ def results_iter(src: DuckDBPyConnection | DuckDBPyRelation, batch_size: int = 1
         yield from batch
 
 class ConnectionWithInit:
-    """Wrap a DuckDBPyConnection and call execute(self._statement) on on every cursor() created before returning it.
+    """Wrap a DuckDBPyConnection and call execute(self._statement) on every cursor() created before returning it.
 
     The returned cursors will also be wrapped in an instance of this class.
 
     Instances of this class are valid connections on a protocol (i.e. duck typing) level, but are not instances
     of DuckDBPyConnection according to isinstance/type and cannot be passed as arguments to duckdb functions
     expecting real connections.
+
+    Does NOT call execute(self._statement) on the original connection.
     """
     def __init__(self, conn: DuckDBPyConnection, statement: str) -> None:
         self._conn = conn
@@ -62,8 +64,12 @@ class ConnectionWithInit:
         return ConnectionWithInit(curs, self._statement)
 
     @staticmethod
-    def use(conn: DuckDBPyConnection, default_db: str) -> ConnectionWithInit:
-        return ConnectionWithInit(conn, f'USE "{default_db}"')
+    def use(conn: DuckDBPyConnection, namespace: str) -> ConnectionWithInit:
+        """Issue a USE statement when creating a cursor.
+
+        The namespace is NOT additionally quoted.
+        """
+        return ConnectionWithInit(conn, f'USE {namespace}')
 
 
 class RowidNature(Enum):
