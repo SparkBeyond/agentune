@@ -46,7 +46,10 @@ packages = [{include = "agentune"}]
 [tool.poetry.dependencies]
 python = "^3.12.6"
 duckdb = ">=1.4.1,<1.5.0"
-pyarrow = ">=19.0.1"
+pyarrow = [
+    { version = ">=19.0.1", python = "<3.14" },
+    { version = ">=22.0.0", python = ">=3.14" }
+]
 numpy = "^2.2.4"
 janus = "^2.0.0"
 polars = "^1.27.1"
