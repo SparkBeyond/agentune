@@ -6,6 +6,7 @@ from pathlib import Path
 
 def caret_to_pip(name: str, spec: str) -> str:
     """Convert Poetry caret constraints to pip-compatible ranges.
+
     Examples:
       ^1.18.2   -> >=1.18.2,<2.0.0
       ^0.12.11  -> >=0.12.11,<0.13.0
@@ -17,9 +18,9 @@ def caret_to_pip(name: str, spec: str) -> str:
     version = spec[1:]
     parts = version.split('.')
 
-    NUM_VERSION_PARTS = 3
+    num_version_parts = 3
 
-    while len(parts) < NUM_VERSION_PARTS:
+    while len(parts) < num_version_parts:
         parts.append('0')
 
     major, minor, patch = map(int, parts[:3])
@@ -35,7 +36,7 @@ def caret_to_pip(name: str, spec: str) -> str:
 
 
 def normalize_dep(name: str, spec: str) -> str:
-    "Normalize a Poetry dependency entry into pip-compatible syntax."
+    """Normalize a Poetry dependency entry into pip-compatible syntax."""
     if isinstance(spec, dict):
         spec = spec.get('version', '')
     spec = spec.strip()

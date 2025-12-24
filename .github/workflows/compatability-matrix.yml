@@ -45,7 +45,7 @@ jobs:
 
       - name: Generate development dependencies list
         run: |
-          python ${GITHUB_WORKSPACE}/ci/scripts/generate-dev-deps.py
+          python ${GITHUB_WORKSPACE}/ci/scripts/generate_dev_deps.py
 
       - name: Install package (latest dependency versions)
         if: matrix.dep-mode == 'latest'
