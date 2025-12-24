@@ -5,20 +5,21 @@ from pathlib import Path
 
 
 def caret_to_pip(name: str, spec: str) -> str:
-    '''
-    Convert Poetry caret constraints to pip-compatible ranges.
+    """Convert Poetry caret constraints to pip-compatible ranges.
     Examples:
       ^1.18.2   -> >=1.18.2,<2.0.0
       ^0.12.11  -> >=0.12.11,<0.13.0
       ^0.0.5    -> >=0.0.5,<0.0.6
-    '''
+    """
     if not spec.startswith('^'):
         return f'{name}{spec}'
 
     version = spec[1:]
     parts = version.split('.')
 
-    while len(parts) < 3:
+    NUM_VERSION_PARTS = 3
+
+    while len(parts) < NUM_VERSION_PARTS:
         parts.append('0')
 
     major, minor, patch = map(int, parts[:3])
@@ -33,10 +34,8 @@ def caret_to_pip(name: str, spec: str) -> str:
     return f'{name}>={version},<{upper}'
 
 
-def normalize_dep(name: str, spec) -> str:
-    '''
-    Normalize a Poetry dependency entry into pip-compatible syntax.
-    '''
+def normalize_dep(name: str, spec: str) -> str:
+    "Normalize a Poetry dependency entry into pip-compatible syntax."
     if isinstance(spec, dict):
         spec = spec.get('version', '')
     spec = spec.strip()
@@ -71,8 +70,6 @@ def main() -> None:
         for name, spec in dev_deps.items():
             line = normalize_dep(name, spec)
             f.write(f'{line}\n')
-
-    print(f'Generated {output} ({len(dev_deps)} dependencies)')
 
 
 if __name__ == '__main__':
