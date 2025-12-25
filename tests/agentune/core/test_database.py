@@ -212,8 +212,8 @@ def test_temp_schema(tmp_path: Path) -> None:
     with contextlib.closing(DuckdbManager.on_disk(db_file)) as ddb_manager, ddb_manager.cursor() as conn:
         temp_schema_name = DuckdbManager.temp_schema_name
 
-        name1 = ddb_manager.temp_random_name('foo bar')
-        name2 = ddb_manager.temp_random_name('foo bar')
+        name1 = ddb_manager.temp_schema_random_name('foo bar')
+        name2 = ddb_manager.temp_schema_random_name('foo bar')
         assert name1 != name2
         assert name1.schema == temp_schema_name
         assert name1.database == ddb_manager._main_database.default_name
@@ -270,3 +270,6 @@ def test_db_storage_version(tmp_path: Path) -> None:
         ddb_manager.attach(DuckdbOnDisk(tmp_path / 'duck2.db'))
         with ddb_manager.cursor() as conn:
             assert get_storage_version(conn, 'duck2') == database.required_db_version + '+'
+
+def test_temp_db(ddb_manager: DuckdbManager) -> None:
+    assert ddb_manager.databases() == {'memory': ddb_manager._main_database, DuckdbManager.temp_db_name: DuckdbInMemory()}

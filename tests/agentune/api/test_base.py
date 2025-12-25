@@ -20,7 +20,7 @@ _logger = logging.getLogger(__name__)
 async def test_runcontext_ddb(tmp_path: Path) -> None:
     async with await RunContext.create() as ctx:
         assert isinstance(ctx._ddb_manager._main_database, DuckdbInMemory)
-        assert ctx.db.databases == {'memory': ctx._ddb_manager._main_database}
+        assert ctx.db.databases == {'memory': ctx._ddb_manager._main_database, DuckdbManager.temp_db_name: DuckdbInMemory()}
         with ctx.db.cursor() as conn:
             assert conn.execute('select current_database()').fetchone() == ('memory',)
             assert conn.execute('select path from duckdb_databases() where database_name = current_database()').fetchone() == (None,)
@@ -30,7 +30,7 @@ async def test_runcontext_ddb(tmp_path: Path) -> None:
 
     async with await RunContext.create(on_disk) as ctx:
         assert ctx._ddb_manager._main_database is on_disk
-        assert ctx.db.databases == {'duck': ctx._ddb_manager._main_database}
+        assert ctx.db.databases == {'duck': ctx._ddb_manager._main_database, DuckdbManager.temp_db_name: DuckdbInMemory()}
         assert on_disk.path.exists()
         with ctx.db.cursor() as conn:
             assert conn.execute('select current_database()').fetchone() == ('duck',)
@@ -50,7 +50,7 @@ async def test_runcontext_ddb(tmp_path: Path) -> None:
     async with await RunContext.create(on_disk) as ctx:
         db2 = DuckdbOnDisk(tmp_path / 'duck2.db')
         ctx.db.attach(db2)
-        assert ctx.db.databases == {'duck': on_disk, 'duck2': db2}
+        assert ctx.db.databases == {'duck': on_disk, 'duck2': db2, DuckdbManager.temp_db_name: DuckdbInMemory()}
         with ctx.db.cursor() as conn:
             conn.execute('create table duck2.foo (i int)')
             conn.execute('insert into duck2.foo (i) values (1)')

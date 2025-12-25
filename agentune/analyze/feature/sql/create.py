@@ -1,117 +1,35 @@
+import enum
 from collections.abc import Sequence
-from typing import override
 
 import polars as pl
-from _duckdb import DuckDBPyRelation
-from attrs import define, frozen
-from duckdb import DuckDBPyConnection
+from duckdb import BinderException, DuckDBPyConnection, DuckDBPyRelation
 
 from agentune.analyze.feature.base import (
-    BoolFeature,
     CategoricalFeature,
-    FloatFeature,
-    IntFeature,
-    SqlQueryFeature,
-    SyncFeature,
 )
-from agentune.analyze.join.base import JoinStrategy
+from agentune.analyze.feature.validate.base import FeatureValidationCode, FeatureValidationError
 from agentune.core import types
 from agentune.core.database import DuckdbTable
-from agentune.core.dataset import Dataset, DatasetSourceFromDataset, duckdb_to_polars
-from agentune.core.schema import Field, Schema
+from agentune.core.dataset import Dataset
+from agentune.core.schema import Schema
 from agentune.core.types import Dtype
 
-
-def _register_input_table_with_index(conn: DuckDBPyConnection, dataset: Dataset,
-                                     primary_table_name: str, index_column_name: str) -> None:
-    input_with_index_data = dataset.data.with_row_index(index_column_name)
-    input_with_index_schema = Schema((Field(index_column_name, types.uint32), *dataset.schema.cols))
-    input_with_index = Dataset(input_with_index_schema, input_with_index_data)
-    # Go through DatasetSourceFromDataset to make the registered relation have the right duckdb schema
-    input_relation = DatasetSourceFromDataset(input_with_index).to_duckdb(conn)
-    conn.register(primary_table_name, input_relation)
-
-
-@define
-class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
-    """A feature implemented as a single SQL query.
-
-    The query can address the main table under the name self.primary_table_name.
-    It must order it by self.index_column_name.
-    These names MAY require quoting in the query.
-
-    The index_column_name MAY NOT shadow a column that appears in the 'real' primary input table, even if the query
-    doesn't use that column. This restriction may be lifted in the future.
-
-    Note that `primary_table` is a string, not a DuckdbName, because it is register()ed with the connection
-    and only names in the current catalog and schema can be registered. That means the query can't assume
-    that the original name that we are shadowing is from a different catalog or schema.
-
-    A valid query must (this is not validated here):
-    - Select FROM the ‘self.primary_table’ table
-        - A query can be valid without strictly doing this, for example by adding a projection on top:
-          SELECT a + b from (SELECT * from primary_table ... ORDER BY primary_table.rowid)
-    - Not access the `self.primary_table` in any other way
-    - Produce a result set with exactly one column, of a type valid for the current feature type:
-        - For int features, int32 or any smaller int or uint type
-        - For float features, float64 or float32
-        - For bool features, bool
-        - For categorical features, enum (of a type matching the categories list) or str
-    - Return a result set with exactly one row per input primary table row, in a matching order
-        - Sort the query by `{self.primary_table}.{self.index_column_name}` to achieve this.
-    - Be deterministic (in particular, wrt. random sampling, and the native order of secondary tables)
-    """
-    sql_query: str
-
-    primary_table_name: str
-    index_column_name: str
-
-    name: str
-    description: str
-
-    params: Schema
-    secondary_tables: tuple[DuckdbTable, ...]
-    join_strategies: tuple[JoinStrategy, ...]
-
-    @override
-    def compute_batch(self, input: Dataset, conn: DuckDBPyConnection) -> pl.Series:
-        # Separate cursor to register the main table
-        with conn.cursor() as cursor:
-            _register_input_table_with_index(cursor, input, self.primary_table_name, self.index_column_name)
-            result = duckdb_to_polars(cursor.sql(self.sql_query))
-            if result.width != 1:
-                raise ValueError(f'SQL query must return exactly one column but returned {result.width}')
-            result_series = result.to_series(0)
-            if result_series.len() != input.data.height:
-                raise ValueError(f'SQL query returned {result_series.len()} rows for {input.data.height} input rows')
-
-            # Polars Series.cast() with these args will raise an error if the cast is invalid or loses numerical precision,
-            # but only as far as the actual values go; if the result has a formal type of float64 but all the values
-            # can be represented exactly as an int32, then it is still a valid int feature.
-            # This is not a perfect defense: it will also lose precision when casting ints to floats (without raising an error),
-            # and it is willing to cast anything to a string or a number to a boolean.
-            # It only helps in the specific case of casting a float or a bigger int to a smaller int and losing precision.
-            return result_series.cast(self.dtype.polars_type, strict=True, wrap_numerical=False).rename(self.name)
+from .base import (
+    BoolSqlBackedFeature,
+    CategoricalSqlBackedFeature,
+    FloatSqlBackedFeature,
+    IntSqlBackedFeature,
+    SqlBackedFeature,
+    _register_input_table_with_index,
+)
 
 
-@frozen
-class IntSqlBackedFeature(IntFeature, SqlBackedFeature):
-    pass
-
-
-@frozen
-class FloatSqlBackedFeature(FloatFeature, SqlBackedFeature):
-    pass
-
-
-@frozen
-class BoolSqlBackedFeature(BoolFeature, SqlBackedFeature):
-    pass
-
-
-@frozen
-class CategoricalSqlBackedFeature(CategoricalFeature, SqlBackedFeature):
-    pass
+class QueryValidationCode(FeatureValidationCode):
+    shadows_index_column_name = enum.auto()
+    shadows_main_table_name = enum.auto()
+    illegal = enum.auto()
+    width = enum.auto()
+    dtype = enum.auto()
 
 
 def _relation_from_query(conn: DuckDBPyConnection,
@@ -121,19 +39,25 @@ def _relation_from_query(conn: DuckDBPyConnection,
                          index_column_name: str,
                          secondary_tables: Sequence[DuckdbTable]) -> DuckDBPyRelation:
     if index_column_name in params.names:
-        raise ValueError(f'Input data already has a column named {index_column_name}')
+        raise FeatureValidationError(QueryValidationCode.shadows_index_column_name,
+                                     f'Input data already has a column named {index_column_name}')
     if primary_table_name in [table.name.name for table in secondary_tables]:
-        raise ValueError(f"Primary table name {primary_table_name} shadows secondary table's local name")
+        raise FeatureValidationError(QueryValidationCode.shadows_main_table_name,
+                                     f"Primary table name {primary_table_name} shadows secondary table's local name")
 
     dataset = Dataset(params,
                       pl.DataFrame({
                           field.name: pl.Series(field.name, [], field.dtype.polars_type) for field in params.cols
                       }))
     _register_input_table_with_index(conn, dataset, primary_table_name, index_column_name)
-    relation = conn.sql(sql_query)
+    try:
+        relation = conn.sql(sql_query)
+    except BinderException as e:
+        raise FeatureValidationError(QueryValidationCode.illegal,
+                                     f'Illegal query: {e}') from e
 
     if len(relation.types) != 1:
-        raise ValueError(
+        raise FeatureValidationError(QueryValidationCode.width,
             f'SQL query must return exactly one column but returned {len(relation.types)}: {relation.columns}')
 
     return relation
@@ -241,7 +165,8 @@ def feature_from_query(conn: DuckDBPyConnection,
                                                default_for_missing=CategoricalFeature.other_category,
                                                categories=dtype.values)
         else:
-            raise ValueError(f'SQL query returned unsupported type {dtype}')
+            raise FeatureValidationError(QueryValidationCode.dtype,
+                                         f'SQL query returned unsupported type {dtype.duckdb_type}')
 
 
 def int_feature_from_query(conn: DuckDBPyConnection,
@@ -272,7 +197,8 @@ def int_feature_from_query(conn: DuckDBPyConnection,
                                        technical_description=technical_description,
                                        default_for_missing=default_for_missing)
         else:
-            raise ValueError(f'SQL query returned type {dtype} and not an integer type')
+            raise FeatureValidationError(QueryValidationCode.dtype,
+                                         f'SQL query returned type {dtype.duckdb_type} and not an integer type')
 
 
 def bool_feature_from_query(conn: DuckDBPyConnection,
@@ -302,7 +228,8 @@ def bool_feature_from_query(conn: DuckDBPyConnection,
                                         name=name, description=description, technical_description=technical_description,
                                         default_for_missing=default_for_missing)
         else:
-            raise ValueError(f'SQL query returned type {dtype} and not boolean')
+            raise FeatureValidationError(QueryValidationCode.dtype,
+                                         f'SQL query returned type {dtype.duckdb_type} and not boolean')
 
 
 def float_feature_from_query(conn: DuckDBPyConnection,
@@ -338,7 +265,8 @@ def float_feature_from_query(conn: DuckDBPyConnection,
                                          default_for_infinity=default_for_infinity,
                                          default_for_neg_infinity=default_for_neg_infinity)
         else:
-            raise ValueError(f'SQL query returned type {dtype} and not float or double')
+            raise FeatureValidationError(QueryValidationCode.dtype,
+                                         f'SQL query returned type {dtype.duckdb_type} and not float or double')
 
 
 def categorical_feature_from_query(conn: DuckDBPyConnection,
@@ -382,4 +310,5 @@ def categorical_feature_from_query(conn: DuckDBPyConnection,
                                                default_for_missing=default_for_missing,
                                                categories=dtype.values)
         else:
-            raise ValueError(f'SQL query returned type {dtype} and not varchar or enum')
+            raise FeatureValidationError(QueryValidationCode.dtype,
+                                         f'SQL query returned type {dtype.duckdb_type} and not varchar or enum')
