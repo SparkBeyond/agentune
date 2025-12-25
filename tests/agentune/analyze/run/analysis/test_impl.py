@@ -241,13 +241,22 @@ def test_update_feature_defaults() -> None:
     float_feature = _TestFloatFeature('f1', default_for_missing=math.inf, default_for_nan=math.inf,
                                       default_for_infinity=math.inf, default_for_neg_infinity=math.inf)
 
-    adjusted_float_feature = runner._update_feature_defaults(float_feature, pl.Series([-1.0, 0.0, 1.0]))
-    assert isinstance(adjusted_float_feature, FloatFeature)
-    assert adjusted_float_feature.default_for_missing == 0.0
-    assert adjusted_float_feature.default_for_nan == 0.0
-    assert adjusted_float_feature.default_for_infinity == 2.0
-    assert adjusted_float_feature.default_for_neg_infinity == -2.0
-    assert type(adjusted_float_feature) is type(float_feature)
+    def dotest_defaults(enriched: pl.Series,
+                        expected_default_for_missing: float, expected_default_for_nan: float,
+                        expected_default_for_infinity: float, expected_default_for_neg_infinity: float) -> None:
+        adjusted_float_feature = runner._update_feature_defaults(float_feature, enriched)
+        assert isinstance(adjusted_float_feature, FloatFeature)
+        assert adjusted_float_feature.default_for_missing == expected_default_for_missing, 'Default for missing'
+        assert adjusted_float_feature.default_for_nan == expected_default_for_nan, 'default for nan'
+        assert adjusted_float_feature.default_for_infinity == expected_default_for_infinity, 'default for infinity'
+        assert adjusted_float_feature.default_for_neg_infinity == expected_default_for_neg_infinity, 'default for neg infinity'
+        assert type(adjusted_float_feature) is type(float_feature)
+
+    dotest_defaults(pl.Series([-1.0, 0.0, 1.0]), 0.0, 0.0, 2.0, -2.0)
+
+    # Median is calculated here as median(-5, -1, (omitted), max+1=4, 2, 3, 0, (omitted), 1) = median(-5, -5, 0, 1, 2, 3, 4) = 1
+    dotest_defaults(pl.Series([-5.0, -1.0, math.nan, math.inf, 2.0, 3.0, 0.0, None, 1.0]),
+                    1.0, 1.0, 4.0, -6.0)
 
     bool_feature = _TestBoolFeature('b1', default_for_missing=True)
     adjusted_bool_feature = runner._update_feature_defaults(bool_feature, pl.Series([True, False, True]))
