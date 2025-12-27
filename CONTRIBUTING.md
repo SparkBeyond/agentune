@@ -1,5 +1,31 @@
 # Contributing to Agentune
 
+## Development Setup
+
+**Prerequisites:** Python 3.12.6+, Poetry
+
+```bash
+git clone https://github.com/SparkBeyond/agentune.git
+cd agentune
+poetry install
+poetry install --with dev,examples  # for full dev environment
+```
+
+## Running Tests
+
+```bash
+poetry run pytest
+poetry run pytest -m "not integration"  # skip integration tests
+```
+
+## Code Quality
+
+```bash
+poetry run ruff check .     # linting
+poetry run ruff format .    # formatting
+poetry run mypy .          # type checking
+```
+
 ## Commit Message Format
 
 We follow [Conventional Commits](https://www.conventionalcommits.org/) for clear, consistent commit history.
