@@ -43,7 +43,7 @@ class LawAndOrderValidator(FeatureValidator):
     - No errors are raised
     - Feature does not always return null, or always NaN, or always the same value
     - Feature does not access input or secondary columns that it does not declare
-    - Output is the same per row regarding of the (natural) ordering of the input table
+    - Output is the same per row regardless of the (natural) ordering of the input table
 
     Does not check if the feature depends on the natural ordering of any of the secondary tables.
     Reordering the secondary tables without making a full copy of each or defining a query that reads and fully sorts each
