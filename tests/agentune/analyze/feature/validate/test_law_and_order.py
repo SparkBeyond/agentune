@@ -106,3 +106,11 @@ async def test_order(conn: DuckDBPyConnection) -> None:
     feature3 = attrs.evolve(feature, sql_query = 'select i - lag(i) over () from primary_table order by primary_table.rowid')
     with pytest.raises(FeatureValidationError, match='reordered'):
         await LawAndOrderValidator().validate(feature3, dataset, conn)
+
+async def test_row_by_row(conn: DuckDBPyConnection) -> None:
+    _, _, _, dataset, feature = _setup(conn,
+                                       '''select (table1.key + count(*) over ())::integer
+                                         from table1
+                                         order by table1.rowid''')
+    with pytest.raises(FeatureValidationError, match='row-by-row'):
+        await LawAndOrderValidator().validate(feature, dataset, conn)

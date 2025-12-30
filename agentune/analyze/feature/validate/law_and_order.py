@@ -1,3 +1,4 @@
+import asyncio
 import enum
 import math
 import random
@@ -133,7 +134,7 @@ class LawAndOrderValidator(FeatureValidator):
     async def _test_row_by_row(self, feature: Feature, input: Dataset, conn: DuckDBPyConnection,
                                all_rows_result: pl.Series) -> None:
         row_indexes = set(random.Random(42).sample(range(input.data.height), min(self.rows_to_compute_individually, input.data.height)))
-        for index in row_indexes:
+        async def check_row(index: int) -> None:
             args_by_name = input.data.row(index, named=True)
             args = tuple(args_by_name[name] for name in feature.params.names)
             row_result = await self._acompute(feature, args, conn)
@@ -142,6 +143,8 @@ class LawAndOrderValidator(FeatureValidator):
                 raise FeatureValidationError(LawAndOrderValidationCode.row_by_row,
                                              f'Row-by-row computation differs from batch computation: for inputs {args}, '
                                             f'row-by-row result was {row_result} and batch result was {all_rows_result[index]}')
+
+        await asyncio.gather(*[check_row(index) for index in row_indexes])
 
     async def _test_input_order(self, feature: Feature, input: Dataset, conn: DuckDBPyConnection,
                                 all_rows_result: pl.Series) -> None:
