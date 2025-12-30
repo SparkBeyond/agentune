@@ -56,6 +56,9 @@ class LawAndOrderValidator(FeatureValidator):
 
     @override
     async def validate(self, feature: Feature, input: Dataset, conn: DuckDBPyConnection) -> None:
+        if input.height <= 1:
+            raise ValueError('At least 2 input rows are required for validation')
+
         with self._with_limited_schema(feature, conn) as cursor:
             input = input.select(*feature.params.names)
 
