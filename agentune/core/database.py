@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import random
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, cast, override
 
@@ -354,17 +355,26 @@ class DuckdbManager:
     - 'system', 'temp': reserved by duckdb
     - 'memory': this is the (unchangeable) name used by the primary database, if it's in-memory. To avoid confusion,
                 it cannot be used for on-disk databases, or for secondary databases attached later (even if they're in-memory).
+    - 'agentune_temp_db': used by this library for temporary views. This is an in-memory database attached whenever this class
+                          is instantiated, and discarded when it is closed.
+                          Do not place any data in here, unless it has a statically known small size; use the agentune_temp_schema
+                          for that, which is in the main database.
+                          This is useful for creating entire schemas which are automatically discarded even if the process exits.
+                          This database is not created if the primary database is read-only.
+
+                          Code should use `DuckdbManager.temp_db_name`, not the literal name.
 
     The following schema names are reserved:
 
     - 'main': the default schema created with every database; code should not try to delete it or (re)create it
     - 'information_schema', 'pg_catalog': reserved by duckdb
-    - 'agentune_temp': used by this library for temporary tables and views. This schema is created (empty) when this class
-                       connects to a primary database (unless in read-only mode). It is dropped on exit. It is also dropped
-                       with all its contents if we discover it exists on start-up (left over from a previous run).
-                       This schema is not created in databases attached later.
+    - 'agentune_temp_schema': used by this library for temporary tables and views. This schema is created (empty) when this class
+                              connects to a primary database (unless in read-only mode). It is dropped on exit. It is also dropped
+                              with all its contents if we discover it exists on start-up (left over from a previous run).
+                              This schema is not created in databases attached later.
+                              This schema is not created if the primary database is read-only.
 
-                       Code should use `DuckdbManager.temp_schema_name`, not the literal name.
+                              Code should use `DuckdbManager.temp_schema_name`, not the literal name.
 
     See also docs/using_duckdb.md and docs/duckdb.md.
     """
@@ -378,7 +388,8 @@ class DuckdbManager:
     # Deliberately no fixed seed to make sure we don't rely on it.
     # This is threadsafe, if a bit slow under concurrent access.
 
-    temp_schema_name: ClassVar[str] = 'agentune_temp'
+    temp_schema_name: ClassVar[str] = 'agentune_temp_schema'
+    temp_db_name: ClassVar[str] = 'agentune_temp_db'
 
     def __init__(self, main_database: DuckdbDatabase, config: DuckdbConfig = DuckdbConfig()):
         agentune.core.setup.setup()
@@ -394,9 +405,10 @@ class DuckdbManager:
         # self._conn.load_extension('spatial')
 
         self._init_temp_schema()
+        if not self._main_database.read_only:
+            self.attach(DuckdbInMemory(), DuckdbManager.temp_db_name)
 
-
-    def temp_random_name(self, basename: str) -> DuckdbName:
+    def temp_schema_random_name(self, basename: str) -> DuckdbName:
         """Return a new, unused name in the temp schema, using the given basename with a random suffix."""
         name =  self.random_name(basename)
         return DuckdbName(name, self._main_database.default_name, DuckdbManager.temp_schema_name)
@@ -499,3 +511,30 @@ class DuckdbManager:
     def create_table(self, table: DuckdbTable) -> None:
         with self.cursor() as conn:
             table.create(conn)
+
+
+@contextlib.contextmanager
+def temp_schema(conn: DuckDBPyConnection, basename: str) -> Iterator[str]:
+    """Create an empty schema with a random name (starting with basename) and drop it at the end of the context.
+
+    The schema is created in the dedicated in-memory temp db that DuckdbManager provides.
+    You must NOT store any data here unless it is of a statically known, very small size.
+
+    Creating a temp schema is meant to isolate different concurrent code. Note that the duckdb name binder
+    looks in other schemas in the current catalog if it cannot resolve a bare (unqualified) name.
+
+    This is NOT a temporary schema in the sense of a temporary table or view: it is not scoped to a connection.
+
+    The returned value contains both the catalog and schema prefix, e.g. `agentune_temp_db.basename_12341`.
+    """
+    # Use a cursor so that if the original connection is closed inside the context we still have a connection we can use
+    # to drop the schema
+    with conn.cursor() as curr:
+        temp_schema_name = DuckdbManager.random_name(basename)
+        name = f'{DuckdbManager.temp_db_name}."{temp_schema_name}"'
+        curr.execute(f'create schema {name}')
+        try:
+            yield name
+        finally:
+            curr.execute(f'drop schema {name} cascade')
+

@@ -187,7 +187,7 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
                     match basename:
                         case str(): return DuckdbName.qualify(ddb_manager.random_name(basename), conn)
                         case DuckdbName(): return attrs.evolve(basename, name=ddb_manager.random_name(basename.name))
-                case None: return ddb_manager.temp_random_name(default_basename)
+                case None: return ddb_manager.temp_schema_random_name(default_basename)
 
     def _deduplicate_generated_feature_names(self, features: Sequence[GeneratedFeature],
                                              existing_names: Sequence[str] = ()) -> list[GeneratedFeature]:
@@ -266,7 +266,7 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
             with ddb_manager.cursor() as conn:
                 for index, feature_group in enumerate(feature_groups):
                     keep_input_columns = (target_column,) if index == 0 else ()
-                    group_table_name = ddb_manager.temp_random_name(target_table_base_name)
+                    group_table_name = ddb_manager.temp_schema_random_name(target_table_base_name)
                     dataset_sink = DatasetSink.into_duckdb_table(group_table_name)
                     await components.enrich_runner.run_stream([gen.feature for gen in feature_group],
                                                               dataset_source, dataset_sink, components.feature_computers,
