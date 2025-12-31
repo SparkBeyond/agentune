@@ -278,3 +278,26 @@ def test_numeric_histograms_in_classification() -> None:
     
     # Verify the histogram actually represents the feature distribution
     assert sum(stats.histogram_counts) == len(feature_values)
+
+
+def test_histogram_with_infinite_values() -> None:
+    """Test histogram creation with infinite values."""
+    values = [1.0, 2.0, float('inf'), float('-inf'), float('inf'), None, 3.0]
+    stats = NumericStatsCalculator(n_histogram_bins=2).calculate_from_series(
+        MockFloatFeature(), pl.Series('test', values)
+    )
+    
+    # Verify counts
+    assert stats.n_total == 7
+    assert (stats.n_finite, stats.n_positive_infinite, stats.n_negative_infinite) == (3, 2, 1)
+    
+    # Verify histogram structure and edges
+    assert len(stats.histogram_counts) == 2
+    assert stats.histogram_bin_edges[0] == float('-inf')
+    assert stats.histogram_bin_edges[-1] == float('inf')
+    
+    # Verify total counts matches valid values (6 non-null items)
+    assert sum(stats.histogram_counts) == 6
+    # Ensure infinite values ended up in the outer bins
+    assert stats.histogram_counts[0] >= 1  # includes -inf
+    assert stats.histogram_counts[1] >= 2  # includes +inf
