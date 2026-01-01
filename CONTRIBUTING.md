@@ -14,8 +14,8 @@ poetry install --with dev,examples  # for full dev environment
 ## Running Tests
 
 ```bash
-poetry run pytest
-poetry run pytest -m "not integration"  # skip integration tests
+poetry run pytest                        # run  unit tests (integration tests skipped by default)
+poetry run pytest -m integration         # run  integration tests (requires OPENAI_API_KEY env var)
 ```
 
 ## Code Quality
@@ -70,7 +70,7 @@ Fixes #248
 
 ### Rules
 
-- **Subject line**: ≤50 characters, imperative mood ("add" not "added"), no period
+- **Subject line**: Keep concise (ideally ≤50 chars), use imperative mood ("add" not "added")
 - **Body**: Explain *why*, not *what*. Write naturally with line breaks for readability.
 - **Footer**: Reference issues with `Fixes #123` or `Closes #456`
 
