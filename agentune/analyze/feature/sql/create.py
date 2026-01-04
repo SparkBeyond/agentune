@@ -137,7 +137,7 @@ def feature_from_query(conn: DuckDBPyConnection,
                                          technical_description=technical_description,
                                          default_for_missing=0.0, default_for_nan=0.0, default_for_infinity=0.0,
                                          default_for_neg_infinity=0.0)
-        elif dtype in [types.int8, types.uint8, types.int16, types.uint16, types.int32]:
+        elif dtype in [types.int8, types.uint8, types.int16, types.uint16, types.int32, types.uint32, types.int64]:
             return IntSqlBackedFeature(sql_query=sql_query,
                                        params=params, secondary_tables=tuple(secondary_tables), join_strategies=(),
                                        primary_table_name=primary_table_name, index_column_name=index_column_name,
@@ -189,7 +189,7 @@ def int_feature_from_query(conn: DuckDBPyConnection,
         technical_description = technical_description or sql_query
 
         dtype = Dtype.from_duckdb(relation.types[0])
-        if dtype in [types.int8, types.uint8, types.int16, types.uint16, types.int32]:
+        if dtype in [types.int8, types.uint8, types.int16, types.uint16, types.int32, types.uint32, types.int64]:
             return IntSqlBackedFeature(sql_query=sql_query,
                                        params=params, secondary_tables=tuple(secondary_tables), join_strategies=(),
                                        primary_table_name=primary_table_name, index_column_name=index_column_name,

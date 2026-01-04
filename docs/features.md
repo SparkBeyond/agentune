@@ -10,7 +10,7 @@ They are not called 'features' in this codebase.
 
 ## Feature types
 
-There are four feature types currently defined: int, float, bool, and categorical. Int features return signed int32 values.
+There are four feature types currently defined: int, float, bool, and categorical. Int features return signed int64 values.
 Float features return float64 values (including nan and +/- inf).
 
 Categorical features return string values out of a known list (given by `feature.categories`) and an extra, special value
