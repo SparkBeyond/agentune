@@ -13,6 +13,7 @@ import httpx
 import pytest
 from duckdb import DuckDBPyConnection
 
+from agentune.api.base import RunContext
 from agentune.api.defaults import create_default_httpx_async_client
 from agentune.core.database import DuckdbManager
 from agentune.core.llm import LLMContext
@@ -88,3 +89,9 @@ def llm_context_nocache(httpx_async_client: httpx.AsyncClient) -> LLMContext:
 @pytest.fixture
 def ser_context(llm_context: LLMContext) -> SerializationContext:
     return SerializationContext(llm_context)
+
+@pytest.fixture
+async def ctx() -> AsyncIterator[RunContext]:
+    async with await RunContext.create() as ctx:
+        yield ctx
+

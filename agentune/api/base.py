@@ -27,6 +27,7 @@ from agentune.core.llmcache.sqlite_lru import ConnectionProviderFactory, SqliteL
 from agentune.core.progress.reporters.base import ProgressReporter, progress_setup
 from agentune.core.progress.reporters.log import LogReporter
 from agentune.core.sercontext import SerializationContext
+from agentune.core.util import asyncref
 from agentune.core.util.lrucache import LRUCache
 
 if typing.TYPE_CHECKING:
@@ -158,6 +159,7 @@ class RunContext:
                                Can receive an instance of the ProgressReporter implementation. Can be disabled by passing None.
         """
         components = AsyncExitStack()
+        await components.enter_async_context(asyncref.store_asyncio_event_loop())
 
         match duckdb:
             case DuckdbDatabase() as db:

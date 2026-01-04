@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
-from collections.abc import Iterator
+import datetime
+from collections.abc import Generator, Iterator
 from enum import Enum
 from typing import Any, Self
 
 import duckdb
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
+
+from agentune.core.util import asyncref
 
 
 @contextlib.contextmanager
@@ -97,3 +101,39 @@ def test_rowid_nature(conn: DuckDBPyConnection, name: str) -> RowidNature:
             return RowidNature.PSEUDOCOLUMN
         except duckdb.BinderException:
             return RowidNature.NONE
+
+@contextlib.contextmanager
+def conn_timeout(conn: DuckDBPyConnection, timeout: datetime.timedelta) -> Generator[None, None, None]:
+    """After a timeout, interrupts the ongoing query on this connection, unless the context is exited first.
+
+    WARNING this is meant to work in a very specific situation:
+    1. There is going to be a single execute() or fetchall() call inside the context.
+       If there are multiple calls (eg a loop calling fetchmany() on a relation, or additional python code),
+       the interruption might not happen when the thread is blocked on reading from the connection,
+       in which case the interruption won't do anything and time spent inside the context could exceed the timeout.
+    2. This connection object is going to be used, not any cursors created from it. In particular, cursors won't be
+       created in order to pass them to other threads with asyncio.to_tread.
+       The interruption will only affect the original connection object.
+       (We can lift this requirement by registering additional connections to interrupt
+       in a ConnectionWithInit-based implementation, but it does not seem useful right now.)
+    3. The asyncio thread's event loop has been stored by calling asyncref.store_asyncio_event_loop, so that
+       the current (presumably synchronous) thread can access it. This happens automatically inside a RunContext,
+       so all our production code can assume this is the case.
+
+    This function is meant to be called on a sync thread in the asyncio threadpool, and will raise an error if it is called
+    on an async thread.
+    """
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+    if running_loop is not None:
+        raise RuntimeError('This must not be called on an async thread; the blocking operation on the connection '
+                           'will block the async thread from carrying out the timeout')
+
+
+    def interrupt() -> None:
+        conn.interrupt()
+
+    with asyncref.on_timeout(timeout, interrupt):
+        yield

@@ -1,9 +1,16 @@
+
+import asyncio
+import datetime
+import time
+
 import duckdb
+import duckdb.sqltypes
 import pytest
 from duckdb import DuckDBPyConnection
 
+from agentune.api.base import RunContext
 from agentune.core.util import duckdbutil
-from agentune.core.util.duckdbutil import ConnectionWithInit, RowidNature
+from agentune.core.util.duckdbutil import ConnectionWithInit, RowidNature, conn_timeout
 
 
 def test_connection_use(conn: DuckDBPyConnection) -> None:
@@ -49,4 +56,39 @@ def test_rowid_nature(conn: DuckDBPyConnection) -> None:
     df = conn.table('tab1').pl()
     conn.register('df', df)
     assert duckdbutil.test_rowid_nature(conn, 'df') == RowidNature.NONE
+
+
+async def test_with_timeout() -> None:
+    async with await RunContext.create() as ctx:
+        with ctx.db.cursor() as conn:
+            def slow(i: int) -> int:
+                time.sleep(0.01)
+                return i + 1
+
+            conn.create_function('slow', slow, [duckdb.sqltypes.INTEGER], duckdb.sqltypes.INTEGER)
+
+            def timeit(timeout: datetime.timedelta) -> float:
+                with conn_timeout(conn, timeout):
+                    start = time.time()
+                    conn.sql('select slow(t.i::integer) from unnest(range(10)) as t(i)').fetchall()
+                    elapsed = time.time() - start
+                    return elapsed
+
+            # Have to do it on another thread so the current async thread isn't blocked from executing the timeout timer
+            async def timeit_in_thread(timeout: datetime.timedelta) -> float:
+                return await asyncio.to_thread(timeit, timeout)
+
+            # Doesn't timeout with large enough timeout
+            assert await timeit_in_thread(datetime.timedelta(seconds=1)) >= 0.1
+
+            # Can't invoke directly on async thread
+            with pytest.raises(RuntimeError, match='must not be called on an async thread'):
+                with conn_timeout(conn, datetime.timedelta(seconds=0.01)):
+                    pass
+
+            # Works on sync thread
+            with pytest.raises(duckdb.InterruptException):
+                await timeit_in_thread(datetime.timedelta(seconds=0.01))
+
+
 
