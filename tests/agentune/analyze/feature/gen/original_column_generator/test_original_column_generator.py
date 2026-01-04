@@ -6,6 +6,7 @@ import polars as pl
 
 from agentune.analyze.feature.gen.original_column_generator.features import (
     OriginalBoolFeature,
+    OriginalCategoricalFeature,
     OriginalFloatFeature,
     OriginalIntFeature,
 )
@@ -56,56 +57,59 @@ def test_original_columns_generator_basics() -> None:
     assert 'constant_col' not in feature_map
 
 
-def test_original_columns_skipping_types() -> None:
-    """Test that various unsupported column types are properly skipped.
-    
-    This includes temporal, nested, enum, string, and mixed types - all of which
-    are not yet supported by the basic OriginalColumnsGenerator.
-    """
+def test_original_columns_categorical_types() -> None:
+    """Test that supported column types are properly included."""
+    n_rows = 100
+    df = pl.DataFrame({
+        # Enum type - should be included
+        'enum_col': (['red', 'blue', 'green'] * 34)[:n_rows],
+
+        # String with low cardinality - should be included
+        'low_card_string': (['cat', 'dog', 'bird'] * 34)[:n_rows],
+    }).with_columns(
+        pl.col('enum_col').cast(pl.Enum(['red', 'blue', 'green', 'yellow']))
+    )
+
+    feature_map = _generate_features(df)
+
+    assert 'enum_col' in feature_map
+    assert isinstance(feature_map['enum_col'], OriginalCategoricalFeature)
+
+    assert 'low_card_string' in feature_map
+    assert isinstance(feature_map['low_card_string'], OriginalCategoricalFeature)
+
+
+def test_original_columns_skipped_types() -> None:
+    """Test that unsupported column types are properly skipped."""
     from datetime import date
-    
-    # Create a dataset with many different column types
+
     n_rows = 100
     df = pl.DataFrame({
         # Temporal types - should be skipped
         'date_col': [date(2020, 1, 1), date(2020, 1, 2)] * 50,
-        
+
         # Nested types - should be skipped
         'list_col': [[1, 2], [3, 4]] * 50,
         'struct_col': [{'a': 1}, {'a': 2}] * 50,
-        
-        # Enum type - should be skipped (not yet supported)
-        'enum_col': (['red', 'blue', 'green'] * 34)[:n_rows],
-        
-        # String with low cardinality (<9 distinct) - should be skipped (not yet supported)
-        'low_card_string': (['cat', 'dog', 'bird'] * 34)[:n_rows],
-        
-        # String with high cardinality (>100 distinct) - should be skipped (not yet supported)
+
+        # String with high cardinality - should be skipped (poor coverage)
         'high_card_string': [f'value_{i}' for i in range(n_rows)],
-        
-        # Valid numeric column - should be included
+
+        # Valid numeric column for reference
         'valid_col': list(range(n_rows))
-    }).with_columns(
-        pl.col('enum_col').cast(pl.Enum(['red', 'blue', 'green', 'yellow']))
-    )
+    })
     
     feature_map = _generate_features(df)
     
-    # Temporal types should be skipped
+    # Temporal and nested types should be skipped
     assert 'date_col' not in feature_map
-    
-    # Nested types should be skipped
     assert 'list_col' not in feature_map
     assert 'struct_col' not in feature_map
-    
-    # Enum should be skipped (not yet supported in basic version)
-    assert 'enum_col' not in feature_map
-    
-    # String types should be skipped (not yet supported in basic version)
-    assert 'low_card_string' not in feature_map
+
+    # String with poor coverage should be skipped
     assert 'high_card_string' not in feature_map
-    
-    # Valid numeric column should be included
+
+    # Valid numeric column should be included (for reference)
     assert 'valid_col' in feature_map
     assert isinstance(feature_map['valid_col'], OriginalIntFeature)
 
@@ -120,9 +124,9 @@ def test_original_columns_with_special_values() -> None:
         'float_with_nan': [1.0, 2.0, float('nan'), 4.0, 5.0],
         'float_with_all': [1.0, None, float('inf'), float('-inf'), float('nan')],
     })
-    
+
     feature_map = _generate_features(df)
-    
+
     # All columns should be generated (not skipped due to special values)
     assert 'int_with_nulls' in feature_map
     assert 'float_with_nulls' in feature_map
@@ -130,15 +134,58 @@ def test_original_columns_with_special_values() -> None:
     assert 'float_with_neg_inf' in feature_map
     assert 'float_with_nan' in feature_map
     assert 'float_with_all' in feature_map
-    
+
     # Verify correct feature types
     assert isinstance(feature_map['int_with_nulls'], OriginalIntFeature)
     assert isinstance(feature_map['float_with_nulls'], OriginalFloatFeature)
     assert isinstance(feature_map['float_with_inf'], OriginalFloatFeature)
-    
+
     # Verify features have default values defined (even though has_good_defaults=False)
     float_feature = feature_map['float_with_all']
     assert hasattr(float_feature, 'default_for_missing')
     assert hasattr(float_feature, 'default_for_nan')
     assert hasattr(float_feature, 'default_for_infinity')
     assert hasattr(float_feature, 'default_for_neg_infinity')
+
+
+def test_categorical_columns() -> None:
+    """Test enum and string categorical column handling."""
+    # Enum: uses all schema-defined categories
+    # String with good coverage: top K categories (no order guarantee)
+    # String with poor coverage: skipped
+    n_rows = 200
+    
+    # Create distinct categories for 'status' to test top-9 limit
+    # 9 categories with 20 rows each (180 total)
+    top_categories = [f'top_{i}' for i in range(9) for _ in range(20)]
+    # 11 categories with ~1-2 rows each (20 total)
+    avg_categories = [f'low_{i}' for i in range(11) for _ in range(2)]
+    # crop to 200
+    status_col = (top_categories + avg_categories)[:n_rows]
+    
+    df = pl.DataFrame({
+        'color': (['red', 'blue', 'green'] * 70)[:n_rows],
+        'status': status_col,
+        'high_cardinality': [f'value_{i}' for i in range(n_rows)]
+    }).with_columns(
+        pl.col('color').cast(pl.Enum(['red', 'blue', 'green', 'yellow']))
+    )
+
+    feature_map = _generate_features(df)
+
+    # Enum: should include all schema-defined categories
+    assert 'color' in feature_map
+    assert isinstance(feature_map['color'], OriginalCategoricalFeature)
+    assert feature_map['color'].categories == ('red', 'blue', 'green', 'yellow')
+    
+    # String with good coverage: should be truncated to top 9 categories
+    assert 'status' in feature_map
+    assert isinstance(feature_map['status'], OriginalCategoricalFeature)
+    assert len(feature_map['status'].categories) == 9
+    
+    # Verify that the top categories are indeed the ones selected
+    expected_top = {f'top_{i}' for i in range(9)}
+    assert set(feature_map['status'].categories) == expected_top
+    
+    # String with poor coverage: should be skipped
+    assert 'high_cardinality' not in feature_map

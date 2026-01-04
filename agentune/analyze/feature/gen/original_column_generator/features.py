@@ -7,6 +7,7 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.feature.base import (
     SyncBoolFeature,
+    SyncCategoricalFeature,
     SyncFeature,
     SyncFloatFeature,
     SyncIntFeature,
@@ -64,3 +65,8 @@ class OriginalFloatFeature(OriginalColumnFeature[float], SyncFloatFeature):
 @frozen
 class OriginalBoolFeature(OriginalColumnFeature[bool], SyncBoolFeature):
     """Boolean feature that passes through an original column."""
+
+
+@frozen
+class OriginalCategoricalFeature(OriginalColumnFeature[str], SyncCategoricalFeature):
+    """Categorical feature that passes through an original column."""
