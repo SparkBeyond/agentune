@@ -43,13 +43,13 @@ def detect_int_type(data: pl.Series, max_error_percentage: float) -> types.Dtype
         max_error_percentage: Maximum allowed percentage of values that can fail to cast to int (e.g., 0.05 = 5%)
         
     Returns:
-        types.int32 if data is detected as integer, None otherwise
+        types.int64 if data is detected as integer, None otherwise
     """
-    int_series = data.cast(pl.Int32, strict=False)
+    int_series = data.cast(pl.Int64, strict=False)
     # count null values after casting
     n_nulls = int_series.null_count()
     if n_nulls <= len(data) * max_error_percentage:
-        return types.int32    
+        return types.int64
     return None
 
 

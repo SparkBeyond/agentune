@@ -260,7 +260,7 @@ class ConversationQueryFeatureGenerator(FeatureGenerator):
             except (ValueError, TypeError, AssertionError, RuntimeError) as e:
                 logger.warning(f'Failed to cast query "{query.name}" to categorical, skipping: {e}')
                 return None
-        if not ((dtype in [types.boolean, types.int32, types.float64]) or isinstance(dtype, types.EnumDtype)):
+        if not ((dtype in [types.boolean, types.int64, types.float64]) or isinstance(dtype, types.EnumDtype)):
             raise ValueError(f'Invalid dtype: {dtype}')
 
         return Query(name=query.name,

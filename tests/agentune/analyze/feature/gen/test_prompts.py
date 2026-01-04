@@ -116,7 +116,7 @@ class TestQuestionnairePrompts:
             target_desired_outcome=5
         )
         
-        target_field = Field('quality_score', types.int32)
+        target_field = Field('quality_score', types.int64)
         problem = ClassificationProblem(problem_description, target_field, classes=(1, 2, 3, 4, 5))
         
         # Call questionnaire_prompt_context with correct parameters
@@ -193,7 +193,7 @@ class TestQuestionnairePrompts:
             target_desired_outcome=RegressionDirection.down
         )
         
-        target_field = Field('response_time', types.int32)
+        target_field = Field('response_time', types.int64)
         problem = RegressionProblem(problem_description, target_field)
         
         # Call questionnaire_prompt_context with correct parameters
@@ -305,7 +305,7 @@ class TestPromptSpecificFeatures:
         # Create some existing queries
         existing_queries = [
             Query(name='existing_q1', query_text='What is the customer sentiment? (e.g positive, negative, neutral)', return_type=types.string),
-            Query(name='existing_q2', query_text='How many products were mentioned? (e.g 1, 2, 3)', return_type=types.int32)
+            Query(name='existing_q2', query_text='How many products were mentioned? (e.g 1, 2, 3)', return_type=types.int64)
         ]
         
         context = questionnaire_prompt_context(
@@ -362,7 +362,7 @@ class TestPromptSpecificFeatures:
         # Create some existing queries
         existing_queries = [
             Query(name='existing_q1', query_text='What is the customer sentiment? (e.g positive, negative, neutral)', return_type=types.string),
-            Query(name='existing_q2', query_text='How many products were mentioned? (e.g 1, 2, 3)', return_type=types.int32)
+            Query(name='existing_q2', query_text='How many products were mentioned? (e.g 1, 2, 3)', return_type=types.int64)
         ]
         
         context = questionnaire_prompt_context(
@@ -419,9 +419,9 @@ class TestGetOutputInstructions:
         assert 'boolean value (true or false)' in result
         assert f'"{PARSER_OUT_FIELD}": true' in result
 
-    def test_int32_dtype(self) -> None:
-        """Test output instructions for int32 dtype."""
-        result = get_output_instructions(types.int32)
+    def test_int64_dtype(self) -> None:
+        """Test output instructions for int64 dtype."""
+        result = get_output_instructions(types.int64)
         
         assert 'integer value' in result
         assert f'"{PARSER_OUT_FIELD}": 42' in result
