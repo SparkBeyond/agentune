@@ -41,7 +41,7 @@ def test_dataset_with_strategy(test_data_conversations: dict[str, Path], conn: D
     
     # Create schemas
     main_schema = Schema((
-        Field(name='id', dtype=dtypes.int32),
+        Field(name='id', dtype=dtypes.int64),
         Field(name='outcome', dtype=dtypes.EnumDtype(*main_df['outcome'].unique().to_list())),
         Field(name='outcome_description', dtype=dtypes.string),
     ))
@@ -51,7 +51,7 @@ def test_dataset_with_strategy(test_data_conversations: dict[str, Path], conn: D
 
     # Create secondary table schema
     secondary_schema = Schema((
-        Field(name='id', dtype=dtypes.int32),
+        Field(name='id', dtype=dtypes.int64),
         Field(name='timestamp', dtype=dtypes.timestamp),
         Field(name='role', dtype=dtypes.string),
         Field(name='content', dtype=dtypes.string),

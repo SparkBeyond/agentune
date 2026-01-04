@@ -54,7 +54,7 @@ def test_dataset_with_strategy(test_data_conversations: dict[str, Path], conn: D
     
     # Create schemas
     main_schema = Schema((
-        Field(name='id', dtype=dtypes.int32),
+        Field(name='id', dtype=dtypes.int64),
         Field(name='outcome', dtype=dtypes.EnumDtype(*main_df['outcome'].unique().to_list())),
         Field(name='outcome_description', dtype=dtypes.string),
     ))
@@ -64,7 +64,7 @@ def test_dataset_with_strategy(test_data_conversations: dict[str, Path], conn: D
 
     # Create secondary table schema
     secondary_schema = Schema((
-        Field(name='id', dtype=dtypes.int32),
+        Field(name='id', dtype=dtypes.int64),
         Field(name='timestamp', dtype=dtypes.timestamp),
         Field(name='role', dtype=dtypes.string),
         Field(name='content', dtype=dtypes.string),
@@ -148,7 +148,7 @@ def _load_long_conversations_for_feature_gen(
     
     # Create schemas
     main_schema = Schema((
-        Field(name='id', dtype=dtypes.int32),
+        Field(name='id', dtype=dtypes.int64),
         Field(name='outcome', dtype=dtypes.EnumDtype(*main_df['outcome'].unique().to_list())),
         Field(name='outcome_description', dtype=dtypes.string),
     ))
@@ -158,7 +158,7 @@ def _load_long_conversations_for_feature_gen(
 
     # Create secondary table schema
     secondary_schema = Schema((
-        Field(name='id', dtype=dtypes.int32),
+        Field(name='id', dtype=dtypes.int64),
         Field(name='timestamp', dtype=dtypes.timestamp),
         Field(name='role', dtype=dtypes.string),
         Field(name='content', dtype=dtypes.string),
@@ -315,7 +315,7 @@ async def test_end_to_end_pipeline_with_real_llm(test_dataset_with_strategy: tup
         assert all(isinstance(q, Query) for q in updated_queries)
         
         # Validate that all updated queries have valid dtypes
-        valid_dtypes = [dtypes.boolean, dtypes.int32, dtypes.float64]
+        valid_dtypes = [dtypes.boolean, dtypes.int64, dtypes.float64]
         for query in updated_queries:
             assert query.return_type is not None
             is_valid_simple_dtype = query.return_type in valid_dtypes
