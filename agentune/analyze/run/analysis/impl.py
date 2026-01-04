@@ -107,11 +107,15 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
             deduplicated_candidate_features = self._deduplicate_generated_feature_names(candidate_features, existing_names=[problem.target_column.name])
 
             # Compute candidate features on the feature_search dataset, storing the results in the temp schema.
+            # This step can discard some invalid features.
             (enriched_feature_eval_group_tables, features_with_updated_defaults) = await self._enrich_in_batches_and_update_defaults(
                 deduplicated_candidate_features, data.feature_eval,
                 ddb_manager, components, 'enriched_feature_search',
-                problem.target_column.name
+                problem.target_column.name, params.min_defined_values_per_feature
             )
+            if len(features_with_updated_defaults) == 0:
+                raise NoFeaturesFoundError
+
             try:
                 with ddb_manager.cursor() as conn:
                     selected_features = await self._select_features(features_with_updated_defaults,
@@ -252,7 +256,7 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
     async def _enrich_in_batches_and_update_defaults(self, features: list[GeneratedFeature], dataset_source: DatasetSource,
                                                      ddb_manager: DuckdbManager,
                                                      components: AnalyzeComponents, target_table_base_name: str,
-                                                     target_column: str) -> tuple[list[DuckdbTable], list[Feature]]:
+                                                     target_column: str, min_defined_values_per_feature: int) -> tuple[list[DuckdbTable], list[Feature]]:
         """Enrich these features in batches of size up to self.max_features_enrich_batch_size,
         and return a table per batch. The first table also has the target column; the rest don't.
 
@@ -276,13 +280,15 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
                     tables.append(table)
 
                     for gen in feature_group:
-                        if gen.has_good_defaults:
-                            features_with_updated_defaults.append(gen.feature)
-                        else:
-                            rel = conn.table(str(table.name)).select(f'"{gen.feature.name}"')
-                            df = restore_df_types(rel.pl(), table.schema.select(gen.feature.name))
-                            series = df[gen.feature.name]
-                            features_with_updated_defaults.append(self._update_feature_defaults(gen.feature, series))
+                        rel = conn.table(str(table.name)).select(f'"{gen.feature.name}"')
+                        df = restore_df_types(rel.pl(), table.schema.select(gen.feature.name))
+                        series = df[gen.feature.name]
+
+                        if self._has_enough_defined_values(gen.feature, series, min_defined_values_per_feature): # Otherwise skip the feature
+                            if gen.has_good_defaults:
+                                features_with_updated_defaults.append(gen.feature)
+                            else:
+                                features_with_updated_defaults.append(self._update_feature_defaults(gen.feature, series))
 
                 _logger.debug(f'Enriched {len(features)} features in {len(feature_groups)} batches')
                 return (tables, features_with_updated_defaults)
@@ -292,6 +298,12 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
                 for table in tables:
                     conn.execute(f'drop table {table.name}')
             raise
+
+    def _has_enough_defined_values(self, feature: Feature, series: pl.Series, min_defined_values_per_feature: int) -> bool:
+        if isinstance(feature, FloatFeature):
+            return len(series) - series.is_nan().sum() - series.is_null().sum() >= min_defined_values_per_feature
+        else:
+            return len(series) - series.is_null().sum() >= min_defined_values_per_feature
 
     def _join_tables(self, tables: list[DuckdbTable], conn: DuckDBPyConnection) -> DatasetSource:
         """Join several tables on their 'default' order (i.e. the rowid).
@@ -412,3 +424,4 @@ class AnalyzeRunnerImpl(AnalyzeRunner):
             target_series = (await asyncio.to_thread(target_source.to_dataset, cursor)).data[problem.target_column.name]
 
         return await self._calculate_feature_stats([(feature, dataset_source) for feature in features], target_series, problem, conn, dataset_name)
+
