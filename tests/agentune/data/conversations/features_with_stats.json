@@ -188,7 +188,10 @@
             0.04,
             0.06,
             0.02
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -442,7 +445,10 @@
             0.08,
             0.04,
             0.04
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -696,7 +702,10 @@
             0.12,
             0.08,
             0.1
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -950,7 +959,10 @@
             0.02,
             0.06,
             0.02
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -1172,7 +1184,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -1370,7 +1385,10 @@
             0.2,
             0.04,
             0.12
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -1601,7 +1619,10 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -1800,7 +1821,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -1966,7 +1990,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -2132,7 +2159,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -2298,7 +2328,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -2464,7 +2497,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -2630,7 +2666,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -2796,7 +2835,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -2962,7 +3004,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -3128,7 +3173,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -3294,7 +3342,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -3460,7 +3511,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -3626,7 +3680,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -3796,7 +3853,10 @@
           "support": [
             0.72,
             0.28
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -3994,7 +4054,10 @@
             0.0,
             0.0,
             0.54
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -4216,7 +4279,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -4414,7 +4480,10 @@
             0.06,
             0.12,
             0.06
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -4636,7 +4705,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -4810,7 +4882,10 @@
             0.68,
             0.26,
             0.06
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -4984,7 +5059,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -5150,7 +5228,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -5348,7 +5429,10 @@
             0.52,
             0.02,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -5570,7 +5654,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -5736,7 +5823,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -5905,7 +5995,10 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -6091,7 +6184,10 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -6306,7 +6402,10 @@
             0.0,
             0.02,
             0.02
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -6528,7 +6627,10 @@
           },
           "support": [
             1.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -6686,7 +6788,10 @@
           },
           "support": [
             1.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -6876,7 +6981,10 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -7126,7 +7234,10 @@
             0.04,
             0.1,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -7372,7 +7483,10 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -7626,7 +7740,10 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -7856,7 +7973,10 @@
             0.94,
             0.06,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -8062,7 +8182,10 @@
             0.02,
             0.02,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -8284,7 +8407,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -8482,7 +8608,10 @@
             0.06,
             0.02,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -8704,7 +8833,10 @@
           },
           "support": [
             1.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -8862,7 +8994,10 @@
           "support": [
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -9060,7 +9195,10 @@
             0.0,
             0.12,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -9291,7 +9429,10 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -9490,7 +9631,10 @@
           },
           "support": [
             1.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -9656,7 +9800,10 @@
             0.98,
             0.02,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
@@ -9842,7 +9989,10 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "n_positive_infinite": 0,
+          "n_negative_infinite": 0,
+          "n_finite": 50
         },
         "relationship": {
           "_type": "RelationshipStats",
