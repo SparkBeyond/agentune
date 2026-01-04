@@ -21,6 +21,7 @@ class NumericFeatureStats(FeatureStats):
     n_finite: int  # Number of finite values
     n_positive_infinite: int  # Number of positive infinite values
     n_negative_infinite: int  # Number of negative infinite values
+    n_nan: int  # Number of NaN values (distinct from missing/null)
     
     # Standard histogram representation (like numpy.histogram)
     histogram_counts: tuple[int, ...]      # Counts in each bin
