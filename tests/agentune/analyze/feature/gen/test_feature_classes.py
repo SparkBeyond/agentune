@@ -32,7 +32,7 @@ from agentune.core.sercontext import LLMWithSpec
 class SimpleFormatter(DataFormatter):
     """Simple formatter that returns readable text."""
     params = Schema(cols=(
-        Field(name='customer_id', dtype=types.int32),
+        Field(name='customer_id', dtype=types.int64),
         Field(name='message', dtype=types.string),))
     secondary_tables = ()
     join_strategies = ()
@@ -80,7 +80,7 @@ class TestFeatureTypes:
         int_query = Query(
             name='word_count',
             query_text='How many words are in this customer message?',
-            return_type=types.int32
+            return_type=types.int64
         )
         int_feature = create_feature(int_query, formatter, real_llm_with_spec)
         
@@ -149,7 +149,7 @@ class TestFeatureTypes:
         conv_query = Query(
             name='conv_word_count',
             query_text='How many messages are in the conversation?',
-            return_type=types.int32,
+            return_type=types.int64,
         )
         conv_feature = create_feature(conv_query, conv_formatter, real_llm_with_spec)
         # Should be hashable and usable as a dict key
@@ -188,7 +188,7 @@ class TestFeatureTypes:
         query = Query(
             name='word_count',
             query_text='How many words are in this customer message?',
-            return_type=types.int32
+            return_type=types.int64
         )
         
         feature = create_feature(query, formatter, real_llm_with_spec)

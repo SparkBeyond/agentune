@@ -147,7 +147,7 @@ def create_feature(query: Query, formatter: DataFormatter, model: LLMWithSpec) -
     """Create an insightful text feature based on the query definition."""
     dtype_to_class: dict[types.Dtype, type] = {
         types.boolean: InsightfulBoolFeature,
-        types.int32: InsightfulIntFeature,
+        types.int64: InsightfulIntFeature,
         types.float64: InsightfulFloatFeature
     }
     feature_class = dtype_to_class.get(query.return_type, InsightfulCategoricalFeature)

@@ -53,9 +53,6 @@ class Feature[T](ABC, UseTypeTag):
     Type parameters:
         T: The type of the feature's output values, when they appear as scalars.
            This is not a free type parameter; only the values defined by the subclasses below, such as IntFeature, are allowed.
-           Note that features with different dtypes can have the same scalar T, e.g. features with dtype Int32 and Int64 would
-           both have T=int. (There is no feature type using Int64 at the moment of writing, but you should not write code
-           that assumes all features have distinct T types.)
     """
 
     name: str
@@ -213,7 +210,7 @@ class IntFeature(NumericFeature[int]):
     @final
     @property
     @override
-    def dtype(self) -> Dtype: return agentune.core.types.int32
+    def dtype(self) -> Dtype: return agentune.core.types.int64
 
 @define(slots=False)
 class FloatFeature(NumericFeature[float]):
