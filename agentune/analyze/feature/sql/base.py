@@ -58,7 +58,7 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
           SELECT a + b from (SELECT * from primary_table ... ORDER BY primary_table.rowid)
     - Not access the `self.primary_table` in any other way
     - Produce a result set with exactly one column, of a type valid for the current feature type:
-        - For int features, int32 or any smaller int or uint type
+        - For int features, int64 or any smaller int or uint type
         - For float features, float64 or float32
         - For bool features, bool
         - For categorical features, enum (of a type matching the categories list) or str
@@ -95,7 +95,7 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
 
             # Polars Series.cast() with these args will raise an error if the cast is invalid or loses numerical precision,
             # but only as far as the actual values go; if the result has a formal type of float64 but all the values
-            # can be represented exactly as an int32, then it is still a valid int feature.
+            # can be represented exactly as an int64, then it is still a valid int feature.
             # This is not a perfect defense: it will also lose precision when casting ints to floats (without raising an error),
             # and it is willing to cast anything to a string or a number to a boolean.
             # It only helps in the specific case of casting a float or a bigger int to a smaller int and losing precision.

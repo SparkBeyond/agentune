@@ -47,7 +47,7 @@ def test_int_feature(conn: DuckDBPyConnection) -> None:
     assert feature.compute((2,), conn) is None
 
     batch_input = Dataset(feature.params, pl.DataFrame({'key': [3, 2, 1, 3, 1]}))
-    batch_expected_result = pl.Series('my feature', [4, None, 2, 4, 2], dtype=pl.Int32)
+    batch_expected_result = pl.Series('my feature', [4, None, 2, 4, 2], dtype=pl.Int64)
     assert feature.compute_batch(batch_input, conn).equals(batch_expected_result, check_names=True, check_dtypes=True)
 
     for tpe in [types.int16, types.int8, types.uint16, types.uint8]:
@@ -66,7 +66,7 @@ def test_int_feature(conn: DuckDBPyConnection) -> None:
         feature.compute_batch(batch_input, conn)
 
     # Value cannot be represented exactly as an int32; SQL query succeeds but polars cast fails
-    feature = attrs.evolve(feature, sql_query = f'select {2**32} from main_table')
+    feature = attrs.evolve(feature, sql_query = f'select {2**64-1}::uint64 from main_table')
     with pytest.raises(FeatureValidationError, match='cannot be cast'):
         feature.compute_batch(batch_input, conn)
 
@@ -230,6 +230,6 @@ def test_synthetic_rowid(conn: DuckDBPyConnection) -> None:
     )
 
     batch_input = Dataset(feature.params, pl.DataFrame({'key': range(10)}))
-    batch_expected_result = pl.Series('my feature', range(10), dtype=pl.Int32)
+    batch_expected_result = pl.Series('my feature', range(10), dtype=pl.Int64)
     assert feature.compute_batch(batch_input, conn).equals(batch_expected_result, check_names=True, check_dtypes=True)
 
