@@ -2,7 +2,7 @@ import logging
 import math
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, override
+from typing import Any, cast, override
 
 import attrs
 import polars as pl
@@ -45,6 +45,8 @@ from agentune.analyze.run.analysis.base import (
 )
 from agentune.analyze.run.analysis.impl import AnalyzeRunnerImpl
 from agentune.analyze.run.ingest import sampling
+from agentune.api.base import RunContext
+from agentune.core import types
 from agentune.core.database import DuckdbManager, DuckdbName, DuckdbTable
 from agentune.core.dataset import Dataset, DatasetSource
 from agentune.core.duckdbio import (
@@ -126,6 +128,21 @@ class _TestCategoricalFeature(CategoricalFeature):
         return None
 
 @frozen
+class _TestDiverseFloatFeature(_TestFloatFeature):
+    @override
+    async def acompute(self, args: tuple[Any, ...],
+                       conn: DuckDBPyConnection) -> float | None:
+        match args[0]:
+            case None: return -1.0
+            case 0: return None
+            case 1: raise ValueError('1')
+            case 2: return math.nan
+            case 3: return math.inf
+            case 4: return -math.inf
+            case int(other): return float(other)
+            case _: raise ValueError('other')
+
+@frozen
 class SimplePrebuiltFeaturesGenerator(SyncFeatureGenerator):
     features: tuple[GeneratedFeature, ...]
 
@@ -203,6 +220,30 @@ async def test_analyze(input_data: AnalyzeInputData, ddb_manager: DuckdbManager)
             store_enriched_test=None, store_enriched_train=None
         )
         await _test_analyze(input_data, ddb_manager, classification_params, components, ProblemDescription('target', 'classification'))
+
+async def test_analyze_min_finite_values() -> None:
+    async with await RunContext.create() as ctx:
+        feature = _TestDiverseFloatFeature('foo', params=Schema((Field('int', types.int32),)))
+        components = attrs.evolve(ctx.defaults.analyze_components(), generators=(SimplePrebuiltFeaturesGenerator((GeneratedFeature(feature, True),)),))
+
+        input = pl.DataFrame({'int': [0, 5, 6, 7, 8] * 200, 'target': range(1000)})
+        split_input = await (await ctx.data.from_df(input).copy_to_table('input')).split(train_fraction=0.95)
+
+        results = await ctx.ops.analyze(
+            ProblemDescription('target', 'desc', 'regression'),
+            split_input,
+            params=AnalyzeParams(min_defined_values_per_feature=int(cast(int, split_input.feature_eval.cheap_size) * 0.5)),
+            components=components
+        )
+        assert results.features == (feature,)
+
+        with pytest.raises(NoFeaturesFoundError):
+            await ctx.ops.analyze(
+                ProblemDescription('target', 'desc', 'regression'),
+                split_input,
+                params=AnalyzeParams(min_defined_values_per_feature=int(cast(int, split_input.feature_eval.cheap_size) * 0.95)),
+                components=components
+            )
 
 async def _test_feature_name_collision(input_data: AnalyzeInputData, ddb_manager: DuckdbManager,
                                        features: tuple[Feature, ...]) -> None:

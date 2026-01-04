@@ -87,11 +87,15 @@ class AnalyzeParams:
         max_features_to_select: maximum number of features to return from the analysis.
         max_classes:          Maximum number of distinct target values allowed for classification problems;
                               if more values are present in the train dataset, analysis will fail.
+        min_defined_values_per_feature: discard features that have fewer defined (*not* distinct) output values
+                                        for the feature evaluation dataset. Undefined values are either missing values (null / NA)
+                                        or, for float features, NaN.
     """
     store_enriched_train: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_train')
     store_enriched_test: str | DuckdbName | UniqueTableName | None = UniqueTableName('enriched_test')
     max_classes: int = 20
     max_features_to_select: int = 60
+    min_defined_values_per_feature: int = 30
 
 @frozen
 class AnalyzeComponents:
