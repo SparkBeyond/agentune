@@ -369,9 +369,9 @@ def calculate_sse_reduction(feature: Feature, series: pl.Series, target: pl.Seri
     # Create aligned arrays without nulls
     df = pl.DataFrame({feature.name: series, 'target': target})
     
-    # Filter infinite values for numeric features (both feature and target must be finite)
+    # Filter infinite values for numeric features
     if feature.is_numeric():
-        df = df.filter(pl.col(feature.name).is_finite() & pl.col('target').is_finite())
+        df = df.filter(pl.col(feature.name).is_finite())
 
     df = df.drop_nulls()
     

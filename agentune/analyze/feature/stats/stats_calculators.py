@@ -444,8 +444,8 @@ class NumericRegressionRelationshipStatsCalculator(UnifiedRelationshipStatsCalcu
             feature_values = df['feature'].to_numpy()
             target_values = df['target'].to_numpy()
     
-            # Pearson correlation - use only finite values
-            valid_mask = np.isfinite(feature_values) & np.isfinite(target_values)
+            # Pearson correlation - use only finite values (assume target is finite)
+            valid_mask = np.isfinite(feature_values)
             if valid_mask.sum() >= 2:  # noqa: PLR2004
                 pearson_corr_result, _ = stats.pearsonr(feature_values[valid_mask], target_values[valid_mask])
                 pearson_corr = float(cast(np.float64, pearson_corr_result))
