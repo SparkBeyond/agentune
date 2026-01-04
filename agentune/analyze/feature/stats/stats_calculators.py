@@ -78,6 +78,10 @@ def _bin_numeric_to_quantiles(series: pl.Series, k: int
     Returns a tuple of (label_series, bin_edges_tuple).
     Bin edges use -inf and +inf for the first and last edges to handle all possible values.
     """
+    # Treat NaN as Null/Missing for binning purposes to avoid panics in qcut
+    if series.dtype.is_numeric():
+        series = series.fill_nan(None)
+
     non_null = series.drop_nulls()
     if non_null.len() == 0:
         bin_edges: tuple[float, ...] = (float('-inf'), float('inf'))
@@ -449,9 +453,18 @@ class NumericRegressionRelationshipStatsCalculator(UnifiedRelationshipStatsCalcu
             feature_values = df['feature'].to_numpy()
             target_values = df['target'].to_numpy()
     
-            pearson_corr_result, _ = stats.pearsonr(feature_values, target_values)
+            # Pearson correlation - use only finite values (assume target is finite)
+            valid_mask = np.isfinite(feature_values)
+            if valid_mask.sum() >= 2:  # noqa: PLR2004
+                pearson_corr_result, _ = stats.pearsonr(feature_values[valid_mask], target_values[valid_mask])
+                pearson_corr = float(cast(np.float64, pearson_corr_result))
+            else:
+                pearson_corr = float('nan')
+
+            # Spearman correlation - use all values (handles infinity by ranking)
+            # Scipy handles NaN by propagating or omitting, assuming input here has no NaNs due to drop_nulls
+            # but infinite values are valid for ranking (highest/lowest rank)
             spearman_corr_result, _ = stats.spearmanr(feature_values, target_values)
-            pearson_corr = float(cast(np.float64, pearson_corr_result))
             spearman_corr = float(spearman_corr_result)
 
         return NumericRegressionRelationshipStats(

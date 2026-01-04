@@ -60,22 +60,21 @@ class MockFloatFeature(SyncFloatFeature):
     default_for_nan: float = 0.0
     default_for_infinity: float = 0.0
     default_for_neg_infinity: float = 0.0
-    
+
     @property
     def params(self) -> Schema:
         return Schema((Field('test_col', float64),))
-    
+
     @property
     def secondary_tables(self) -> list[Any]:
         return []
-    
+
     @property
     def join_strategies(self) -> list[Any]:
         return []
     
     def compute(self, args: Any, conn: Any) -> Any:  # noqa: ARG002
         return args[0]
-
 
 
 # ------------------------------
@@ -309,3 +308,71 @@ def test_histogram_with_infinite_values() -> None:
     # Filter None before check as np.isfinite doesn't handle None (but handles NaN/Inf)
     valid_values = [v for v in values if v is not None]
     assert stats.n_finite == np.isfinite(valid_values).sum()
+
+
+# -----------------------------------
+# D. Infinite Value Policy Tests
+# -----------------------------------
+
+def test_correlation_infinity_handling() -> None:
+    """Test correlation handling of infinite values.
+
+    Pearson should ignore infinite values (calculated on finite subset).
+    Spearman should include infinite values (by rank).
+    """
+    feature = MockFloatFeature()
+    problem = _regression_problem()
+    calculator = NumericRegressionRelationshipStatsCalculator()
+
+    # Data: Perfectly correlated finite values, plus one infinite value
+    # Finite: (1, 1), (2, 2), (3, 3) -> Pearson = 1.0
+    # Ranked: (1, 2, 3, 4) vs (1, 2, 3, 4) -> Spearman = 1.0
+    feature_vals = [1.0, 2.0, 3.0, float('inf')]
+    target_vals = [1.0, 2.0, 3.0, 4.0]
+
+    series = pl.Series('feature', feature_vals)
+    target = pl.Series('target', target_vals)
+
+    stats = calculator.calculate_from_series(feature, series, target, problem)
+
+    assert abs(stats.pearson_correlation - 1.0) < 1e-9
+    assert abs(stats.spearman_correlation - 1.0) < 1e-9
+
+
+def test_sse_reduction_ignores_infinity() -> None:
+    """Test that SSE reduction corresponds to calculations on finite values only."""
+    feature = MockFloatFeature()
+    problem = _regression_problem()
+    calculator = NumericRegressionRelationshipStatsCalculator()
+
+    # Data: Perfectly correlated finite values, plus one infinite value
+    # Finite: (1, 1), (2, 2), (3, 3) -> R^2 = 1.0
+    feature_vals = [1.0, 2.0, 3.0, float('inf')]
+    target_vals = [1.0, 2.0, 3.0, 100.0]  # 100 is outlier/irrelevant if row dropped
+
+    series = pl.Series('feature', feature_vals)
+    target = pl.Series('target', target_vals)
+
+    stats = calculator.calculate_from_series(feature, series, target, problem)
+
+    # R^2 should be 1.0 (calculated on first 3 points)
+    assert abs(stats.r_squared - 1.0) < 1e-9
+
+
+def test_nan_exclusion() -> None:
+    """Test that NaNs are excluded primarily via drop_nulls."""
+    feature = MockFloatFeature()
+    problem = _regression_problem()
+    calculator = NumericRegressionRelationshipStatsCalculator()
+
+    # Data with NaN
+    feature_vals = [1.0, 2.0, float('nan'), 3.0]
+    target_vals = [1.0, 2.0, 99.0, 3.0]
+
+    series = pl.Series('feature', feature_vals)
+    target = pl.Series('target', target_vals)
+
+    stats = calculator.calculate_from_series(feature, series, target, problem)
+
+    # Pearson on (1,1), (2,2), (3,3) -> 1.0
+    assert abs(stats.pearson_correlation - 1.0) < 1e-9
