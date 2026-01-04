@@ -27,16 +27,21 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
     - Boolean columns
     
     The generator automatically skips:
+    - Target column (to prevent leakage)
     - Temporal columns (dates, times, timestamps)
     - Complex/nested types (lists, structs, arrays)
     - Constant columns (cardinality <= 1)
     """
     @staticmethod
-    def _should_skip_column(col: Field, dataset: Dataset) -> bool:
+    def _should_skip_column(col: Field, dataset: Dataset, target_column_name: str) -> bool:
         """Determine if a column should be skipped.
         
-        Returns True if the column is temporal, nested, or constant.
+        Returns True if the column is the target, temporal, nested, or constant.
         """
+        # Skip target column
+        if col.name == target_column_name:
+            return True
+        
         # Skip temporal and complex types
         if col.dtype.is_temporal() or col.dtype.is_nested():
             return True
@@ -96,7 +101,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
     ) -> Iterator[GeneratedFeature]:
         for col in feature_search.schema.cols:
             # Skip columns that shouldn't be processed
-            if OriginalColumnsGenerator._should_skip_column(col, feature_search):
+            if OriginalColumnsGenerator._should_skip_column(col, feature_search, problem.target_column.name):
                 continue
             
             # Create feature based on type
