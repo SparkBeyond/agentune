@@ -58,14 +58,14 @@ def test_int_feature(conn: DuckDBPyConnection) -> None:
     for tpe in [types.uint32, types.int64, types.float64]:
         feature = attrs.evolve(feature, sql_query = f'select value::{tpe.duckdb_type} from ({sql_query})')
         assert feature.compute_batch(batch_input, conn).equals(batch_expected_result, check_names=True, check_dtypes=True), \
-            'Feature returns different dtype but the values can be represented exactly as an int32'
+            'Feature returns different dtype but the values can be represented exactly as an int64'
 
-    # Value cannot be represented exactly as an int32; SQL query fails
+    # Value cannot be represented exactly as an int64; SQL query fails
     feature = attrs.evolve(feature, sql_query = f'select {2**32}::uint32 from main_table')
     with pytest.raises(duckdb.ConversionException):
         feature.compute_batch(batch_input, conn)
 
-    # Value cannot be represented exactly as an int32; SQL query succeeds but polars cast fails
+    # Value cannot be represented exactly as an int64; SQL query succeeds but polars cast fails
     feature = attrs.evolve(feature, sql_query = f'select {2**64-1}::uint64 from main_table')
     with pytest.raises(FeatureValidationError, match='cannot be cast'):
         feature.compute_batch(batch_input, conn)
