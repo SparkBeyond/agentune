@@ -341,7 +341,7 @@ def get_output_instructions(dtype: types.Dtype) -> str:
 Your answer should be a boolean value (true or false).
 Example: {{"{PARSER_OUT_FIELD}": true}}'''
 
-    elif dtype == types.int32:
+    elif dtype == types.int64:
         return f'''Output Instructions:
 Your answer should be an integer value.
 Example: {{"{PARSER_OUT_FIELD}": 42}}'''

@@ -68,14 +68,14 @@ class TestBasicTypeDetectors:
         """Test integer detection with valid integer strings."""
         data = pl.Series(['1', '2', '3', '100', '50', '-5', '0'])
         result = detect_int_type(data, max_error_percentage=0.01)
-        assert result == types.int32
+        assert result == types.int64
     
     def test_is_int_with_errors_within_threshold(self) -> None:
         """Test integer detection with errors within threshold."""
         # 90% valid integers, 10% invalid
         data = pl.Series(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'not_int'])
         result = detect_int_type(data, max_error_percentage=0.15)
-        assert result == types.int32
+        assert result == types.int64
     
     def test_is_int_with_errors_above_threshold(self) -> None:
         """Test integer detection with errors above threshold."""
@@ -186,7 +186,7 @@ class TestDecideDtype:
         query = Query('test_int', 'What is the count?', types.string)
         data = pl.Series(['1', '2', '3', '100', '50'])
         result = decide_dtype(query, data, max_categorical=10)
-        assert result == types.int32
+        assert result == types.int64
     
     def test_decide_dtype_float(self) -> None:
         """Test decide_dtype with float data."""
@@ -236,7 +236,7 @@ class TestDecideDtype:
         # Integer should take priority over float and categorical
         int_data = pl.Series(['1', '2', '3', '1', '2', '3'])
         result = decide_dtype(query, int_data, max_categorical=10)
-        assert result == types.int32
+        assert result == types.int64
     
     def test_decide_dtype_with_empty_strings(self) -> None:
         """Test decide_dtype behavior with empty strings in categorical data."""
@@ -347,7 +347,7 @@ class TestEdgeCases:
         # Filter out nulls as the actual implementation would do
         non_null_data = data.drop_nulls()
         result = decide_dtype(query, non_null_data, max_categorical=10)
-        assert result == types.int32
+        assert result == types.int64
     
     def test_single_value_data(self) -> None:
         """Test type detection with single value."""
@@ -392,7 +392,7 @@ class TestEdgeCases:
         data = pl.Series(['1', '2', '3', '', '4', '5'])
         # Should still detect as integer since empty strings are dropped
         result = decide_dtype(query, data, max_categorical=10, max_error_percentage=0.2)
-        assert result == types.int32
+        assert result == types.int64
         
         # Test with float data that includes empty strings
         query = Query('test_float_with_empty', 'What is the value?', types.string)
