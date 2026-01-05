@@ -301,3 +301,7 @@ def test_histogram_with_infinite_values() -> None:
     # Ensure infinite values ended up in the outer bins
     assert stats.histogram_counts[0] >= 1  # includes -inf
     assert stats.histogram_counts[1] >= 2  # includes +inf
+    
+    # Verify consistency between explicit counts (from L369-L370) and histogram data (from L402-L403)
+    # n_finite should equal the total histogram count minus the explicit infinity counts
+    assert stats.n_finite == sum(stats.histogram_counts) - stats.n_positive_infinite - stats.n_negative_infinite
