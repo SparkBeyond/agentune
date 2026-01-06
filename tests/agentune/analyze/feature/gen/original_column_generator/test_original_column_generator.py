@@ -72,3 +72,38 @@ def test_original_columns_skipping_types() -> None:
     assert 'list_col' not in feature_map
     assert 'struct_col' not in feature_map
     assert 'valid_col' in feature_map
+
+
+def test_original_columns_with_special_values() -> None:
+    """Test that features handle missing values and infinities correctly."""
+    
+    df = pl.DataFrame({
+        'int_with_nulls': [1, 2, None, 4, 5],
+        'float_with_nulls': [1.1, None, 3.3, 4.4, 5.5],
+        'float_with_inf': [1.0, 2.0, float('inf'), 4.0, 5.0],
+        'float_with_neg_inf': [1.0, float('-inf'), 3.0, 4.0, 5.0],
+        'float_with_nan': [1.0, 2.0, float('nan'), 4.0, 5.0],
+        'float_with_all': [1.0, None, float('inf'), float('-inf'), float('nan')],
+    })
+    
+    feature_map = _generate_features(df)
+    
+    # All columns should be generated (not skipped due to special values)
+    assert 'int_with_nulls' in feature_map
+    assert 'float_with_nulls' in feature_map
+    assert 'float_with_inf' in feature_map
+    assert 'float_with_neg_inf' in feature_map
+    assert 'float_with_nan' in feature_map
+    assert 'float_with_all' in feature_map
+    
+    # Verify correct feature types
+    assert isinstance(feature_map['int_with_nulls'], OriginalIntFeature)
+    assert isinstance(feature_map['float_with_nulls'], OriginalFloatFeature)
+    assert isinstance(feature_map['float_with_inf'], OriginalFloatFeature)
+    
+    # Verify features have default values defined (even though has_good_defaults=False)
+    float_feature = feature_map['float_with_all']
+    assert hasattr(float_feature, 'default_for_missing')
+    assert hasattr(float_feature, 'default_for_nan')
+    assert hasattr(float_feature, 'default_for_infinity')
+    assert hasattr(float_feature, 'default_for_neg_infinity')

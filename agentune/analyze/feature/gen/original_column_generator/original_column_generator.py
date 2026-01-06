@@ -19,7 +19,7 @@ from agentune.core.schema import Field
 
 @define
 class OriginalColumnsGenerator(SyncFeatureGenerator):
-    """A feature generator that exposes original dataset columns as features.
+    """A feature generator that exposes original primary dataset columns as features.
     
     This generator creates features from the raw columns in the dataset with minimal
     transformation. It focuses on faithful representation of the data, handling:
@@ -60,8 +60,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
             description=f'Original boolean column {col.name}',
             technical_description=f'Direct pass-through of column {col.name}',
             default_for_missing=False,
-            input_col=col.name,
-            input_dtype=col.dtype
+            input=col
         )
     
     @staticmethod
@@ -72,8 +71,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
             description=f'Original integer column {col.name}',
             technical_description=f'Direct pass-through of column {col.name}',
             default_for_missing=0,
-            input_col=col.name,
-            input_dtype=col.dtype
+            input=col
         )
     
     @staticmethod
@@ -83,12 +81,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
             name=col.name,
             description=f'Original float column {col.name}',
             technical_description=f'Direct pass-through of column {col.name}',
-            default_for_missing=0.0,
-            default_for_nan=0.0,
-            default_for_infinity=0.0,
-            default_for_neg_infinity=0.0,
-            input_col=col.name,
-            input_dtype=col.dtype
+            input=col
         )
 
     @override
@@ -103,11 +96,24 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
             # Skip columns that shouldn't be processed
             if OriginalColumnsGenerator._should_skip_column(col, feature_search, problem.target_column.name):
                 continue
-            
-            # Create feature based on type
-            if col.dtype == t.boolean:
-                yield GeneratedFeature(feature=OriginalColumnsGenerator._create_bool_feature(col), has_good_defaults=True)
-            elif col.dtype.is_integer():
-                yield GeneratedFeature(feature=OriginalColumnsGenerator._create_int_feature(col), has_good_defaults=True)
-            elif col.dtype.is_float():
-                yield GeneratedFeature(feature=OriginalColumnsGenerator._create_float_feature(col), has_good_defaults=True)
+        
+            # Determine feature creation logic based on column type
+            match col.dtype:
+                case t.boolean:
+                    yield GeneratedFeature(
+                        feature=OriginalColumnsGenerator._create_bool_feature(col),
+                        has_good_defaults=False
+                    )
+                case dt if dt.is_integer():
+                    yield GeneratedFeature(
+                        feature=OriginalColumnsGenerator._create_int_feature(col),
+                        has_good_defaults=False
+                    )
+                case dt if dt.is_float():
+                    yield GeneratedFeature(
+                        feature=OriginalColumnsGenerator._create_float_feature(col),
+                        has_good_defaults=False
+                    )
+                case _:
+                    # Skip unexpected types
+                    continue

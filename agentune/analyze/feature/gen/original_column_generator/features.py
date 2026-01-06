@@ -15,7 +15,6 @@ from agentune.analyze.join.base import JoinStrategy
 from agentune.core.database import DuckdbTable
 from agentune.core.dataset import Dataset
 from agentune.core.schema import Field, Schema
-from agentune.core.types import Dtype
 
 
 @frozen
@@ -25,13 +24,12 @@ class OriginalColumnFeature[T](SyncFeature[T]):
     This is a simple wrapper that extracts a column from the input dataset
     without any transformation.
     """
-    input_col: str
-    input_dtype: Dtype
+    input: Field
 
     @property
     @override
     def params(self) -> Schema:
-        return Schema((Field(self.input_col, self.input_dtype),))
+        return Schema((self.input,))
 
     @property
     @override
@@ -45,7 +43,7 @@ class OriginalColumnFeature[T](SyncFeature[T]):
 
     @override
     def compute_batch(self, input: Dataset, conn: DuckDBPyConnection) -> pl.Series:
-        return input.data.get_column(self.input_col)
+        return input.data.get_column(self.input.name)
 
 
 @frozen
