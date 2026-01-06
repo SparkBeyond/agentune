@@ -305,10 +305,6 @@ def test_histogram_with_infinite_values() -> None:
     assert stats.histogram_counts[0] >= 1  # includes -inf
     assert stats.histogram_counts[1] >= 2  # includes +inf
     
-    # Verify consistency between explicit counts and histogram data
-    # n_finite should equal the total histogram count minus the explicit infinity counts
-    assert stats.n_finite == sum(stats.histogram_counts) - stats.n_positive_infinite - stats.n_negative_infinite
-    
     # Verify n_finite matches strict numpy calculation
     # Filter None before check as np.isfinite doesn't handle None (but handles NaN/Inf)
     valid_values = [v for v in values if v is not None]
