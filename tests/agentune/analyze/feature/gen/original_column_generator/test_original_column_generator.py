@@ -76,7 +76,6 @@ def test_original_columns_skipping_types() -> None:
 
 def test_original_columns_with_special_values() -> None:
     """Test that features handle missing values and infinities correctly."""
-    
     df = pl.DataFrame({
         'int_with_nulls': [1, 2, None, 4, 5],
         'float_with_nulls': [1.1, None, 3.3, 4.4, 5.5],
