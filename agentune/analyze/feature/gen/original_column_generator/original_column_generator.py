@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator
 from typing import override
 
@@ -15,6 +16,8 @@ from agentune.analyze.feature.problem import Problem
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.core.dataset import Dataset
 from agentune.core.schema import Field
+
+_logger = logging.getLogger(__name__)
 
 
 @define
@@ -116,4 +119,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
                     )
                 case _:
                     # Skip unexpected types
+                    _logger.debug(
+                        f"Skipping column '{col.name}' with unsupported type {col.dtype}"
+                    )
                     continue

@@ -57,21 +57,57 @@ def test_original_columns_generator_basics() -> None:
 
 
 def test_original_columns_skipping_types() -> None:
+    """Test that various unsupported column types are properly skipped.
+    
+    This includes temporal, nested, enum, string, and mixed types - all of which
+    are not yet supported by the basic OriginalColumnsGenerator.
+    """
     from datetime import date
     
+    # Create a dataset with many different column types
+    n_rows = 100
     df = pl.DataFrame({
-        'date_col': [date(2020, 1, 1), date(2020, 1, 2)],
-        'list_col': [[1, 2], [3, 4]],
-        'struct_col': [{'a': 1}, {'a': 2}],
-        'valid_col': [1, 2]
-    })
+        # Temporal types - should be skipped
+        'date_col': [date(2020, 1, 1), date(2020, 1, 2)] * 50,
+        
+        # Nested types - should be skipped
+        'list_col': [[1, 2], [3, 4]] * 50,
+        'struct_col': [{'a': 1}, {'a': 2}] * 50,
+        
+        # Enum type - should be skipped (not yet supported)
+        'enum_col': (['red', 'blue', 'green'] * 34)[:n_rows],
+        
+        # String with low cardinality (<9 distinct) - should be skipped (not yet supported)
+        'low_card_string': (['cat', 'dog', 'bird'] * 34)[:n_rows],
+        
+        # String with high cardinality (>100 distinct) - should be skipped (not yet supported)
+        'high_card_string': [f'value_{i}' for i in range(n_rows)],
+        
+        # Valid numeric column - should be included
+        'valid_col': list(range(n_rows))
+    }).with_columns(
+        pl.col('enum_col').cast(pl.Enum(['red', 'blue', 'green', 'yellow']))
+    )
     
     feature_map = _generate_features(df)
     
+    # Temporal types should be skipped
     assert 'date_col' not in feature_map
+    
+    # Nested types should be skipped
     assert 'list_col' not in feature_map
     assert 'struct_col' not in feature_map
+    
+    # Enum should be skipped (not yet supported in basic version)
+    assert 'enum_col' not in feature_map
+    
+    # String types should be skipped (not yet supported in basic version)
+    assert 'low_card_string' not in feature_map
+    assert 'high_card_string' not in feature_map
+    
+    # Valid numeric column should be included
     assert 'valid_col' in feature_map
+    assert isinstance(feature_map['valid_col'], OriginalIntFeature)
 
 
 def test_original_columns_with_special_values() -> None:
