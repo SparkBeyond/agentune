@@ -354,6 +354,20 @@ class NumericStatsCalculator(UnifiedStatsCalculator):
         base_stats = super().calculate_from_series(feature, series)
         values = series.drop_nulls().to_numpy()
         
+        # Calculate infinity counts
+        n_total = base_stats.n_total
+        n_missing = base_stats.n_missing
+        n_finite = n_total - n_missing
+        n_positive_infinite = 0
+        n_negative_infinite = 0
+        n_nan = 0
+
+        if series.dtype.is_numeric():
+            n_positive_infinite = int((series == float('inf')).sum())
+            n_negative_infinite = int((series == float('-inf')).sum())
+            n_nan = int(series.is_nan().sum())
+            n_finite = n_finite - n_positive_infinite - n_negative_infinite - n_nan
+
         # Calculate histogram for numeric features
         counts, bin_edges = self._create_histogram(values)
         return NumericFeatureStats(
@@ -362,6 +376,10 @@ class NumericStatsCalculator(UnifiedStatsCalculator):
             categories=base_stats.categories,
             value_counts=base_stats.value_counts,
             support=base_stats.support,
+            n_finite=n_finite,
+            n_positive_infinite=n_positive_infinite,
+            n_negative_infinite=n_negative_infinite,
+            n_nan=n_nan,
             histogram_counts=counts,
             histogram_bin_edges=bin_edges
         )
@@ -375,8 +393,27 @@ class NumericStatsCalculator(UnifiedStatsCalculator):
         if len(values) == 0:
             return (), ()
         
-        # Use numpy's histogram function
-        counts, bin_edges = np.histogram(values, bins=self.n_histogram_bins)
+        # Filter NaNs for histogram calculation
+        valid_values = values[~np.isnan(values)]
+        
+        if len(valid_values) == 0:
+            return (), ()
+        
+        finite_values = valid_values[np.isfinite(valid_values)]
+        
+        if len(finite_values) == 0:
+            # Fallback for only infinite values: single bin from -inf to inf
+            bin_edges = np.array([float('-inf'), float('inf')])
+        else:
+            # Calculate bin edges based on finite values
+            _, bin_edges = np.histogram(finite_values, bins=self.n_histogram_bins)
+            
+            # Extend outer edges to infinity
+            bin_edges[0] = float('-inf')
+            bin_edges[-1] = float('inf')
+            
+        # Compute counts using the adjusted edges on ALL valid values (including inf, excluding nan)
+        counts, _ = np.histogram(valid_values, bins=bin_edges)
         
         return tuple(int(c) for c in counts), tuple(float(e) for e in bin_edges)
 
