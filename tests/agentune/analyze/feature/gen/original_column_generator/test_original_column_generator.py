@@ -158,13 +158,12 @@ def test_categorical_columns() -> None:
     # Create distinct categories for 'status' to test top-9 limit
     # 9 categories with 20 rows each (180 total)
     top_categories = [f'top_{i}' for i in range(9) for _ in range(20)]
-    # 11 categories with ~1-2 rows each (20 total)
-    avg_categories = [f'low_{i}' for i in range(11) for _ in range(2)]
-    # crop to 200
-    status_col = (top_categories + avg_categories)[:n_rows]
+    # 10 categories with 2 rows each (20 total)
+    avg_categories = [f'low_{i}' for i in range(10) for _ in range(2)]
+    status_col = (top_categories + avg_categories)
     
     df = pl.DataFrame({
-        'color': (['red', 'blue', 'green'] * 70)[:n_rows],
+        'color': (['red', 'blue', 'green', 'yellow'] * 50),
         'status': status_col,
         'high_cardinality': [f'value_{i}' for i in range(n_rows)]
     }).with_columns(

@@ -46,6 +46,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
     """
     top_k_categories: int = 9
     min_coverage_threshold: float = 0.5
+
     @staticmethod
     def _should_skip_column(col: Field, dataset: Dataset, target_column_name: str) -> bool:
         """Determine if a column should be skipped.
@@ -164,15 +165,13 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
                         feature=OriginalColumnsGenerator._create_float_feature(col),
                         has_good_defaults=False
                     )
-                case dt if dt.is_enum():
+                case dt if isinstance(dt, t.EnumDtype):
                     # Use all categories from the enum schema definition
-                    from agentune.core.types import EnumDtype
-                    if isinstance(col.dtype, EnumDtype):
-                        categories = col.dtype.values
-                        yield GeneratedFeature(
-                            feature=OriginalColumnsGenerator._create_categorical_feature(col, categories),
-                            has_good_defaults=False
-                        )
+                    categories = dt.values
+                    yield GeneratedFeature(
+                        feature=OriginalColumnsGenerator._create_categorical_feature(col, categories),
+                        has_good_defaults=False
+                    )
                 case t.string:
                     # Analyze string column for top-K categorical conversion
                     series = feature_search.data.get_column(col.name)
