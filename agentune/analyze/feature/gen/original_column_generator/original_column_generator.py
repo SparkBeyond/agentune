@@ -165,9 +165,8 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
                         feature=OriginalColumnsGenerator._create_float_feature(col),
                         has_good_defaults=False
                     )
-                case dt if isinstance(dt, t.EnumDtype):
+                case t.EnumDtype(values=categories):
                     # Use all categories from the enum schema definition
-                    categories = dt.values
                     yield GeneratedFeature(
                         feature=OriginalColumnsGenerator._create_categorical_feature(col, categories),
                         has_good_defaults=False
