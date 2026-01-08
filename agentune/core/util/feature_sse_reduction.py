@@ -367,7 +367,13 @@ def calculate_sse_reduction(feature: Feature, series: pl.Series, target: pl.Seri
         - r_squared: 1 - (SSE_feature / SSE_baseline), clamped to be in range [0, 1], nan is mapped to 0.
     """
     # Create aligned arrays without nulls
-    df = pl.DataFrame({feature.name: series, 'target': target}).drop_nulls()
+    df = pl.DataFrame({feature.name: series, 'target': target})
+    
+    # Filter infinite values for numeric features (both feature and target must be finite)
+    if feature.is_numeric():
+        df = df.filter(pl.col(feature.name).is_finite())
+
+    df = df.drop_nulls()
     
     # Check if we have enough samples after dropping nulls
     if len(df) <= 1:
