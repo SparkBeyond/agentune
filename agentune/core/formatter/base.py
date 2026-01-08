@@ -10,7 +10,7 @@ import attrs
 import polars as pl
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.join.base import JoinStrategy
+from agentune.analyze.join.base import JoinStrategy, TablesWithJoinStrategies
 from agentune.core.database import DuckdbTable
 from agentune.core.dataset import Dataset
 from agentune.core.schema import Schema
@@ -65,3 +65,45 @@ class DataFormatter(ABC, UseTypeTag):
         ...
 
 
+@attrs.define
+class SchemaFormatter(ABC, UseTypeTag):
+    """Abstract base class for schema formatting strategies.
+    
+    Formats information about available database tables (schemas and sample data) for use in LLM prompts.
+    """
+
+    primary_table_name: str = 'primary_table'
+
+    def _serialize_schema(self, schema: Schema) -> str:
+        """Serialize schema to human-readable string for LLM prompts."""
+        lines = []
+        for field in schema.cols:
+            # Convert Dtype to simple string representation
+            dtype_str = repr(field.dtype.polars_type)
+            lines.append(f'- {field.name}: {dtype_str}')
+
+        return '\n'.join(lines)
+
+    def _format_sample_data(self, dataset: Dataset) -> str:
+        """Format sample data rows as table for LLM prompts."""
+        return dataset.data.write_csv()
+    
+    @abstractmethod
+    def format_all_tables(
+        self,
+        input: Dataset,
+        tables: TablesWithJoinStrategies,
+        conn: DuckDBPyConnection,
+        random_seed: int | None = None,
+    ) -> str:
+        """Format the primary dataset and all auxiliary tables with their schemas and sample data for LLM prompts.
+
+        Args:
+            input: Input dataset (primary table)
+            tables: Available tables with their join strategies
+            conn: Database connection to query sample data
+
+        Returns:
+            String representation of all tables with their schemas and sample data
+        """
+        ...
