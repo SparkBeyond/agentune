@@ -150,10 +150,6 @@ def test_original_columns_with_special_values() -> None:
 
 def test_original_columns_int_clipping() -> None:
     """Test that integer columns with values outside int64 range are clipped."""
-    import duckdb
-
-    from agentune.core.dataset import Dataset
-    
     # Create a DataFrame with uint64 values that exceed int64 max
     int64_max = 2**63 - 1
     
