@@ -7,6 +7,7 @@ from attrs import define
 from duckdb import DuckDBPyConnection
 
 import agentune.core.types as t
+from agentune.analyze.feature.base import CategoricalFeature
 from agentune.analyze.feature.gen.base import GeneratedFeature, SyncFeatureGenerator
 from agentune.analyze.feature.gen.original_column_generator.features import (
     OriginalBoolFeature,
@@ -106,7 +107,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
         
         if source_type == 'string':
             description = f'Top {len(categories)} categories of string column {col.name}'
-            technical_description = f'Top {len(categories)} categories from string column {col.name}, mapping all other values to "_other_"'
+            technical_description = f'Top {len(categories)} categories from string column {col.name}, mapping all other values to "{CategoricalFeature.other_category}"'
         else:
             description = f'Original categorical column {col.name} (from {source_type})'
             technical_description = f'Direct pass-through of {source_type} column {col.name}'
@@ -115,7 +116,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
             name=col.name,
             description=description,
             technical_description=technical_description,
-            default_for_missing='_other_',
+            default_for_missing=CategoricalFeature.other_category,
             input=col,
             categories=categories
         )
