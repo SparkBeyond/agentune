@@ -66,8 +66,8 @@ class DataFormatter(ABC, UseTypeTag):
 
 
 @attrs.define
-class SchemaFormatter(ABC, UseTypeTag):
-    """Abstract base class for schema formatting strategies.
+class TablesFormatter(ABC, UseTypeTag):
+    """Abstract base class for formatting database tables.
     
     Formats information about available database tables (schemas and sample data) for use in LLM prompts.
     """
@@ -88,6 +88,14 @@ class SchemaFormatter(ABC, UseTypeTag):
         """Format sample data rows as table for LLM prompts."""
         return dataset.data.write_csv()
     
+    @abstractmethod
+    def format_table(
+        self,
+        sample_data: Dataset,
+    ) -> str:
+        """Format schema and sample data for a single table."""
+        ...
+        
     @abstractmethod
     def format_all_tables(
         self,
