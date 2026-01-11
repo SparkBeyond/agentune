@@ -74,7 +74,7 @@ class SchemaFormatter(ABC, UseTypeTag):
 
     primary_table_name: str = 'primary_table'
 
-    def _serialize_schema(self, schema: Schema) -> str:
+    def _format_schema(self, schema: Schema) -> str:
         """Serialize schema to human-readable string for LLM prompts."""
         lines = []
         for field in schema.cols:
