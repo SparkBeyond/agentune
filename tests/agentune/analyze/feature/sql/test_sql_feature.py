@@ -261,4 +261,4 @@ async def test_timeout(ctx: RunContext) -> None:
 
         feature = attrs.evolve(feature, timeout=datetime.timedelta(seconds=1))
         result = await feature.acompute_batch(dataset, conn)
-        assert result.equals(pl.Series(feature.name, [i+1 for i in range(10)], dtype=pl.Int32), check_names=True, check_dtypes=True)
+        assert result.equals(pl.Series(feature.name, [i+1 for i in range(10)], dtype=pl.Int64), check_names=True, check_dtypes=True)
