@@ -9,7 +9,6 @@ from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.core.dataset import Dataset
 from agentune.core.formatter.base import TablesFormatter
 from agentune.core.sampler.base import DataSampler, HeadSampler
-from agentune.core.schema import Schema
 
 
 @attrs.frozen
@@ -62,7 +61,7 @@ class SimpleTablesFormatter(TablesFormatter):
         sample_data = self.sampler.sample(input, self.num_samples, random_seed=random_seed)
         # Format primary table
         sections.append(f'## Primary Table: {self.primary_table_name}\n')
-        sections.append(self._format_table(input.schema, sample_data))
+        sections.append(self.format_table(sample_data))
 
         # Format secondary tables
         for table_with_strategies in tables:
@@ -72,6 +71,6 @@ class SimpleTablesFormatter(TablesFormatter):
             sample_data = self.sampler.sample(dataset, self.num_samples, random_seed=random_seed)
             # Format table section
             sections.append(f'## Table: {table.name.name}\n')
-            sections.append(self._format_table(dataset.schema, sample_data))
+            sections.append(self.format_table(sample_data))
         
         return '\n'.join(sections)
