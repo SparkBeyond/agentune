@@ -86,6 +86,7 @@ ignore = [
     "PT018",                            # assert x and y
     "PT012",                            # pytest.assert block should contain a single simple statement (oh noes! we have two!)
     "PLC0415",                          # allow local/conditional imports
+    "ASYNC109",                         # async function has a parameter named 'timeout'
 
     # Rules we may want to enforce in the future but are ignored for now
     "S608",                             # Possible SQL injection
