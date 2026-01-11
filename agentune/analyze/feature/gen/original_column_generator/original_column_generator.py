@@ -32,7 +32,7 @@ class OriginalColumnsGenerator(SyncFeatureGenerator):
     - Numeric columns (integers and floats)
     - Boolean columns
     - Enum columns (using all schema-defined categories)
-    - String columns (top-K most frequent + '_other_')
+    - String columns (top-K most frequent + CategoricalFeature.other_category for others)
 
     The generator automatically skips:
     - Target column (to prevent leakage)
