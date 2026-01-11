@@ -58,15 +58,13 @@ class OriginalIntFeature(OriginalColumnFeature[int], SyncIntFeature):
     def compute_batch(self, input: Dataset, conn: DuckDBPyConnection) -> pl.Series:
         series = input.data.get_column(self.input.name)
         
-        int64_max = 2**63 - 1
-        int64_min = -(2**63)
-        
-        # For unsigned types that can exceed int64_max, clip upper bound before casting
-        if series.dtype in (pl.UInt64,):
-            series = series.clip(upper_bound=int64_max).cast(pl.Int64)
-        # For Int128, clip both bounds before casting
+        # For unsigned types that can exceed int64_max, clip upper bound only
+        if series.dtype in (pl.UInt64, pl.UInt128):
+            # Unsigned types can't have negative values, so only clip upper bound
+            series = series.clip(upper_bound=pl.Int64.max()).cast(pl.Int64)
+        # For Int128, clip both bounds
         elif series.dtype == pl.Int128:
-            series = series.clip(lower_bound=int64_min, upper_bound=int64_max).cast(pl.Int64)
+            series = series.clip(lower_bound=pl.Int64.min(), upper_bound=pl.Int64.max()).cast(pl.Int64)
         # For smaller types that fit in int64, just cast
         else:
             series = series.cast(pl.Int64)
