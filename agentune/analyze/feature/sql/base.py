@@ -101,7 +101,7 @@ class SqlBackedFeature[T](SqlQueryFeature, SyncFeature[T]):
                         result = duckdb_to_polars(relation)
                 except duckdb.InterruptException as e:
                     raise FeatureValidationError(ComputeValidationCode.timeout,
-                                                 f'SQL query timed out after {self.timeout}') from e
+                                                 f'SQL query timed out after {self.timeout} in feature {self.name}: {self.sql_query}') from e
 
             if result.width != 1:
                 raise FeatureValidationError(ComputeValidationCode.width,
