@@ -9,6 +9,7 @@ from agentune.analyze.feature.sql.base import (
     CategoricalSqlBackedFeature,
     FloatSqlBackedFeature,
     IntSqlBackedFeature,
+    SqlFeatureSpec,
 )
 from agentune.analyze.feature.sql.create import feature_from_query
 from agentune.analyze.feature.validate.base import FeatureValidationError
@@ -22,7 +23,7 @@ def test_feature_from_query(conn: DuckDBPyConnection) -> None:
     conn.execute('INSERT INTO context_table VALUES (1, 2), (3, 4)')
 
     feature = feature_from_query(conn,
-                                 '''select key from my_table''',
+                                 SqlFeatureSpec(sql_query='''select key from my_table'''),
                                  Schema((Field('key', types.int64), )),
                                  (),
                                  'my_table')
@@ -30,7 +31,7 @@ def test_feature_from_query(conn: DuckDBPyConnection) -> None:
     assert feature.name == 'key'
 
     feature = feature_from_query(conn,
-                                 '''select key::utinyint as key from my_table''',
+                                 SqlFeatureSpec(sql_query='''select key::utinyint as key from my_table'''),
                                  Schema((Field('key', types.int64), )),
                                  (),
                                  'my_table')
@@ -39,13 +40,13 @@ def test_feature_from_query(conn: DuckDBPyConnection) -> None:
 
     with pytest.raises(FeatureValidationError, match='unsupported type'):
         feature_from_query(conn,
-                           '''select key::uint64 as key from my_table''',
+                           SqlFeatureSpec(sql_query='''select key::uint64 as key from my_table'''),
                            Schema((Field('key', types.int64), )),
                            (),
                            'my_table')
 
     feature = feature_from_query(conn,
-                                 '''select key > 1 as foo from my_table''',
+                                 SqlFeatureSpec(sql_query='''select key > 1 as foo from my_table'''),
                                  Schema((Field('key', types.int64), )),
                                  (),
                                  'my_table')
@@ -53,7 +54,7 @@ def test_feature_from_query(conn: DuckDBPyConnection) -> None:
     assert feature.name == 'foo'
 
     feature = feature_from_query(conn,
-                                 '''select key::double as key from my_table''',
+                                 SqlFeatureSpec(sql_query='''select key::double as key from my_table'''),
                                  Schema((Field('key', types.int64), )),
                                  (),
                                  'my_table')
@@ -61,7 +62,7 @@ def test_feature_from_query(conn: DuckDBPyConnection) -> None:
     assert feature.name == 'key'
 
     feature = feature_from_query(conn,
-                                 '''select key::varchar as key from my_table''',
+                                 SqlFeatureSpec(sql_query='''select key::varchar as key from my_table'''),
                                  Schema((Field('key', types.int64), )),
                                  (),
                                  'my_table')
@@ -70,7 +71,7 @@ def test_feature_from_query(conn: DuckDBPyConnection) -> None:
     assert feature.categories == ('nonesuch',)
 
     feature = feature_from_query(conn,
-                                 '''select key::enum('1', '2') as key from my_table''',
+                                 SqlFeatureSpec(sql_query='''select key::enum('1', '2') as key from my_table'''),
                                  Schema((Field('key', types.int64), )),
                                  (),
                                  'my_table')
@@ -85,11 +86,10 @@ def test_categorical_feature_from_query(conn: DuckDBPyConnection) -> None:
     input = DuckdbTable.from_duckdb('table1', conn).as_source().to_dataset(conn)
 
     feature = feature_from_query(conn,
-                                 '''select value from table1''',
+                                 SqlFeatureSpec(sql_query='''select value from table1''', name='feat'),
                                  Schema((Field('value', types.string), )),
                                  (),
-                                 'table1',
-                                 name='feat')
+                                 'table1')
     assert isinstance(feature, CategoricalSqlBackedFeature)
     assert feature.name == 'feat'
     assert feature.categories == ('nonesuch',)
