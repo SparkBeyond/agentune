@@ -9,6 +9,7 @@ from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.core.dataset import Dataset
 from agentune.core.formatter.base import SchemaFormatter
 from agentune.core.sampler.base import DataSampler, HeadSampler
+from agentune.core.schema import Schema
 
 
 @attrs.frozen
@@ -23,6 +24,19 @@ class SimpleSchemaFormatter(SchemaFormatter):
     """
     num_samples: int = 5
     sampler: DataSampler = HeadSampler()
+
+    def _serialize_schema_and_samples(self, schema: Schema, sample_data: Dataset) -> str:
+        """Serialize schema and sample data for a single table."""
+        # Schema
+        out = ['### Schema:']
+        out.append(self._format_schema(schema))
+        out.append('')
+        
+        # Sample data
+        out.append(f'### Sample Data ({self.num_samples} rows):')
+        out.append(self._format_sample_data(sample_data))
+        out.append('')
+        return '\n'.join(out)
 
     @override
     def format_all_tables(
@@ -44,33 +58,20 @@ class SimpleSchemaFormatter(SchemaFormatter):
         """
         sections = []
         
-        # Format primary table
-        sections.append('## Primary Table: ' + self.primary_table_name)
-        sections.append('')
-        sections.append('### Schema:')
-        sections.append(self._serialize_schema(input.schema))
-        sections.append('')
-        sections.append(f'### Sample Data ({self.num_samples} rows):')
+        # get sample data for primary table
         sample_data = self.sampler.sample(input, self.num_samples, random_seed=random_seed)
-        sections.append(self._format_sample_data(sample_data))
-        sections.append('')
-        
+        # Format primary table
+        sections.append(f'## Primary Table: {self.primary_table_name}\n')
+        sections.append(self._serialize_schema_and_samples(input.schema, sample_data))
+
         # Format secondary tables
         for table_with_strategies in tables:
+            # get sample data for the table
             table = table_with_strategies.table
-            sections.append(f'## Table: {table.name.name}')
-            sections.append('')
-            
-            # Schema
-            sections.append('### Schema:')
-            sections.append(self._serialize_schema(table.schema))
-            sections.append('')
-            
-            # Sample data
-            sections.append(f'### Sample Data ({self.num_samples} rows):')
             dataset = table.as_source().to_dataset(conn)
             sample_data = self.sampler.sample(dataset, self.num_samples, random_seed=random_seed)
-            sections.append(self._format_sample_data(sample_data))
-            sections.append('')
+            # Format table section
+            sections.append(f'## Table: {table.name.name}\n')
+            sections.append(self._serialize_schema_and_samples(dataset.schema, sample_data))
         
         return '\n'.join(sections)
