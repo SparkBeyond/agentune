@@ -13,6 +13,7 @@ from agentune.analyze.feature.sql.base import (
     CategoricalSqlBackedFeature,
     FloatSqlBackedFeature,
     IntSqlBackedFeature,
+    SqlFeatureSpec,
 )
 from agentune.analyze.feature.sql.create import int_feature_from_query
 from agentune.analyze.feature.validate.base import FeatureValidationError
@@ -253,7 +254,7 @@ async def test_timeout(ctx: RunContext) -> None:
         conn.execute('create table primary_table as select i::integer as i from unnest(range(10)) as t(i)')
         dataset = DuckdbTable.from_duckdb('primary_table', conn).as_source().to_dataset(conn)
 
-        feature = int_feature_from_query(conn, 'select slow(i) from primary_table order by primary_table.rowid',
+        feature = int_feature_from_query(conn, SqlFeatureSpec(sql_query='select slow(i) from primary_table order by primary_table.rowid'),
                                          dataset.schema, [],
                                          timeout=datetime.timedelta(seconds=0.01))
         with pytest.raises(FeatureValidationError, match='timed out'):
