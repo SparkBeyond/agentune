@@ -148,6 +148,40 @@ def test_original_columns_with_special_values() -> None:
     assert hasattr(float_feature, 'default_for_neg_infinity')
 
 
+def test_original_columns_int_clipping() -> None:
+    """Test that integer columns with values outside int64 range are clipped."""
+    # Create a DataFrame with uint64 values that exceed int64 max
+    int64_max = 2**63 - 1
+    
+    # Use uint64 which can hold values larger than int64_max
+    df = pl.DataFrame({
+        'uint64_col': pl.Series([0, 100, int64_max, int64_max + 1000, 2**64 - 1], dtype=pl.UInt64),
+        'normal_int': pl.Series([0, 100, 1000, 5000, 10000], dtype=pl.Int32),
+    })
+    
+    feature_map = _generate_features(df)
+    
+    # Both columns should be included as OriginalIntFeature
+    assert 'uint64_col' in feature_map
+    assert isinstance(feature_map['uint64_col'], OriginalIntFeature)
+    assert 'normal_int' in feature_map
+    assert isinstance(feature_map['normal_int'], OriginalIntFeature)
+    
+    # Verify that the features clip values correctly
+    dataset = Dataset.from_polars(df)
+    conn = duckdb.connect()
+    
+    # Test uint64_col clipping - values exceeding int64_max should be clipped
+    uint64_result = feature_map['uint64_col'].compute_batch(dataset, conn)
+    assert uint64_result.dtype == pl.Int64
+    assert uint64_result[3] == int64_max  # Clipped from int64_max + 1000
+    assert uint64_result[4] == int64_max  # Clipped from 2**64 - 1
+    
+    # Test normal_int - should be cast to int64
+    normal_int_result = feature_map['normal_int'].compute_batch(dataset, conn)
+    assert normal_int_result.dtype == pl.Int64
+
+
 def test_categorical_columns() -> None:
     """Test enum and string categorical column handling."""
     # Enum: uses all schema-defined categories

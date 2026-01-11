@@ -49,7 +49,27 @@ class OriginalColumnFeature[T](SyncFeature[T]):
 
 @frozen
 class OriginalIntFeature(OriginalColumnFeature[int], SyncIntFeature):
-    """Integer feature that passes through an original column."""
+    """Integer feature that passes through an original column.
+    
+    Values are clipped to int64 range and cast to int64 dtype.
+    """
+    
+    @override
+    def compute_batch(self, input: Dataset, conn: DuckDBPyConnection) -> pl.Series:
+        series = input.data.get_column(self.input.name)
+        
+        # For unsigned types that can exceed int64_max, clip upper bound only
+        if series.dtype in (pl.UInt64, pl.UInt128):
+            # Unsigned types can't have negative values, so only clip upper bound
+            series = series.clip(upper_bound=pl.Int64.max()).cast(pl.Int64)
+        # For Int128, clip both bounds
+        elif series.dtype == pl.Int128:
+            series = series.clip(lower_bound=pl.Int64.min(), upper_bound=pl.Int64.max()).cast(pl.Int64)
+        # For smaller types that fit in int64, just cast
+        else:
+            series = series.cast(pl.Int64)
+        
+        return series
 
 
 @frozen
