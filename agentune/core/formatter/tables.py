@@ -7,14 +7,14 @@ from duckdb import DuckDBPyConnection
 
 from agentune.analyze.join.base import TablesWithJoinStrategies
 from agentune.core.dataset import Dataset
-from agentune.core.formatter.base import SchemaFormatter
+from agentune.core.formatter.base import TablesFormatter
 from agentune.core.sampler.base import DataSampler, HeadSampler
 from agentune.core.schema import Schema
 
 
 @attrs.frozen
-class SimpleSchemaFormatter(SchemaFormatter):
-    """Simple schema formatter for LLM prompts.
+class SimpleTablesFormatter(TablesFormatter):
+    """Simple tables formatter for LLM prompts.
     
     Formats all available tables with their schemas and sample data.
     Each table is formatted with:
@@ -25,11 +25,11 @@ class SimpleSchemaFormatter(SchemaFormatter):
     num_samples: int = 5
     sampler: DataSampler = HeadSampler()
 
-    def _format_schema_and_samples(self, schema: Schema, sample_data: Dataset) -> str:
+    def format_table(self, sample_data: Dataset) -> str:
         """Format schema and sample data for a single table."""
         # Schema
         out = ['### Schema:']
-        out.append(self._format_schema(schema))
+        out.append(self._format_schema(sample_data.schema))
         out.append('')
         
         # Sample data
@@ -62,7 +62,7 @@ class SimpleSchemaFormatter(SchemaFormatter):
         sample_data = self.sampler.sample(input, self.num_samples, random_seed=random_seed)
         # Format primary table
         sections.append(f'## Primary Table: {self.primary_table_name}\n')
-        sections.append(self._format_schema_and_samples(input.schema, sample_data))
+        sections.append(self._format_table(input.schema, sample_data))
 
         # Format secondary tables
         for table_with_strategies in tables:
@@ -72,6 +72,6 @@ class SimpleSchemaFormatter(SchemaFormatter):
             sample_data = self.sampler.sample(dataset, self.num_samples, random_seed=random_seed)
             # Format table section
             sections.append(f'## Table: {table.name.name}\n')
-            sections.append(self._format_schema_and_samples(dataset.schema, sample_data))
+            sections.append(self._format_table(dataset.schema, sample_data))
         
         return '\n'.join(sections)
