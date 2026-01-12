@@ -7,6 +7,7 @@ from duckdb import DuckDBPyConnection
 from agentune.analyze.feature.sql.base import (
     SqlBackedFeature,
     SqlFeatureCorrector,
+    SqlFeatureSpec,
 )
 from agentune.analyze.feature.sql.create import (
     QueryValidationCode,
@@ -29,12 +30,13 @@ class TestFeatureCorrector(SqlFeatureCorrector):
     corrections: list[str | None] = field(factory=list)
 
     @override
-    async def correct(self, sql_query: str, error: FeatureValidationError) -> str | None:
-        self.calls.append((sql_query, error))
+    async def correct(self, sql_feature_spec: SqlFeatureSpec, error: FeatureValidationError) -> SqlFeatureSpec | None:
+        self.calls.append((sql_feature_spec.sql_query, error))
         if self.corrections:
-            return self.corrections.pop(0)
+            correction = self.corrections.pop(0)
+            return SqlFeatureSpec(sql_query=correction) if correction is not None else None
         else:
-            return sql_query
+            return sql_feature_spec
 
 
 async def test_validator_loop(conn: DuckDBPyConnection) -> None:
@@ -45,7 +47,7 @@ async def test_validator_loop(conn: DuckDBPyConnection) -> None:
     validators = [LawAndOrderValidator()]
 
     feature = int_feature_from_query(conn,
-                                     'select value from primary_table',
+                                     SqlFeatureSpec(sql_query='select value from primary_table'),
                                      table1.schema.drop('key'),
                                      [])
 
@@ -53,7 +55,7 @@ async def test_validator_loop(conn: DuckDBPyConnection) -> None:
     corrector = TestFeatureCorrector()
     new_feature = await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, feature.sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=feature.sql_query), feature.params, feature.secondary_tables, input,
         1, 1,
         corrector, validators
     ))
@@ -64,19 +66,19 @@ async def test_validator_loop(conn: DuckDBPyConnection) -> None:
     # Validation passes with a zero budget if there are no errors
     await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, feature.sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=feature.sql_query), feature.params, feature.secondary_tables, input,
         0, 0,
         corrector, validators
     ))
     await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, feature.sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=feature.sql_query), feature.params, feature.secondary_tables, input,
         0, 1,
         corrector, validators
     ))
     await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, feature.sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=feature.sql_query), feature.params, feature.secondary_tables, input,
         1, 0,
         corrector, validators
     ))
@@ -86,7 +88,7 @@ async def test_validator_loop(conn: DuckDBPyConnection) -> None:
     corrector = TestFeatureCorrector(corrections = [sql_query, 'select value from primary_table'])
     new_feature = await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=sql_query), feature.params, feature.secondary_tables, input,
         2, 2,
         corrector, validators
     ))
@@ -100,7 +102,7 @@ async def test_validator_loop(conn: DuckDBPyConnection) -> None:
     corrector = TestFeatureCorrector(corrections = [sql_query, 'select value from primary_table'])
     new_feature = await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=sql_query), feature.params, feature.secondary_tables, input,
         2, 1,
         corrector, validators
     ))
@@ -111,7 +113,7 @@ async def test_validator_loop(conn: DuckDBPyConnection) -> None:
     corrector = TestFeatureCorrector(corrections = [sql_query, 'select value from primary_table'])
     new_feature = await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=sql_query), feature.params, feature.secondary_tables, input,
         1, 2,
         corrector, validators
     ))
@@ -124,7 +126,7 @@ async def test_validator_loop(conn: DuckDBPyConnection) -> None:
     corrector = TestFeatureCorrector(corrections = [sql_query2, sql_query, 'select value from primary_table'])
     new_feature = await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=sql_query), feature.params, feature.secondary_tables, input,
         10, 1,
         corrector, validators
     ))
@@ -135,7 +137,7 @@ async def test_validator_loop(conn: DuckDBPyConnection) -> None:
     corrector = TestFeatureCorrector(corrections = [sql_query2, sql_query] * 10)
     new_feature = await validate_and_retry(ValidateAndRetryParams(
         feature_from_query,
-        conn, sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=sql_query), feature.params, feature.secondary_tables, input,
         10, 1,
         corrector, validators
     ))
@@ -151,7 +153,7 @@ async def test_validator_loop_specific_feature_type_ctor(conn: DuckDBPyConnectio
     validators = [LawAndOrderValidator()]
 
     feature = feature_from_query(conn,
-                                 'select value from primary_table',
+                                 SqlFeatureSpec(sql_query='select value from primary_table'),
                                  table1.schema.drop('key'),
                                  [])
 
@@ -159,7 +161,7 @@ async def test_validator_loop_specific_feature_type_ctor(conn: DuckDBPyConnectio
     # Specific type ctor
     new_feature = await validate_and_retry(ValidateAndRetryParams(
         int_feature_from_query,
-        conn, feature.sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=feature.sql_query), feature.params, feature.secondary_tables, input,
         1, 1,
         corrector, validators
     ))
@@ -169,7 +171,7 @@ async def test_validator_loop_specific_feature_type_ctor(conn: DuckDBPyConnectio
     # Wrong type for query
     new_feature = await validate_and_retry(ValidateAndRetryParams(
         float_feature_from_query,
-        conn, feature.sql_query, feature.params, feature.secondary_tables, input,
+        conn, SqlFeatureSpec(sql_query=feature.sql_query), feature.params, feature.secondary_tables, input,
         1, 1,
         corrector, validators
     ))

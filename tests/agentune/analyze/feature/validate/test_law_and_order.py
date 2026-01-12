@@ -2,7 +2,7 @@ import attrs
 import pytest
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.feature.sql.base import SqlBackedFeature
+from agentune.analyze.feature.sql.base import SqlBackedFeature, SqlFeatureSpec
 from agentune.analyze.feature.sql.create import feature_from_query, int_feature_from_query
 from agentune.analyze.feature.validate.base import FeatureValidationError
 from agentune.analyze.feature.validate.law_and_order import LawAndOrderValidator
@@ -23,7 +23,7 @@ def _setup(conn: DuckDBPyConnection, query: str) -> tuple[DuckdbTable, DuckdbTab
     table2 = DuckdbTable.from_duckdb('table2', conn)
     table3 = DuckdbTable.from_duckdb('table3', conn)
 
-    feature = feature_from_query(conn, query,
+    feature = feature_from_query(conn,  SqlFeatureSpec(sql_query=query),
                                  table.schema,
                                  (table3, table2),
                                  primary_table_name='table1')
@@ -91,7 +91,7 @@ async def test_order(conn: DuckDBPyConnection) -> None:
     dataset = DatasetSource.from_table(table).to_dataset(conn)
 
     feature = int_feature_from_query(conn,
-                                     '''select i from primary_table''',
+                                     SqlFeatureSpec(sql_query='select i from primary_table'),
                                      table.schema,
                                      ())
     assert feature.compute((2, ), conn) == 2, 'Sanity check'

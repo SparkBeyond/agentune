@@ -144,12 +144,29 @@ class CategoricalSqlBackedFeature(CategoricalFeature, SqlBackedFeature):
     pass
 
 
+@frozen
+class SqlFeatureSpec:
+    """Specification for a SQL-based feature.
+
+    Represents a feature as SQL query along with metadata.
+
+    Attributes:
+        sql_query: Complete SQL SELECT statement that computes the feature
+        name: Feature name (to be used as column name in dataframes)
+        description: Human-readable description of what the feature computes
+        technical_description: Optional more technical description of the feature (default: the SQL query)
+    """
+    sql_query: str
+    name: str | None = None
+    description: str = ''
+    technical_description: str | None = None
+
 
 class SqlFeatureCorrector(ABC):
     """A callback that tries to fix a feature given a validation error, or gives up."""
 
     @abstractmethod
-    async def correct(self, sql_query: str, error: FeatureValidationError) -> str | None:
+    async def correct(self, sql_feature_spec: SqlFeatureSpec, error: FeatureValidationError) -> SqlFeatureSpec | None:
         """Return a new SQL query to try, or None to give up."""
         ...
 
@@ -163,14 +180,10 @@ class FeatureFromQueryCtor(Protocol):
 
     def __call__(self,
                  conn: DuckDBPyConnection,
-                 sql_query: str,
-                 params: Schema, secondary_tables: Sequence[DuckdbTable],
-
+                 sql_feature_spec: SqlFeatureSpec,
+                 params: Schema,
+                 secondary_tables: Sequence[DuckdbTable],
                  primary_table_name: str = 'primary_table',
                  index_column_name: str = 'rowid',
-
-                 name: str | None = None,
-                 description: str = '',
-                 technical_description: str | None = None,
-                 timeout: datetime.timedelta | None = None) -> SqlBackedFeature: ...
-
+                 timeout: datetime.timedelta | None = None) -> SqlBackedFeature:
+        ...
