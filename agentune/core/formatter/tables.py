@@ -11,6 +11,7 @@ from agentune.core.formatter.base import TableFormatter, TablesFormatter
 from agentune.core.sampler.base import DataSampler, RandomSampler, TableSampler
 from agentune.core.sampler.table_samples import HeadTableSampler
 from agentune.core.schema import Schema
+import polars as pl
 
 
 @attrs.frozen
@@ -23,6 +24,7 @@ class MarkdownTableFormatter(TableFormatter):
     
     Args:
         markdown_level: The markdown header level to use for sections (default: 3).
+        max_str: Maximum string length for cell values. Longer values are truncated with '...' (default: 100).
     
     Example:
         ### Schema:
@@ -37,6 +39,7 @@ class MarkdownTableFormatter(TableFormatter):
         2,Bob,inactive,82.3
     """
     markdown_level: int = 3
+    max_str: int = 100
 
     def _format_schema(self, schema: Schema) -> str:
         """Format schema to human-readable string."""
@@ -50,7 +53,24 @@ class MarkdownTableFormatter(TableFormatter):
 
     def _format_sample_data(self, dataset: Dataset) -> str:
         """Format sample data rows as table using CSV format."""
-        return dataset.data.write_csv()
+        # Only truncate string columns using Polars
+        select_exprs = []
+        for field in dataset.schema.cols:
+            col_name = field.name
+            # Check if column is a string type
+            if field.dtype.polars_type in (pl.String, pl.Utf8):
+                # Truncate long strings
+                select_exprs.append(
+                    pl.when(pl.col(col_name).str.len_bytes() > self.max_str)
+                    .then(pl.col(col_name).str.slice(0, self.max_str) + '...')
+                    .otherwise(pl.col(col_name))
+                    .alias(col_name)
+                )
+            else:
+                select_exprs.append(pl.col(col_name))
+        
+        truncated_data = dataset.data.select(select_exprs)
+        return truncated_data.write_csv()
     
     @override
     def format_table(
@@ -92,6 +112,7 @@ class MarkdownTablesFormatter(TablesFormatter):
     Args:
         markdown_level: The markdown header level to use for table sections (default: 2).
         num_samples: Number of sample rows to retrieve for each table (default: 5).
+        max_str: Maximum string length for cell values. Longer values are truncated with '...' (default: 100).
         table_formatter: TableFormatter to use for formatting individual tables.
                         Defaults to MarkdownTableFormatter with markdown_level + 1.
         primary_dataset_sampler: DataSampler to use for sampling the primary dataset.
@@ -126,7 +147,8 @@ class MarkdownTablesFormatter(TablesFormatter):
     """
     markdown_level: int = 2
     num_samples: int = 5
-    table_formatter: TableFormatter = attrs.field(default=attrs.Factory(lambda self: MarkdownTableFormatter(markdown_level=self.markdown_level + 1), takes_self=True))
+    max_str: int = 100
+    table_formatter: TableFormatter = attrs.field(default=attrs.Factory(lambda self: MarkdownTableFormatter(markdown_level=self.markdown_level + 1, max_str=self.max_str), takes_self=True))
     primary_dataset_sampler: DataSampler = RandomSampler()
     tables_sampler: TableSampler = HeadTableSampler()
 
