@@ -61,27 +61,3 @@ class RandomSampler(DataSampler):
             schema=dataset.schema,
             data=sampled_df,
         )
-
-@attrs.define
-class HeadSampler(DataSampler):
-    """Simple head sampling.
-
-    This sampler selects the first `sample_size` rows from the dataset.
-    """
-
-    @override
-    def sample(self, dataset: Dataset, sample_size: int, random_seed: int | None = None) -> Dataset:
-        """Sample data using head sampling."""
-        self._validate_inputs(dataset, sample_size)
-
-        # If sample size >= dataset size, return the entire dataset
-        if sample_size >= dataset.data.height:
-            return dataset
-
-        # Head sample
-        sampled_df = dataset.data.head(sample_size)
-
-        return Dataset(
-            schema=dataset.schema,
-            data=sampled_df,
-        )

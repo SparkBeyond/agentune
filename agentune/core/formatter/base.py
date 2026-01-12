@@ -65,36 +65,37 @@ class DataFormatter(ABC, UseTypeTag):
         ...
 
 
+
 @attrs.define
-class TablesFormatter(ABC, UseTypeTag):
-    """Abstract base class for formatting database tables.
+class TableFormatter(ABC, UseTypeTag):
+    """Abstract base class for formatting database table.
     
-    Formats information about available database tables (schemas and sample data) for use in LLM prompts.
+    Formats information about table (schemas and sample data) to string representations.
     """
 
-    primary_table_name: str = 'primary_table'
-
-    def _format_schema(self, schema: Schema) -> str:
-        """Format schema to human-readable string for LLM prompts."""
-        lines = []
-        for field in schema.cols:
-            # Convert Dtype to simple string representation
-            dtype_str = repr(field.dtype.polars_type)
-            lines.append(f'- {field.name}: {dtype_str}')
-
-        return '\n'.join(lines)
-
-    def _format_sample_data(self, dataset: Dataset) -> str:
-        """Format sample data rows as table for LLM prompts."""
-        return dataset.data.write_csv()
-    
     @abstractmethod
     def format_table(
         self,
         sample_data: Dataset,
     ) -> str:
-        """Format schema and sample data for a single table."""
+        """Format schema and sample data for a single table.
+
+        Args:
+            sample_data: Dataset containing the sample data to format
+        Returns:
+            String representation of the table with its schema and sample data
+        """
         ...
+
+
+@attrs.define
+class TablesFormatter(ABC, UseTypeTag):
+    """Abstract base class for formatting database tables.
+    
+    Formats information about available database tables (schemas and sample data) to string representations.
+    """
+
+    primary_table_name: str = 'primary_table'
         
     @abstractmethod
     def format_all_tables(
@@ -104,12 +105,13 @@ class TablesFormatter(ABC, UseTypeTag):
         conn: DuckDBPyConnection,
         random_seed: int | None = None,
     ) -> str:
-        """Format the primary dataset and all auxiliary tables with their schemas and sample data for LLM prompts.
+        """Format the primary dataset and all auxiliary tables with their schemas and sample.
 
         Args:
             input: Input dataset (primary table)
             tables: Available tables with their join strategies
             conn: Database connection to query sample data
+            random_seed: Random seed for sampling (if applicable)
 
         Returns:
             String representation of all tables with their schemas and sample data
