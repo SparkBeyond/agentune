@@ -65,9 +65,7 @@ class RandomStartTableSampler(TableSampler):
         table_name = str(table.table.name)
         
         # Get table size
-        count_query = f'SELECT COUNT(*) as count FROM {table_name}'
-        result = conn.sql(count_query).fetchone()
-        table_size = result[0] if result else 0
+        table_size = len(conn.table(table_name))
         
         # Adjust sample size if it exceeds table size
         sample_size = min(sample_size, table_size)
