@@ -1,9 +1,9 @@
 """Test that the sampled_telco_churn fixture works correctly."""
 
 import pytest
+from tests.agentune.conftest import TestStructuredDataset
 
 from agentune.api.base import RunContext
-from tests.agentune.conftest import TestStructuredDataset
 
 
 @pytest.mark.asyncio
@@ -27,17 +27,17 @@ async def test_golden_dataset_fixture_loads_data(sampled_telco_churn: TestStruct
     
     # Verify tables actually exist in DuckDB and have data
     with ctx._ddb_manager.cursor() as conn:
-        train_count = conn.execute(f"SELECT COUNT(*) FROM {dataset.train_table}").fetchone()[0]
-        test_count = conn.execute(f"SELECT COUNT(*) FROM {dataset.test_table}").fetchone()[0]
-        billing_count = conn.execute("SELECT COUNT(*) FROM billing_history_table").fetchone()[0]
+        train_count = conn.execute(f'SELECT COUNT(*) FROM {dataset.train_table}').fetchone()[0]
+        test_count = conn.execute(f'SELECT COUNT(*) FROM {dataset.test_table}').fetchone()[0]
+        billing_count = conn.execute('SELECT COUNT(*) FROM billing_history_table').fetchone()[0]
         
         # Verify tables have data
-        assert train_count > 0, f"Train table is empty"
-        assert test_count > 0, f"Test table is empty"
-        assert billing_count > 0, f"Billing history table is empty"
+        assert train_count > 0, 'Train table is empty'
+        assert test_count > 0, 'Test table is empty'
+        assert billing_count > 0, 'Billing history table is empty'
         
         # Verify target column exists and has binary values
-        target_values = conn.execute(f"SELECT DISTINCT {dataset.problem.target_column.name} FROM {dataset.train_table} ORDER BY 1").fetchall()
-        assert len(target_values) == 2, f"Expected 2 distinct target values, got {len(target_values)}"
+        target_values = conn.execute(f'SELECT DISTINCT {dataset.problem.target_column.name} FROM {dataset.train_table} ORDER BY 1').fetchall()
+        assert len(target_values) == 2, f'Expected 2 distinct target values, got {len(target_values)}'
         assert target_values[0][0] == 0
         assert target_values[1][0] == 1
