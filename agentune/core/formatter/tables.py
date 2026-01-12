@@ -23,6 +23,18 @@ class MarkdownTableFormatter(TableFormatter):
     
     Args:
         markdown_level: The markdown header level to use for sections (default: 3).
+    
+    Example:
+        ### Schema:
+        - id: INTEGER
+        - name: VARCHAR
+        - status: ENUM('active', 'inactive')
+        - score: DOUBLE
+
+        ### Sample Data:
+        id,name,status,score
+        1,Alice,active,95.5
+        2,Bob,inactive,82.3
     """
     markdown_level: int = 3
 
@@ -86,6 +98,31 @@ class MarkdownTablesFormatter(TablesFormatter):
                                 Defaults to RandomSampler for representative sampling.
         tables_sampler: TableSampler to use for sampling the secondary tables.
                        Defaults to HeadTableSampler for consistent sampling.
+    
+    Example:
+        ## Primary Table: users
+
+        ### Schema:
+        - id: INTEGER
+        - name: VARCHAR
+        - tier: ENUM('bronze', 'silver', 'gold')
+
+        ### Sample Data:
+        id,name,tier
+        1,Alice,gold
+        2,Bob,silver
+
+        ## Table: orders
+
+        ### Schema:
+        - order_id: INTEGER
+        - user_id: INTEGER
+        - amount: DOUBLE
+
+        ### Sample Data:
+        order_id,user_id,amount
+        101,1,49.99
+        102,2,125.50
     """
     markdown_level: int = 2
     num_samples: int = 5
