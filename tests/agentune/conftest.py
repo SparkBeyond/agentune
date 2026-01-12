@@ -11,8 +11,10 @@ from pathlib import Path
 
 import httpx
 import pytest
+from attrs import frozen
 from duckdb import DuckDBPyConnection
 
+from agentune.analyze.feature.problem import ClassificationProblem
 from agentune.api.base import RunContext
 from agentune.api.defaults import create_default_httpx_async_client
 from agentune.core.database import DuckdbManager
@@ -95,3 +97,30 @@ async def ctx() -> AsyncIterator[RunContext]:
     async with await RunContext.create() as ctx:
         yield ctx
 
+@frozen
+class TestStructuredDataset:
+    train_table: str
+    test_table: str
+    auxiliary_tables: tuple[str, ...]
+    problem: ClassificationProblem
+
+
+@pytest.fixture
+async def sampled_telco_churn(ctx: RunContext) -> TestStructuredDataset:
+    telco_churn_dir = Path(__file__).parent / 'data' / 'sampled_telco_churn'
+
+    await ctx.data.from_csv(telco_churn_dir / 'train.csv').copy_to_table('train')
+    await ctx.data.from_csv(telco_churn_dir / 'test.csv').copy_to_table('test')
+    await ctx.data.from_csv(telco_churn_dir / 'billing_history_table.csv').copy_to_table('billing_history_table')
+    await ctx.data.from_csv(telco_churn_dir / 'top_up_activation_history_table.csv').copy_to_table(
+        'top_up_activation_history_table')
+    await ctx.data.from_csv(telco_churn_dir / 'customer_feedback_table.csv').copy_to_table('customer_feedback_table')
+
+    problem = ctx.json.load(telco_churn_dir / 'problem.json', ClassificationProblem)
+
+    return TestStructuredDataset(
+        train_table='train',
+        test_table='test',
+        auxiliary_tables=('billing_history_table', 'top_up_activation_history_table', 'customer_feedback_table'),
+        problem=problem,
+    )

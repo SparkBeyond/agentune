@@ -1,0 +1,34 @@
+{
+  "problem_description": {
+    "target_column": "churn_status",
+    "description": "Identify customers likely to churn from telecom service.",
+    "problem_type": "classification",
+    "target_desired_outcome": null,
+    "name": null,
+    "target_description": null,
+    "business_domain": null,
+    "date_column": "reference_date",
+    "comments": null,
+    "main_table": null,
+    "secondary_tables": {}
+  },
+  "target_column": {
+    "name": "churn_status",
+    "dtype": {
+      "name": "int64",
+      "_type": "simple"
+    }
+  },
+  "classes": [
+    0,
+    1
+  ],
+  "date_column": {
+    "name": "reference_date",
+    "dtype": {
+      "name": "date",
+      "_type": "simple"
+    }
+  },
+  "_type": "ClassificationProblem"
+}

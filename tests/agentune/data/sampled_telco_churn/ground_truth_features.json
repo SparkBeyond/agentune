@@ -1,0 +1,14 @@
+{
+    "enriched_column_names": [
+        "top_up_activity_decline_over_last_3_months",
+        "monthly_payment_timeliness",
+        "negative_feedback_count_in_last_6_months",
+        "annual_increase_in_customer_support_calls"
+    ],
+    "features_descriptions": [
+        "top up activity decline over last 3 months",
+        "monthly payment timeliness",
+        "negative feedback count in last 6 months",
+        "annual increase in customer support calls"
+    ]
+}
