@@ -3,6 +3,7 @@
 from typing import override
 
 import attrs
+import polars as pl
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.join.base import TablesWithJoinStrategies
@@ -11,7 +12,6 @@ from agentune.core.formatter.base import TableFormatter, TablesFormatter
 from agentune.core.sampler.base import DataSampler, RandomSampler, TableSampler
 from agentune.core.sampler.table_samples import HeadTableSampler
 from agentune.core.schema import Schema
-import polars as pl
 
 
 @attrs.frozen
