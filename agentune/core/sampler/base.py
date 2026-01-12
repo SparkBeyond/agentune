@@ -7,7 +7,9 @@ from abc import ABC, abstractmethod
 from typing import override
 
 import attrs
+from duckdb import DuckDBPyConnection
 
+from agentune.analyze.join.base import TableWithJoinStrategies
 from agentune.core.dataset import Dataset
 
 
@@ -25,6 +27,14 @@ class DataSampler(ABC):
 
         if sample_size <= 0:
             raise ValueError('Sample size must be positive')
+
+
+@attrs.define
+class TableSampler(ABC):
+    """Abstract base class for data sampling from TableWithJoinStrategies."""
+    @abstractmethod
+    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = None) -> Dataset:
+        """Sample data from a given table with join strategies."""
 
 
 @attrs.define
