@@ -86,7 +86,7 @@ def feature_from_query(conn: DuckDBPyConnection,
 
     If the query returns a result of a dtype which isn't exactly one of the dtypes features should have,
     a Feature will still be constructed according to the following rules:
-    - int < int32 or uint <= 16 -> int32
+    - int < int64 or uint <= 32 -> int64
     - float32 -> float64
     - string -> enum containing only the category 'nonesuch'
 
