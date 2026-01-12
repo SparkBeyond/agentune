@@ -33,7 +33,8 @@ class HeadTableSampler(TableSampler):
             Dataset containing the first sample_size rows
         """
         table_name = str(table.table.name)
-        sql_query = f'SELECT * FROM {table_name} LIMIT {sample_size}'
+        end_rowid = sample_size - 1
+        sql_query = f'SELECT * FROM {table_name} WHERE rowid BETWEEN 0 AND {end_rowid} ORDER BY rowid'
         
         relation = conn.sql(sql_query)
         return duckdb_to_dataset(relation)
@@ -74,10 +75,11 @@ class RandomStartTableSampler(TableSampler):
         # Select random starting point
         rng = random.Random(random_seed)
         start_rowid = rng.randint(0, max(0, table_size - sample_size))
+        end_rowid = start_rowid + sample_size - 1
         
         # Select consecutive rows starting from the random rowid
         # Using DuckDB's built-in rowid pseudocolumn for deterministic and efficient filtering
-        sql_query = f'SELECT * FROM {table_name} WHERE rowid >= {start_rowid} LIMIT {sample_size}'
+        sql_query = f'SELECT * FROM {table_name} WHERE rowid BETWEEN {start_rowid} AND {end_rowid} ORDER BY rowid'
         
         relation = conn.sql(sql_query)
         return duckdb_to_dataset(relation)
