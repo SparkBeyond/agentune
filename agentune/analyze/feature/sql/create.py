@@ -80,33 +80,31 @@ def feature_from_query(conn: DuckDBPyConnection,
     it would be inconvenient to pass them in a signature that doesn't know which ones to expect. You can change them
     by evolving the returned instance.
 
+    The sql_query within sql_feature_spec should be a query (i.e. a single SELECT statement), obeying the requirements
+    documented in class SqlBackedFeature. This method validates some but not all of these requirements: namely, that
+    the query must return a result set with a single column of a valid type.
+
+    If the query returns a result of a dtype which isn't exactly one of the dtypes features should have,
+    a Feature will still be constructed according to the following rules:
+    - int < int32 or uint <= 16 -> int32
+    - float32 -> float64
+    - string -> enum containing only the category 'nonesuch'
+
+    The last case enables creating a CategoricalSqlBackedFeature whose categories list is wrong,
+    calling compute (not compute_safe) to collect some returned values, and evolving it to contain
+    a correct list of categories. Note that calling compute_safe on such a returned Feature will substitute
+    CategoricalFeature.other_category for all returned values until you evolve its list of categories.
+
+    'nonesuch' is used because CategoricalFeature.categories is not allowed to be empty or to contain
+    CategoricalFeature.other_category.
+
     Args:
-         conn: a connection where the secondary_tables are available, just as when calling Feature.compute.
-               This is required to parse and bind the SQL query. However, the query will not be executed,
-               and the tables can be empty.
-               It is possible to write a wrapper method that connects to a new in-memory database and creates empty
-               secondary tables according to the given schemas, skipping the need for a preexisting connection.
-         sql_feature_spec: specification of the SQL feature to create:
-            sql_query: a query (i.e. a single SELECT statement), obeying the requirements documented in class SqlBackedFeature.
-                        This method validates some but not all of these requirements: namely, that the query must return a result
-                        set with a single column of a valid type.
-
-                        If the query returns a result of a dtype which isn't exactly one of the dtypes features should have,
-                        a Feature will still be constructed according to the following rules:
-                        - int < int32 or uint <= 16 -> int32
-                        - float32 -> float64
-                        - string -> enum containing only the category 'nonesuch'
-
-                        The last case enables creating a CategoricalSqlBackedFeature whose categories list is wrong,
-                        calling compute (not compute_safe) to collect some returned values, and evolving it to contain
-                        a correct list of categories. Note that calling compute_safe on such a returned Feature will substitute
-                        CategoricalFeature.other_category for all returned values until you evolve its list of categories.
-
-                        'nonesuch' is used because CategoricalFeature.categories is not allowed to be empty or to contain
-                        CategoricalFeature.other_category.
-            name: name of the created feature. If None, uses the name of the query's output column.
-            description: populates Feature.description.
-            technical_description: populates Feature.technical_description. If None, set to the query string.
+        conn: a connection where the secondary_tables are available, just as when calling Feature.compute.
+              This is required to parse and bind the SQL query. However, the query will not be executed,
+              and the tables can be empty.
+              It is possible to write a wrapper method that connects to a new in-memory database and creates empty
+              secondary tables according to the given schemas, skipping the need for a preexisting connection.
+        sql_feature_spec: specification of the SQL feature to create.
         params: expected schema of the primary input table, which will be available to the query under the name primary_table_name.
         secondary_tables: names and schemas of the secondary input tales.
         primary_table_name: the name used by the query to refer to the primary input table. This table is not expected
