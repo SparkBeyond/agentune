@@ -14,13 +14,12 @@ from agentune.core.sampler.base import TableSampler
 class HeadTableSampler(TableSampler):
     """Table sampler that returns the first N rows from a table.
     
-    This sampler executes a simple SELECT * query with a LIMIT clause
-    to retrieve the head of the table. The order of rows is determined
-    by the table's natural order (or index if present).
+    This sampler executes a SELECT * query with a WHERE clause filtering by rowid
+    to retrieve the head of the table. Rows are ordered by DuckDB's rowid pseudocolumn.
     """
 
     @override
-    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = None) -> Dataset:
+    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
         """Sample the first N rows from the table.
         
         Args:
@@ -50,7 +49,7 @@ class RandomStartTableSampler(TableSampler):
     """
 
     @override
-    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = None) -> Dataset:
+    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
         """Sample consecutive rows from a random starting point in the table.
         
         Args:

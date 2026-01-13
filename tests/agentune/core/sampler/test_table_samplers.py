@@ -4,34 +4,26 @@ import polars as pl
 from duckdb import DuckDBPyConnection
 
 from agentune.analyze.join.base import TableWithJoinStrategies
-from agentune.core.database import DuckdbName, DuckdbTable
+from agentune.core.database import DuckdbTable
+from agentune.core.dataset import Dataset, DatasetSink
 from agentune.core.sampler.table_samples import HeadTableSampler, RandomStartTableSampler
-from agentune.core.schema import Field, Schema
-from agentune.core.types import int32, string
 
 
 def create_test_table(conn: DuckDBPyConnection, table_name: str, num_rows: int) -> TableWithJoinStrategies:
     """Helper to create test tables in DuckDB."""
-    # Create test data
+    # Create test data with explicit schema to avoid Null type issues with empty DataFrames
     data = pl.DataFrame({
         'id': list(range(num_rows)),
-        'value': [f'item_{i}' for i in range(num_rows)],
-    })
+        'value': [f'item_{i}' for i in range(num_rows)],},
+        schema={'id': pl.Int64, 'value': pl.String}
+    )
     
     # Create actual table in DuckDB (not just register)
-    qualified_name = DuckdbName.qualify(table_name, conn)
-    schema = Schema((Field('id', int32), Field('value', string)))
-    duckdb_table = DuckdbTable(name=qualified_name, schema=schema)
+    DatasetSink.into_unqualified_duckdb_table(table_name, conn).write(Dataset.from_polars(data).as_source(), conn)
     
-    # Create the table
-    duckdb_table.create(conn, if_not_exists=True)
-    
-    # Insert data
-    if num_rows > 0:
-        conn.register('__temp_data', data)
-        conn.execute(f'INSERT INTO {qualified_name} SELECT * FROM __temp_data')
-        conn.unregister('__temp_data')
-    
+    # get DuckdbTable representation from conn
+    duckdb_table = DuckdbTable.from_duckdb(table_name, conn)
+
     # Return TableWithJoinStrategies
     return TableWithJoinStrategies(table=duckdb_table, join_strategies={})
 
@@ -48,9 +40,8 @@ class TestHeadTableSampler:
         result = sampler.sample(table, conn, sample_size=20)
         
         # Validate result
-        assert result.data.height == 20
-        assert result.data['id'].to_list() == list(range(20))
-        assert result.schema.names == ['id', 'value']
+        expected = conn.table(str(table.table.name)).pl().head(20)
+        assert result.data.equals(expected)
     
     def test_head_sampling_full_table(self, conn: DuckDBPyConnection) -> None:
         """Test head sampling when sample size equals table size."""
@@ -59,8 +50,8 @@ class TestHeadTableSampler:
         
         result = sampler.sample(table, conn, sample_size=50)
         
-        assert result.data.height == 50
-        assert result.data['id'].to_list() == list(range(50))
+        expected = conn.table(str(table.table.name)).pl()
+        assert result.data.equals(expected)
     
     def test_head_sampling_ignores_random_seed(self, conn: DuckDBPyConnection) -> None:
         """Test that head sampler produces same results regardless of seed."""
@@ -80,8 +71,8 @@ class TestHeadTableSampler:
         result = sampler.sample(table, conn, sample_size=50)
         
         # Should return entire table (all 30 rows)
-        assert result.data.height == 30
-        assert result.data['id'].to_list() == list(range(30))
+        expected = conn.table(str(table.table.name)).pl()
+        assert result.data.equals(expected)
     
     def test_head_sampling_empty_table(self, conn: DuckDBPyConnection) -> None:
         """Test head sampling from an empty table."""
@@ -90,10 +81,9 @@ class TestHeadTableSampler:
         
         result = sampler.sample(table, conn, sample_size=10)
         
-        # Should return empty dataset
-        assert result.data.height == 0
-        # But schema should still be correct
-        assert result.schema.names == ['id', 'value']
+        # Should return empty dataset with correct schema
+        expected = conn.table(str(table.table.name)).pl()
+        assert result.data.equals(expected)
 
 
 class TestRandomStartTableSampler:
@@ -132,9 +122,7 @@ class TestRandomStartTableSampler:
         result2 = sampler.sample(table, conn, sample_size=20, random_seed=999)
         
         # Different seeds should (very likely) produce different starting points
-        ids1 = result1.data['id'].to_list()
-        ids2 = result2.data['id'].to_list()
-        assert ids1[0] != ids2[0] or ids1 != ids2
+        assert result1.data['id'][0] != result2.data['id'][0]
     
     def test_random_start_sampling_consecutive_rows(self, conn: DuckDBPyConnection) -> None:
         """Test that sampled rows are consecutive."""
@@ -156,8 +144,8 @@ class TestRandomStartTableSampler:
         result = sampler.sample(table, conn, sample_size=50, random_seed=42)
         
         # When sample size equals table size, starting point should be 0
-        assert result.data.height == 50
-        assert result.data['id'].to_list() == list(range(50))
+        expected = conn.table(str(table.table.name)).pl()
+        assert result.data.equals(expected)
     
     def test_random_start_sampling_larger_than_table(self, conn: DuckDBPyConnection) -> None:
         """Test random start sampling when sample size exceeds table size."""
@@ -167,10 +155,8 @@ class TestRandomStartTableSampler:
         result = sampler.sample(table, conn, sample_size=50, random_seed=42)
         
         # Should return entire table
-        assert result.data.height == 30
-        assert result.data['id'].to_list() == list(range(30))
-        # Schema should be correct
-        assert result.schema.names == ['id', 'value']
+        expected = conn.table(str(table.table.name)).pl()
+        assert result.data.equals(expected)
     
     def test_random_start_sampling_empty_table(self, conn: DuckDBPyConnection) -> None:
         """Test random start sampling with empty table."""
@@ -179,10 +165,9 @@ class TestRandomStartTableSampler:
         
         result = sampler.sample(table, conn, sample_size=10, random_seed=42)
         
-        # Should return empty dataset
-        assert result.data.height == 0
-        # But schema should still be correct
-        assert result.schema.names == ['id', 'value']
+        # Should return empty dataset with correct schema
+        expected = conn.table(str(table.table.name)).pl()
+        assert result.data.equals(expected)
     
     def test_random_start_sampling_near_end(self, conn: DuckDBPyConnection) -> None:
         """Test that samples near the end of the table work correctly."""

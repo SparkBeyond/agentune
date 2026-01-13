@@ -33,7 +33,7 @@ class DataSampler(ABC):
 class TableSampler(ABC):
     """Abstract base class for data sampling from TableWithJoinStrategies."""
     @abstractmethod
-    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = None) -> Dataset:
+    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
         """Sample data from a given table with join strategies."""
 
 
