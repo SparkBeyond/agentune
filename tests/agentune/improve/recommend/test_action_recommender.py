@@ -239,8 +239,9 @@ async def test_action_recommender(
     assert isinstance(report, RecommendationsReport)
 
     if len(report.recommendations) == 0:
-        logger.info('All recommendations were filtered out due to lack of valid supporting features (R² = 0) - test passed')
-        return
+        logger.error('All recommendations were filtered out due to lack of valid supporting features (R² = 0)')
+        logger.error(f'Raw report: {report.raw_report}')
+        pytest.fail('No recommendations generated - all were filtered out due to lack of valid supporting features')
     
     # Optionally save results (useful for manual inspection)
     save_results = os.getenv('SAVE_TEST_RESULTS', 'false').lower() == 'true'
@@ -438,8 +439,9 @@ async def test_action_recommender_with_long_conversations_token_sampling(
     assert len(report.analysis_summary) > 50
 
     if len(report.recommendations) == 0:
-        logger.info('All recommendations were filtered out due to lack of valid supporting features (R² = 0) - test passed')
-        return
+        logger.error('All recommendations were filtered out due to lack of valid supporting features (R² = 0)')
+        logger.error(f'Raw report: {report.raw_report}')
+        pytest.fail('No recommendations generated - all were filtered out due to lack of valid supporting features')
 
     # Check that some conversations were included but not all
     # The raw_report should contain some conversation content but not all conversations
