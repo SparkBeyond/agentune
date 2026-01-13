@@ -12,7 +12,6 @@ from tests.agentune.analyze.run.analysis.toys import (
 from agentune.analyze.feature.problem import ProblemDescription
 from agentune.analyze.run.analysis.base import (
     AnalyzeComponents,
-    NoFeaturesFoundError,
 )
 from agentune.api.base import RunContext
 from agentune.api.data import BoundTable
