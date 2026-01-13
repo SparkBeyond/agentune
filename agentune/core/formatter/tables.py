@@ -12,6 +12,7 @@ from agentune.core.formatter.base import TableFormatter, TablesFormatter
 from agentune.core.sampler.base import DataSampler, RandomSampler, TableSampler
 from agentune.core.sampler.table_samples import HeadTableSampler
 from agentune.core.schema import Schema
+import agentune.core.types as types
 
 
 @attrs.frozen
@@ -57,8 +58,8 @@ class MarkdownTableFormatter(TableFormatter):
         select_exprs = []
         for field in dataset.schema.cols:
             col_name = field.name
-            # Check if column is a string type
-            if field.dtype.polars_type in (pl.String, pl.Utf8):
+            # Check if column is a string or json type
+            if field.dtype in (types.string, types.json_dtype):
                 # Truncate long strings
                 select_exprs.append(
                     pl.when(pl.col(col_name).str.len_chars() > self.max_str)
