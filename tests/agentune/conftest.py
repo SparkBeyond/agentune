@@ -103,6 +103,7 @@ class TestStructuredDataset:
     test_table: str
     auxiliary_tables: tuple[str, ...]
     problem: ClassificationProblem
+    ground_truth_features: list[str] | None = None
 
 
 @pytest.fixture
@@ -117,10 +118,13 @@ async def sampled_telco_churn(ctx: RunContext) -> TestStructuredDataset:
     await ctx.data.from_csv(telco_churn_dir / 'customer_feedback_table.csv').copy_to_table('customer_feedback_table')
 
     problem = ctx.json.load(telco_churn_dir / 'problem.json', ClassificationProblem)
+    
+    ground_truth_features = ctx.json.load(telco_churn_dir / 'ground_truth_features.json', dict).get('features_descriptions')
 
     return TestStructuredDataset(
         train_table='train',
         test_table='test',
         auxiliary_tables=('billing_history_table', 'top_up_activation_history_table', 'customer_feedback_table'),
         problem=problem,
+        ground_truth_features=ground_truth_features,
     )

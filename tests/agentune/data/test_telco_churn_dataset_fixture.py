@@ -20,16 +20,26 @@ async def test_golden_dataset_fixture_loads_data(sampled_telco_churn: TestStruct
     assert 'customer_feedback_table' in dataset.auxiliary_tables
     
     # Check problem is configured correctly
+    assert dataset.problem.target_column is not None
     assert dataset.problem.target_column.name == 'churn_status'
+    assert dataset.problem.date_column is not None
     assert dataset.problem.date_column.name == 'reference_date'
     assert dataset.problem.target_kind == 'classification'
     assert dataset.problem.classes == (0, 1)
     
     # Verify tables actually exist in DuckDB and have data
     with ctx._ddb_manager.cursor() as conn:
-        train_count = conn.execute(f'SELECT COUNT(*) FROM {dataset.train_table}').fetchone()[0]
-        test_count = conn.execute(f'SELECT COUNT(*) FROM {dataset.test_table}').fetchone()[0]
-        billing_count = conn.execute('SELECT COUNT(*) FROM billing_history_table').fetchone()[0]
+        train_result = conn.execute(f'SELECT COUNT(*) FROM {dataset.train_table}').fetchone()
+        assert train_result is not None
+        train_count = train_result[0]
+        
+        test_result = conn.execute(f'SELECT COUNT(*) FROM {dataset.test_table}').fetchone()
+        assert test_result is not None
+        test_count = test_result[0]
+        
+        billing_result = conn.execute('SELECT COUNT(*) FROM billing_history_table').fetchone()
+        assert billing_result is not None
+        billing_count = billing_result[0]
         
         # Verify tables have data
         assert train_count > 0, 'Train table is empty'
@@ -41,3 +51,7 @@ async def test_golden_dataset_fixture_loads_data(sampled_telco_churn: TestStruct
         assert len(target_values) == 2, f'Expected 2 distinct target values, got {len(target_values)}'
         assert target_values[0][0] == 0
         assert target_values[1][0] == 1
+
+        # Verify ground truth features exist
+        assert dataset.ground_truth_features is not None
+        assert len(dataset.ground_truth_features) == 4
