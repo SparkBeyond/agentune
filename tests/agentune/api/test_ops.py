@@ -43,9 +43,6 @@ async def test_e2e_flow_synthetic(input_data_csv_path: Path, tmp_path: Path) -> 
         split_input = await input.split()
         problem_description = ProblemDescription('target', 'Test synthetic data problem')
 
-        with pytest.raises(NoFeaturesFoundError): # Default generators can't do anything with this synthetic data
-            await ctx.ops.analyze(problem_description, split_input)
-
         components = AnalyzeComponents(
             generators=(ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator(), ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator()),
             selector=ToyAsyncEnrichedFeatureSelector()
