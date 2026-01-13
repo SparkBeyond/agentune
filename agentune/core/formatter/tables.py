@@ -61,7 +61,7 @@ class MarkdownTableFormatter(TableFormatter):
             if field.dtype.polars_type in (pl.String, pl.Utf8):
                 # Truncate long strings
                 select_exprs.append(
-                    pl.when(pl.col(col_name).str.len_bytes() > self.max_str)
+                    pl.when(pl.col(col_name).str.len_chars() > self.max_str)
                     .then(pl.col(col_name).str.slice(0, self.max_str) + '...')
                     .otherwise(pl.col(col_name))
                     .alias(col_name)
