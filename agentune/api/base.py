@@ -26,6 +26,7 @@ from agentune.core.llmcache.base import LLMCacheBackend, LLMCacheKey
 from agentune.core.llmcache.sqlite_lru import ConnectionProviderFactory, SqliteLru
 from agentune.core.progress.reporters.base import ProgressReporter, progress_setup
 from agentune.core.progress.reporters.log import LogReporter
+from agentune.core.progress.reporters.rich_console import RichConsoleReporter
 from agentune.core.sercontext import SerializationContext
 from agentune.core.util import asyncref
 from agentune.core.util.lrucache import LRUCache
@@ -37,6 +38,8 @@ if typing.TYPE_CHECKING:
     from .json import BoundJson
     from .llm import BoundLlm
     from .ops import BoundOps
+
+_logger = logging.getLogger(__name__)
 
 # These classes need to be in the base module because we use them to define the default values of parameters to create()
 # and so we can't import them only when we need them
@@ -73,6 +76,13 @@ class WriteProgressToLog(ProgressReporterParams):
     poll_interval: timedelta = timedelta(seconds=30)
     logger_name: str = 'agentune.progress'
     log_level: int = logging.INFO
+
+@frozen
+class WriteProgressToConsole(ProgressReporterParams):
+    """Writes progress updates in the console/terminal, shows interactive progress tree"""
+    poll_interval: timedelta = timedelta(milliseconds=500)
+    show_percentages: bool = True
+    show_colors: bool = True
 
 
 @frozen
@@ -128,7 +138,7 @@ class RunContext:
                      httpx_async_client: httpx.AsyncClient | None = None,
                      llm_providers: LLMProvider | Sequence[LLMProvider] | None = None,
                      llm_cache: LlmCacheInMemory | LlmCacheOnDisk | LLMCacheBackend | None = LlmCacheInMemory(1000),
-                     progress_reporter: WriteProgressToLog | ProgressReporter | None = WriteProgressToLog()
+                     progress_reporter: WriteProgressToLog | WriteProgressToConsole | ProgressReporter | None = WriteProgressToLog()
                      ) -> RunContext:
         """Create a new context instance (see the class doc). Remember to close it when you are done, by using it as
         a context manager or by calling the aclose() method explicitly.
@@ -196,6 +206,13 @@ class RunContext:
         match progress_reporter:
             case WriteProgressToLog(poll_interval, logger_name, log_level):
                 reporter_instance = LogReporter(poll_interval, logger_name, log_level)
+            case WriteProgressToConsole(poll_interval, show_percentages, show_colors):
+                from rich.console import Console
+                # Check whether the running environment supports Rich console
+                if Console().is_terminal:
+                    reporter_instance = RichConsoleReporter(poll_interval, show_percentages, show_colors)
+                else:
+                    _logger.warning('WriteProgressToConsole requested but it is not supported in this environment. Progress reporting will be disabled.')
             case ProgressReporter() as reporter:
                 reporter_instance = reporter
                 owns_reporter = False
