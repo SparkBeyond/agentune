@@ -39,6 +39,8 @@ if typing.TYPE_CHECKING:
     from .llm import BoundLlm
     from .ops import BoundOps
 
+_logger = logging.getLogger(__name__)
+
 # These classes need to be in the base module because we use them to define the default values of parameters to create()
 # and so we can't import them only when we need them
 
@@ -209,9 +211,8 @@ class RunContext:
                 # Check whether the running environment supports Rich console
                 if Console().is_terminal:
                     reporter_instance = RichConsoleReporter(poll_interval, show_percentages, show_colors)
-                # Fall back to logging if Rich console is not supported
                 else:
-                    reporter_instance = LogReporter(poll_interval, 'agentune.progress', logging.INFO)
+                    _logger.warning('WriteProgressToConsole requested but it is not supported in this environment. Progress reporting will be disabled.')
             case ProgressReporter() as reporter:
                 reporter_instance = reporter
                 owns_reporter = False

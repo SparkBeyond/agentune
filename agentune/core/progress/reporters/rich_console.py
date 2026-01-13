@@ -44,9 +44,9 @@ class RichConsoleReporter(ProgressReporter):
         self._live = Live(
             self._progress_tree,
             console=Console(),
-            refresh_per_second=1 / self.poll_interval.total_seconds(),
+            auto_refresh=False,
         )
-        self._live.start()
+        self._live.start(refresh=True)
 
     @override
     async def update(self, snapshot: ProgressStage) -> None:
@@ -54,7 +54,7 @@ class RichConsoleReporter(ProgressReporter):
         if self._live is None:
             return
         self._progress_tree = self._build_tree(snapshot)
-        self._live.update(self._progress_tree)
+        self._live.update(self._progress_tree, refresh=True)
 
     @override
     async def stop(self) -> None:
