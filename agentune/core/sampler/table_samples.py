@@ -5,7 +5,7 @@ from typing import override
 import attrs
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.join.base import TableWithJoinStrategies
+from agentune.core.database import DuckdbName
 from agentune.core.dataset import Dataset, duckdb_to_dataset
 from agentune.core.sampler.base import TableSampler
 
@@ -19,11 +19,11 @@ class HeadTableSampler(TableSampler):
     """
 
     @override
-    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
+    def sample(self, table_name: DuckdbName | str, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
         """Sample the first N rows from the table.
         
         Args:
-            table: The table with join strategies to sample from
+            table_name: The name of the table to sample from
             conn: The DuckDB connection
             sample_size: Number of rows to sample (limit)
             random_seed: Not used in this sampler (kept for interface compatibility)
@@ -31,9 +31,11 @@ class HeadTableSampler(TableSampler):
         Returns:
             Dataset containing the first sample_size rows
         """
-        table_name = str(table.table.name)
+        if isinstance(table_name, str):
+            table_name = DuckdbName.qualify(table_name, conn)
+
         end_rowid = sample_size - 1
-        sql_query = f'SELECT * FROM {table_name} WHERE rowid BETWEEN 0 AND {end_rowid} ORDER BY rowid'
+        sql_query = f'SELECT * FROM {table_name!s} WHERE rowid BETWEEN 0 AND {end_rowid} ORDER BY rowid'
         
         relation = conn.sql(sql_query)
         return duckdb_to_dataset(relation)
@@ -49,11 +51,11 @@ class RandomStartTableSampler(TableSampler):
     """
 
     @override
-    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
+    def sample(self, table_name: DuckdbName | str, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
         """Sample consecutive rows from a random starting point in the table.
         
         Args:
-            table: The table with join strategies to sample from
+            table_name: The name of the table to sample from
             conn: The DuckDB connection
             sample_size: Number of consecutive rows to sample
             random_seed: Random seed for selecting the starting point (for reproducibility)
@@ -61,10 +63,10 @@ class RandomStartTableSampler(TableSampler):
         Returns:
             Dataset containing sample_size consecutive rows starting from a random position
         """
-        table_name = str(table.table.name)
-        
+        if isinstance(table_name, str):
+            table_name = DuckdbName.qualify(table_name, conn)
         # Get table size
-        table_size = len(conn.table(table_name))
+        table_size = len(conn.table(str(table_name)))
         
         # Adjust sample size if it exceeds table size
         sample_size = min(sample_size, table_size)
@@ -76,7 +78,7 @@ class RandomStartTableSampler(TableSampler):
         
         # Select consecutive rows starting from the random rowid
         # Using DuckDB's built-in rowid pseudocolumn for deterministic and efficient filtering
-        sql_query = f'SELECT * FROM {table_name} WHERE rowid BETWEEN {start_rowid} AND {end_rowid} ORDER BY rowid'
+        sql_query = f'SELECT * FROM {table_name!s} WHERE rowid BETWEEN {start_rowid} AND {end_rowid} ORDER BY rowid'
         
         relation = conn.sql(sql_query)
         return duckdb_to_dataset(relation)

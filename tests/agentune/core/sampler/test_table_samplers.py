@@ -34,55 +34,55 @@ class TestHeadTableSampler:
     def test_basic_head_sampling(self, conn: DuckDBPyConnection) -> None:
         """Test basic head sampling functionality."""
         sampler = HeadTableSampler()
-        table = create_test_table(conn, 'test_table', 100)
+        table_name = create_test_table(conn, 'test_table', 100).table.name
         
         # Sample first 20 rows
-        result = sampler.sample(table, conn, sample_size=20)
+        result = sampler.sample(table_name, conn, sample_size=20)
         
         # Validate result
-        expected = conn.table(str(table.table.name)).pl().head(20)
+        expected = conn.table(str(table_name)).pl().head(20)
         assert result.data.equals(expected)
     
     def test_head_sampling_full_table(self, conn: DuckDBPyConnection) -> None:
         """Test head sampling when sample size equals table size."""
         sampler = HeadTableSampler()
-        table = create_test_table(conn, 'test_table_full', 50)
+        table_name = create_test_table(conn, 'test_table_full', 50).table.name
         
-        result = sampler.sample(table, conn, sample_size=50)
+        result = sampler.sample(table_name, conn, sample_size=50)
         
-        expected = conn.table(str(table.table.name)).pl()
+        expected = conn.table(str(table_name)).pl()
         assert result.data.equals(expected)
     
     def test_head_sampling_ignores_random_seed(self, conn: DuckDBPyConnection) -> None:
         """Test that head sampler produces same results regardless of seed."""
         sampler = HeadTableSampler()
-        table = create_test_table(conn, 'test_table_seed', 50)
+        table_name = create_test_table(conn, 'test_table_seed', 50).table.name
         
-        result1 = sampler.sample(table, conn, sample_size=10, random_seed=42)
-        result2 = sampler.sample(table, conn, sample_size=10, random_seed=999)
+        result1 = sampler.sample(table_name, conn, sample_size=10, random_seed=42)
+        result2 = sampler.sample(table_name, conn, sample_size=10, random_seed=999)
         
         assert result1.data.equals(result2.data)
     
     def test_head_sampling_larger_than_table(self, conn: DuckDBPyConnection) -> None:
         """Test head sampling when sample size exceeds table size."""
         sampler = HeadTableSampler()
-        table = create_test_table(conn, 'test_head_oversample', 30)
+        table_name = create_test_table(conn, 'test_head_oversample', 30).table.name
         
-        result = sampler.sample(table, conn, sample_size=50)
+        result = sampler.sample(table_name, conn, sample_size=50)
         
         # Should return entire table (all 30 rows)
-        expected = conn.table(str(table.table.name)).pl()
+        expected = conn.table(str(table_name)).pl()
         assert result.data.equals(expected)
     
     def test_head_sampling_empty_table(self, conn: DuckDBPyConnection) -> None:
         """Test head sampling from an empty table."""
         sampler = HeadTableSampler()
-        table = create_test_table(conn, 'test_head_empty', 0)
+        table_name = create_test_table(conn, 'test_head_empty', 0).table.name
         
-        result = sampler.sample(table, conn, sample_size=10)
+        result = sampler.sample(table_name, conn, sample_size=10)
         
         # Should return empty dataset with correct schema
-        expected = conn.table(str(table.table.name)).pl()
+        expected = conn.table(str(table_name)).pl()
         assert result.data.equals(expected)
 
 
@@ -92,9 +92,9 @@ class TestRandomStartTableSampler:
     def test_basic_random_start_sampling(self, conn: DuckDBPyConnection) -> None:
         """Test basic random start sampling functionality."""
         sampler = RandomStartTableSampler()
-        table = create_test_table(conn, 'test_random_table', 100)
+        table_name = create_test_table(conn, 'test_random_table', 100).table.name
         
-        result = sampler.sample(table, conn, sample_size=20, random_seed=42)
+        result = sampler.sample(table_name, conn, sample_size=20, random_seed=42)
         
         # Validate result
         assert result.data.height == 20
@@ -106,20 +106,20 @@ class TestRandomStartTableSampler:
     def test_random_start_sampling_reproducibility(self, conn: DuckDBPyConnection) -> None:
         """Test that random start sampling is reproducible with same seed."""
         sampler = RandomStartTableSampler()
-        table = create_test_table(conn, 'test_reproducible', 100)
+        table_name = create_test_table(conn, 'test_reproducible', 100).table.name
         
-        result1 = sampler.sample(table, conn, sample_size=15, random_seed=123)
-        result2 = sampler.sample(table, conn, sample_size=15, random_seed=123)
+        result1 = sampler.sample(table_name, conn, sample_size=15, random_seed=123)
+        result2 = sampler.sample(table_name, conn, sample_size=15, random_seed=123)
         
         assert result1.data.equals(result2.data)
     
     def test_random_start_sampling_different_seeds(self, conn: DuckDBPyConnection) -> None:
         """Test that different seeds produce different starting points."""
         sampler = RandomStartTableSampler()
-        table = create_test_table(conn, 'test_different_seeds', 100)
+        table_name = create_test_table(conn, 'test_different_seeds', 100).table.name
         
-        result1 = sampler.sample(table, conn, sample_size=20, random_seed=42)
-        result2 = sampler.sample(table, conn, sample_size=20, random_seed=999)
+        result1 = sampler.sample(table_name, conn, sample_size=20, random_seed=42)
+        result2 = sampler.sample(table_name, conn, sample_size=20, random_seed=999)
         
         # Different seeds should (very likely) produce different starting points
         assert result1.data['id'][0] != result2.data['id'][0]
@@ -127,9 +127,9 @@ class TestRandomStartTableSampler:
     def test_random_start_sampling_consecutive_rows(self, conn: DuckDBPyConnection) -> None:
         """Test that sampled rows are consecutive."""
         sampler = RandomStartTableSampler()
-        table = create_test_table(conn, 'test_consecutive', 200)
+        table_name = create_test_table(conn, 'test_consecutive', 200).table.name
         
-        result = sampler.sample(table, conn, sample_size=30, random_seed=42)
+        result = sampler.sample(table_name, conn, sample_size=30, random_seed=42)
         
         ids = result.data['id'].to_list()
         # Verify consecutiveness
@@ -139,44 +139,44 @@ class TestRandomStartTableSampler:
     def test_random_start_sampling_full_table(self, conn: DuckDBPyConnection) -> None:
         """Test random start sampling when sample size equals table size."""
         sampler = RandomStartTableSampler()
-        table = create_test_table(conn, 'test_full_random', 50)
+        table_name = create_test_table(conn, 'test_full_random', 50).table.name
         
-        result = sampler.sample(table, conn, sample_size=50, random_seed=42)
+        result = sampler.sample(table_name, conn, sample_size=50, random_seed=42)
         
         # When sample size equals table size, starting point should be 0
-        expected = conn.table(str(table.table.name)).pl()
+        expected = conn.table(str(table_name)).pl()
         assert result.data.equals(expected)
     
     def test_random_start_sampling_larger_than_table(self, conn: DuckDBPyConnection) -> None:
         """Test random start sampling when sample size exceeds table size."""
         sampler = RandomStartTableSampler()
-        table = create_test_table(conn, 'test_oversample', 30)
+        table_name = create_test_table(conn, 'test_oversample', 30).table.name
         
-        result = sampler.sample(table, conn, sample_size=50, random_seed=42)
+        result = sampler.sample(table_name, conn, sample_size=50, random_seed=42)
         
         # Should return entire table
-        expected = conn.table(str(table.table.name)).pl()
+        expected = conn.table(str(table_name)).pl()
         assert result.data.equals(expected)
     
     def test_random_start_sampling_empty_table(self, conn: DuckDBPyConnection) -> None:
         """Test random start sampling with empty table."""
         sampler = RandomStartTableSampler()
-        table = create_test_table(conn, 'test_empty', 0)
+        table_name = create_test_table(conn, 'test_empty', 0).table.name
         
-        result = sampler.sample(table, conn, sample_size=10, random_seed=42)
+        result = sampler.sample(table_name, conn, sample_size=10, random_seed=42)
         
         # Should return empty dataset with correct schema
-        expected = conn.table(str(table.table.name)).pl()
+        expected = conn.table(str(table_name)).pl()
         assert result.data.equals(expected)
     
     def test_random_start_sampling_near_end(self, conn: DuckDBPyConnection) -> None:
         """Test that samples near the end of the table work correctly."""
         sampler = RandomStartTableSampler()
-        table = create_test_table(conn, 'test_near_end', 100)
+        table_name = create_test_table(conn, 'test_near_end', 100).table.name
         
         # Force a start near the end by setting specific seed
         # This tests that we correctly handle the range
-        result = sampler.sample(table, conn, sample_size=10, random_seed=42)
+        result = sampler.sample(table_name, conn, sample_size=10, random_seed=42)
         
         ids = result.data['id'].to_list()
         # Should still get 10 consecutive rows

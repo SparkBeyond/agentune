@@ -9,7 +9,7 @@ from typing import override
 import attrs
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.join.base import TableWithJoinStrategies
+from agentune.core.database import DuckdbName
 from agentune.core.dataset import Dataset
 
 
@@ -31,10 +31,10 @@ class DataSampler(ABC):
 
 @attrs.define
 class TableSampler(ABC):
-    """Abstract base class for data sampling from TableWithJoinStrategies."""
+    """Abstract base class for data sampling from tables."""
     @abstractmethod
-    def sample(self, table: TableWithJoinStrategies, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
-        """Sample data from a given table with join strategies."""
+    def sample(self, table_name: DuckdbName | str, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
+        """Sample data from a given table."""
 
 
 @attrs.define
