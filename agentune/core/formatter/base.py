@@ -10,7 +10,7 @@ import attrs
 import polars as pl
 from duckdb import DuckDBPyConnection
 
-from agentune.analyze.join.base import JoinStrategy
+from agentune.analyze.join.base import JoinStrategy, TablesWithJoinStrategies
 from agentune.core.database import DuckdbTable
 from agentune.core.dataset import Dataset
 from agentune.core.schema import Schema
@@ -65,3 +65,55 @@ class DataFormatter(ABC, UseTypeTag):
         ...
 
 
+
+@attrs.define
+class TableFormatter(ABC, UseTypeTag):
+    """Abstract base class for formatting database table.
+    
+    Formats information about table (schemas and sample data) to string representations.
+    """
+
+    @abstractmethod
+    def format_table(
+        self,
+        sample_data: Dataset,
+    ) -> str:
+        """Format schema and sample data for a single table.
+
+        Args:
+            sample_data: Dataset containing the sample data to format
+        Returns:
+            String representation of the table with its schema and sample data
+        """
+        ...
+
+
+@attrs.define
+class TablesFormatter(ABC, UseTypeTag):
+    """Abstract base class for formatting database tables.
+    
+    Formats information about available database tables (schemas and sample data) to string representations.
+    """
+
+    primary_table_name: str = 'primary_table'
+        
+    @abstractmethod
+    def format_all_tables(
+        self,
+        input: Dataset,
+        tables: TablesWithJoinStrategies,
+        conn: DuckDBPyConnection,
+        random_seed: int | None = None,
+    ) -> str:
+        """Format the primary dataset and all auxiliary tables with their schemas and sample.
+
+        Args:
+            input: Input dataset (primary table)
+            tables: Available tables with their join strategies
+            conn: Database connection to query sample data
+            random_seed: Random seed for sampling (if applicable)
+
+        Returns:
+            String representation of all tables with their schemas and sample data
+        """
+        ...
