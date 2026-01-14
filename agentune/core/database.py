@@ -314,7 +314,10 @@ class DuckdbConfig:
             'python_enable_replacements': 'False',
         }
 
-    def to_config_dict(self) -> dict[str, str]:
+    def to_config_dict(self) -> dict[str, str | bool | int | float | list[str]]:
+        """The verbose return type avoids a type error when passing the dict to duckdb.connect().
+        In practice, we return a dict containing only string values.
+        """
         set_fields = { k: str(v) for k, v
                        in cattrs.Converter().unstructure_attrs_asdict(self).items()
                        if v is not None and k != 'config' }
