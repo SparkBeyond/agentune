@@ -187,7 +187,7 @@ class MarkdownTablesFormatter(TablesFormatter):
         for table_with_strategies in tables:
             # get sample data for the table
             sample_data = self.tables_sampler.sample(
-                table_with_strategies,
+                table_with_strategies.table.name,
                 conn,
                 self.num_samples,
                 random_seed=random_seed,
