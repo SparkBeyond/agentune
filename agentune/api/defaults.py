@@ -19,6 +19,9 @@ from agentune.analyze.feature.gen.base import FeatureGenerator
 from agentune.analyze.feature.gen.insightful_text_generator.insightful_text_generator import (
     ConversationQueryFeatureGenerator,
 )
+from agentune.analyze.feature.gen.original_column_generator.original_column_generator import (
+    OriginalColumnsGenerator,
+)
 from agentune.analyze.feature.select import FeatureSelector
 from agentune.analyze.feature.select.base import EnrichedFeatureSelector
 from agentune.analyze.feature.select.linear_pairwise import LinearPairWiseFeatureSelector
@@ -90,7 +93,7 @@ class BoundDefaults:
         return ConversationQueryFeatureGenerator.default(self.run_context._llm_context)
 
     def feature_generators(self) -> tuple[FeatureGenerator, ...]:
-        return (self.conversation_query_feature_generator(), )
+        return (self.conversation_query_feature_generator(), OriginalColumnsGenerator())
 
     def feature_selector(self) -> FeatureSelector | EnrichedFeatureSelector:
         return LinearPairWiseFeatureSelector()

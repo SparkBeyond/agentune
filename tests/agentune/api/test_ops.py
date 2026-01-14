@@ -12,7 +12,6 @@ from tests.agentune.analyze.run.analysis.toys import (
 from agentune.analyze.feature.problem import ProblemDescription
 from agentune.analyze.run.analysis.base import (
     AnalyzeComponents,
-    NoFeaturesFoundError,
 )
 from agentune.api.base import RunContext
 from agentune.api.data import BoundTable
@@ -42,9 +41,6 @@ async def test_e2e_flow_synthetic(input_data_csv_path: Path, tmp_path: Path) -> 
         input = await ctx.data.from_csv(input_data_csv_path).copy_to_table('input')
         split_input = await input.split()
         problem_description = ProblemDescription('target', 'Test synthetic data problem')
-
-        with pytest.raises(NoFeaturesFoundError): # Default generators can't do anything with this synthetic data
-            await ctx.ops.analyze(problem_description, split_input)
 
         components = AnalyzeComponents(
             generators=(ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator(), ToySyncFeatureGenerator(), ToyAsyncFeatureGenerator()),
