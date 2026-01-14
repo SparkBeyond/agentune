@@ -7,7 +7,9 @@ from abc import ABC, abstractmethod
 from typing import override
 
 import attrs
+from duckdb import DuckDBPyConnection
 
+from agentune.core.database import DuckdbName
 from agentune.core.dataset import Dataset
 
 
@@ -25,6 +27,14 @@ class DataSampler(ABC):
 
         if sample_size <= 0:
             raise ValueError('Sample size must be positive')
+
+
+@attrs.define
+class TableSampler(ABC):
+    """Abstract base class for data sampling from tables."""
+    @abstractmethod
+    def sample(self, table_name: DuckdbName | str, conn: DuckDBPyConnection, sample_size: int, random_seed: int | None = 42) -> Dataset:
+        """Sample data from a given table."""
 
 
 @attrs.define
